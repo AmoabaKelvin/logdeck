@@ -1,0 +1,24 @@
+# Development Dockerfile for LogDeck Backend
+FROM golang:1.22-alpine
+
+# Install air for hot-reload during development
+RUN go install github.com/air-verse/air@latest
+
+# Set working directory
+WORKDIR /app
+
+# Copy go mod files
+COPY go.mod go.sum* ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Expose port
+EXPOSE 8080
+
+# Run with air for hot-reload
+# If .air.toml exists, air will use it; otherwise, it uses sensible defaults
+CMD ["air", "-c", ".air.toml"]

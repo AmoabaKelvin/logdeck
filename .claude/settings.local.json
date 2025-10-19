@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:pkg.go.dev)",
+      "WebFetch(domain:docs.docker.com)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
