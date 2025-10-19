@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile.dev
+    container_name: logdeck-backend
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    volumes:
+      # Mount source code for hot-reload
+      - ./server:/app
+      # Mount Docker socket to access host Docker daemon
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - GO_ENV=development
+    networks:
+      - logdeck-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+      args:
+        # Build-time variable for Vite (embedded into the build)
+        - VITE_API_URL=http://localhost:8080
+    container_name: logdeck-frontend
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    volumes:
+      # Mount source code for hot-reload
+      - ./frontend:/app
+      # Exclude node_modules from mount (use container's version)
+      - /app/node_modules
+    environment:
+      # Note: VITE_API_URL works in dev mode via .env files in the mounted volume
+      # For Docker, we use localhost:8080 since frontend runs in browser (not container)
+      - VITE_API_URL=http://localhost:8080
+    networks:
+      - logdeck-network
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+networks:
+  logdeck-network:
+    driver: bridge

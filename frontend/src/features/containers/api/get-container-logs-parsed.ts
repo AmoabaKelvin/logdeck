@@ -1,4 +1,6 @@
-const BASE_URL = "http://localhost:8080/api/v1/containers";
+import { API_BASE_URL } from "@/types/api";
+
+const BASE_URL = `${API_BASE_URL}/api/v1/containers`;
 
 export type LogLevel =
   | "TRACE"

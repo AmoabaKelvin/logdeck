@@ -1,6 +1,7 @@
 import type { ContainerInfo } from "../types";
+import { API_BASE_URL } from "@/types/api";
 
-const CONTAINERS_ENDPOINT = "http://localhost:8080/api/v1/containers";
+const CONTAINERS_ENDPOINT = `${API_BASE_URL}/api/v1/containers`;
 
 export async function getContainers(): Promise<ContainerInfo[]> {
   const response = await fetch(CONTAINERS_ENDPOINT);
