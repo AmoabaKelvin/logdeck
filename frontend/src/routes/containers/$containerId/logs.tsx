@@ -61,6 +61,13 @@ export const Route = createFileRoute("/containers/$containerId/logs")({
   component: ContainerLogsPage,
 });
 
+/**
+ * Renders the container logs page with controls for fetching, streaming, filtering, and exporting container logs, plus a container details panel.
+ *
+ * Displays container metadata, a configurable log viewer (line count, streaming, search, level filters, timestamps, auto-scroll, wrap), per-entry copy action, and download options (JSON/TXT).
+ *
+ * @returns The UI for viewing and interacting with a single container's logs and details.
+ */
 function ContainerLogsPage() {
   const { containerId } = Route.useParams();
   const navigate = useNavigate();
