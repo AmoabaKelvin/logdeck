@@ -1,19 +1,37 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  CheckIcon,
   ChevronDownIcon,
+  CopyIcon,
+  DownloadIcon,
+  EyeIcon,
+  EyeOffIcon,
   ExternalLinkIcon,
+  FilterIcon,
   PlayIcon,
   RefreshCcwIcon,
+  SearchIcon,
   SquareIcon,
+  WrapTextIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Sheet,
   SheetContent,
@@ -33,6 +51,7 @@ import {
   getLogLevelBadgeColor,
   streamContainerLogsParsed,
   type LogEntry,
+  type LogLevel,
 } from "../api/get-container-logs-parsed";
 import type { ContainerInfo } from "../types";
 
@@ -60,12 +79,20 @@ export function ContainersLogsSheet({
   const [isStreaming, setIsStreaming] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+  const [searchText, setSearchText] = useState("");
+  const [selectedLevels, setSelectedLevels] = useState<Set<LogLevel>>(new Set());
+  const [showTimestamps, setShowTimestamps] = useState(true);
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [wrapText, setWrapText] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const scrollToBottom = () => {
-    logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  const scrollToBottom = useCallback(() => {
+    if (autoScroll) {
+      logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [autoScroll]);
 
   const fetchLogs = useCallback(async () => {
     if (!container) return;
@@ -85,7 +112,7 @@ export function ContainersLogsSheet({
     } finally {
       setIsLoadingLogs(false);
     }
-  }, [container, logLines]);
+  }, [container, logLines, scrollToBottom]);
 
   const startStreaming = useCallback(async () => {
     if (!container) return;
@@ -129,7 +156,7 @@ export function ContainersLogsSheet({
       setIsLoadingLogs(false);
       abortControllerRef.current = null;
     }
-  }, [container, logLines]);
+  }, [container, logLines, scrollToBottom]);
 
   const stopStreaming = useCallback(() => {
     if (abortControllerRef.current) {
@@ -179,10 +206,107 @@ export function ContainersLogsSheet({
 
   const handleLogLinesChange = (value: string) => {
     const num = parseInt(value, 10);
-    if (!isNaN(num) && num > 0) {
+    if (!Number.isNaN(num) && num > 0) {
       setLogLines(num);
     }
   };
+
+  const toggleLogLevel = (level: LogLevel) => {
+    setSelectedLevels((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(level)) {
+        newSet.delete(level);
+      } else {
+        newSet.add(level);
+      }
+      return newSet;
+    });
+  };
+
+  const handleCopyLog = (entry: LogEntry) => {
+    const text = entry.message || entry.raw || "";
+    navigator.clipboard.writeText(text)
+      .then(() => {
+        toast.success("Log entry copied to clipboard");
+      })
+      .catch(() => {
+        toast.error("Failed to copy to clipboard");
+      });
+  };
+
+  const handleDownloadLogs = (format: "json" | "txt") => {
+    if (filteredLogs.length === 0) {
+      toast.error("No logs to download");
+      return;
+    }
+
+    const containerName = (container?.names?.[0] || "container")
+      .replace(/^\//, "")
+      .replace(/[/\\:*?"<>|]/g, "-");
+    const timestamp = new Date().toISOString().replace(/:/g, "-").replace(/\..+/, "");
+    const filename = `${containerName}-logs-${timestamp}.${format}`;
+    let content: string;
+    let mimeType: string;
+
+    if (format === "json") {
+      content = JSON.stringify(filteredLogs, null, 2);
+      mimeType = "application/json";
+    } else {
+      content = filteredLogs
+        .map((entry) => {
+          const timestamp = entry.timestamp
+            ? new Date(entry.timestamp).toISOString()
+            : "";
+          const level = entry.level || "UNKNOWN";
+          const message = entry.message || entry.raw || "";
+          return `[${timestamp}] [${level}] ${message}`;
+        })
+        .join("\n");
+      mimeType = "text/plain";
+    }
+
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success(`Logs downloaded as ${format.toUpperCase()}`);
+  };
+
+  const filteredLogs = useMemo(() => {
+    return logs.filter((entry) => {
+      // Filter by search text
+      if (searchText) {
+        const message = (entry.message || entry.raw || "").toLowerCase();
+        if (!message.includes(searchText.toLowerCase())) {
+          return false;
+        }
+      }
+
+      // Filter by log level
+      if (selectedLevels.size > 0 && entry.level) {
+        if (!selectedLevels.has(entry.level)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [logs, searchText, selectedLevels]);
+
+  const availableLogLevels = useMemo(() => {
+    const levels = new Set<LogLevel>();
+    logs.forEach((entry) => {
+      if (entry.level) {
+        levels.add(entry.level);
+      }
+    });
+    return Array.from(levels).sort();
+  }, [logs]);
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
@@ -318,7 +442,14 @@ export function ContainersLogsSheet({
 
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium">Logs</h3>
+                <h3 className="text-sm font-medium">
+                  Logs
+                  {filteredLogs.length !== logs.length && (
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      ({filteredLogs.length} of {logs.length})
+                    </span>
+                  )}
+                </h3>
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-2">
                     <Label
@@ -346,7 +477,7 @@ export function ContainersLogsSheet({
                     {isStreaming ? (
                       <>
                         <SquareIcon className="mr-2 size-4" />
-                        Stop Stream
+                        Stop
                       </>
                     ) : (
                       <>
@@ -362,9 +493,161 @@ export function ContainersLogsSheet({
                     disabled={isStreaming || isLoadingLogs}
                   >
                     <RefreshCcwIcon className="mr-2 size-4" />
-                    Refresh
                   </Button>
                 </div>
+              </div>
+
+              {/* Search and Filter Controls */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative flex-1 min-w-[200px]">
+                  <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search logs..."
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
+                    className="pl-8 h-9 text-xs"
+                  />
+                </div>
+
+                <Popover open={showFilters} onOpenChange={setShowFilters}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-9"
+                    >
+                      <FilterIcon className="mr-2 size-4" />
+                      Filter
+                      {selectedLevels.size > 0 && (
+                        <Badge variant="outline" className="ml-2 px-1 py-0 h-4 text-xs">
+                          {selectedLevels.size}
+                        </Badge>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-56">
+                    <div className="space-y-3">
+                      <div>
+                        <h4 className="text-sm font-medium mb-2">Log Levels</h4>
+                        <div className="space-y-2">
+                          {availableLogLevels.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">
+                              No log levels available
+                            </p>
+                          ) : (
+                            availableLogLevels.map((level) => (
+                              <label
+                                key={level}
+                                className="flex items-center gap-2 cursor-pointer"
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => toggleLogLevel(level)}
+                                  className={`size-4 rounded border flex items-center justify-center ${
+                                    selectedLevels.has(level)
+                                      ? "bg-primary border-primary"
+                                      : "border-input"
+                                  }`}
+                                >
+                                  {selectedLevels.has(level) && (
+                                    <CheckIcon className="size-3 text-primary-foreground" />
+                                  )}
+                                </button>
+                                <Badge
+                                  variant="outline"
+                                  className={`text-xs ${getLogLevelBadgeColor(level)}`}
+                                >
+                                  {level}
+                                </Badge>
+                              </label>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                      {selectedLevels.size > 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedLevels(new Set())}
+                          className="w-full"
+                        >
+                          Clear Filters
+                        </Button>
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowTimestamps(!showTimestamps)}
+                      className="h-9"
+                    >
+                      {showTimestamps ? (
+                        <EyeIcon className="size-4" />
+                      ) : (
+                        <EyeOffIcon className="size-4" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {showTimestamps ? "Hide" : "Show"} timestamps
+                  </TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setAutoScroll(!autoScroll)}
+                      className="h-9"
+                    >
+                      <ChevronDownIcon
+                        className={`size-4 ${autoScroll ? "text-primary" : ""}`}
+                      />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Auto-scroll: {autoScroll ? "On" : "Off"}
+                  </TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setWrapText(!wrapText)}
+                      className="h-9"
+                    >
+                      <WrapTextIcon className={`size-4 ${wrapText ? "text-primary" : ""}`} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Text wrap: {wrapText ? "On" : "Off"}
+                  </TooltipContent>
+                </Tooltip>
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-9">
+                      <DownloadIcon className="mr-2 size-4" />
+                      Download
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => handleDownloadLogs("json")}>
+                      Download as JSON
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleDownloadLogs("txt")}>
+                      Download as TXT
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
               <Card>
                 <CardContent className="p-0">
@@ -378,9 +661,13 @@ export function ContainersLogsSheet({
                       <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
                         No logs available
                       </div>
+                    ) : filteredLogs.length === 0 ? (
+                      <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
+                        No logs match the current filters
+                      </div>
                     ) : (
-                      <div className="font-mono text-xs min-w-full w-fit">
-                        {logs
+                      <div className={`font-mono text-xs min-w-full ${wrapText ? "" : "w-fit"}`}>
+                        {filteredLogs
                           .filter((entry) => entry.message?.trim())
                           .map((entry, index) => {
                             const timestamp = entry.timestamp
@@ -401,23 +688,36 @@ export function ContainersLogsSheet({
 
                             return (
                               <div
-                                key={index}
-                                className={`flex items-start gap-3 px-4 py-1.5 whitespace-nowrap ${
-                                  index % 2 === 0 ? "bg-muted/30" : ""
-                                }`}
+                                key={`${entry.timestamp}-${index}`}
+                                className={`group flex items-start gap-3 px-4 py-1.5 hover:bg-muted/50 ${
+                                  wrapText ? "" : "whitespace-nowrap"
+                                } ${index % 2 === 0 ? "bg-muted/30" : ""}`}
                               >
-                                <span className="text-muted-foreground shrink-0">
-                                  {dateLabel}
-                                </span>
+                                {showTimestamps && (
+                                  <span className="text-muted-foreground shrink-0 text-[11px]">
+                                    {dateLabel}
+                                  </span>
+                                )}
                                 <Badge
                                   variant="outline"
                                   className={`shrink-0 text-xs px-1.5 py-0 h-5 ${getLogLevelBadgeColor(entry.level ?? "UNKNOWN")}`}
                                 >
                                   {entry.level ?? "UNKNOWN"}
                                 </Badge>
-                                <span className="text-foreground">
+                                <span className={`text-foreground flex-1 ${wrapText ? "break-words" : ""}`}>
                                   {entry.message ?? ""}
                                 </span>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      onClick={() => handleCopyLog(entry)}
+                                      className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-muted rounded"
+                                    >
+                                      <CopyIcon className="size-3 text-muted-foreground" />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Copy log entry</TooltipContent>
+                                </Tooltip>
                               </div>
                             );
                           })}
