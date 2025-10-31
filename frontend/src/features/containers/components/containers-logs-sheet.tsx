@@ -225,8 +225,13 @@ export function ContainersLogsSheet({
 
   const handleCopyLog = (entry: LogEntry) => {
     const text = entry.message || entry.raw || "";
-    navigator.clipboard.writeText(text);
-    toast.success("Log entry copied to clipboard");
+    navigator.clipboard.writeText(text)
+      .then(() => {
+        toast.success("Log entry copied to clipboard");
+      })
+      .catch(() => {
+        toast.error("Failed to copy to clipboard");
+      });
   };
 
   const handleDownloadLogs = (format: "json" | "txt") => {
