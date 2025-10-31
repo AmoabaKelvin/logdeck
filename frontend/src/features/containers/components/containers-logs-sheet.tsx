@@ -235,7 +235,11 @@ export function ContainersLogsSheet({
       return;
     }
 
-    const filename = `${container?.names?.[0] || "container"}-logs-${new Date().toISOString()}.${format}`;
+    const containerName = (container?.names?.[0] || "container")
+      .replace(/^\//, "")
+      .replace(/[/\\:*?"<>|]/g, "-");
+    const timestamp = new Date().toISOString().replace(/:/g, "-").replace(/\..+/, "");
+    const filename = `${containerName}-logs-${timestamp}.${format}`;
     let content: string;
     let mimeType: string;
 
