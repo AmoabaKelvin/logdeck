@@ -1,3 +1,4 @@
+import { authenticatedFetch } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 
 const BASE_URL = `${API_BASE_URL}/api/v1/containers`;
@@ -77,7 +78,7 @@ export async function getContainerLogs(
   id: string,
   options?: ContainerLogsOptions
 ): Promise<string> {
-  const response = await fetch(buildLogsUrl(id, options), {
+  const response = await authenticatedFetch(buildLogsUrl(id, options), {
     headers: {
       Accept: "text/plain",
     },
@@ -95,7 +96,7 @@ export async function streamContainerLogs(
   id: string,
   options?: ContainerLogsOptions
 ): Promise<ReadableStream<Uint8Array>> {
-  const response = await fetch(buildLogsUrl(id, options), {
+  const response = await authenticatedFetch(buildLogsUrl(id, options), {
     headers: {
       Accept: "text/plain",
     },

@@ -1,3 +1,4 @@
+import { authenticatedFetch } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 
 const BASE_URL = `${API_BASE_URL}/api/v1/containers`;
@@ -88,7 +89,7 @@ export async function getContainerLogsParsed(
   id: string,
   options?: ContainerLogsOptions
 ): Promise<LogEntry[]> {
-  const response = await fetch(buildLogsUrl(id, options), {
+  const response = await authenticatedFetch(buildLogsUrl(id, options), {
     headers: {
       Accept: "application/json",
     },
@@ -158,7 +159,7 @@ export async function* streamContainerLogsParsed(
   signal?: AbortSignal
 ): AsyncGenerator<LogEntry, void, unknown> {
   const streamOptions = { ...options, follow: true };
-  const response = await fetch(buildLogsUrl(id, streamOptions), {
+  const response = await authenticatedFetch(buildLogsUrl(id, streamOptions), {
     headers: {
       Accept: "application/x-ndjson",
     },
