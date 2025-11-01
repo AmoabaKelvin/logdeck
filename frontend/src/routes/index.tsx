@@ -1,6 +1,7 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
 import { ContainersDashboard } from "@/features/containers/components/containers-dashboard";
+import { API_BASE_URL } from "@/types/api";
 
 export const Route = createFileRoute("/")({
   beforeLoad: async () => {
@@ -9,14 +10,15 @@ export const Route = createFileRoute("/")({
     // If no token, check if auth is required
     if (!token) {
       try {
-        const response = await fetch(
-          "http://localhost:8080/api/v1/auth/login",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ username: "", password: "" }),
-          }
+        const authUrl = `${API_BASE_URL}/api/v1/auth/login`.replace(
+          /([^:]\/)\/+/g,
+          "$1"
         );
+        const response = await fetch(authUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: "", password: "" }),
+        });
 
         // If 404, auth is disabled - allow access
         if (response.status === 404) {
