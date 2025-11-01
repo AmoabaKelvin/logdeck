@@ -11,10 +11,11 @@ import (
 )
 
 var (
-	ErrInvalidCredentials = errors.New("invalid username or password")
-	ErrInvalidToken       = errors.New("invalid token")
-	ErrTokenExpired       = errors.New("token has expired")
-	ErrMissingEnvVars     = errors.New("missing required environment variables")
+	ErrInvalidCredentials  = errors.New("invalid username or password")
+	ErrInvalidToken        = errors.New("invalid token")
+	ErrTokenExpired        = errors.New("token has expired")
+	ErrMissingEnvVars      = errors.New("missing required environment variables")
+	ErrInvalidPasswordHash = errors.New("ADMIN_PASSWORD must be a valid bcrypt hash. Generate one using: cd server/scripts && go run hash-password.go yourPassword")
 )
 
 type Service struct {
@@ -47,6 +48,12 @@ func NewService() (*Service, error) {
 		return nil, ErrMissingEnvVars
 	}
 
+	// bcrypt.Cost will return an error if the password is not a valid hash
+	_, err := bcrypt.Cost([]byte(adminPassword))
+	if err != nil {
+		return nil, ErrInvalidPasswordHash
+	}
+
 	return &Service{
 		jwtSecret:       []byte(jwtSecret),
 		adminUsername:   adminUsername,
@@ -61,18 +68,10 @@ func (s *Service) ValidateCredentials(username, password string) error {
 		return ErrInvalidCredentials
 	}
 
-	// Check if stored password is a bcrypt hash
-	if len(s.adminPassword) == 60 && s.adminPassword[0] == '$' {
-		// It's likely a bcrypt hash
-		err := bcrypt.CompareHashAndPassword([]byte(s.adminPassword), []byte(password))
-		if err != nil {
-			return ErrInvalidCredentials
-		}
-	} else {
-		// Plain text comparison (should only be used during initial setup)
-		if password != s.adminPassword {
-			return ErrInvalidCredentials
-		}
+	// Always use bcrypt comparison - plaintext passwords are no longer supported
+	err := bcrypt.CompareHashAndPassword([]byte(s.adminPassword), []byte(password))
+	if err != nil {
+		return ErrInvalidCredentials
 	}
 
 	return nil
