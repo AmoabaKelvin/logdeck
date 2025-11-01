@@ -1,10 +1,11 @@
+import { useNavigate } from "@tanstack/react-router";
 import {
   CalendarIcon,
   ChevronDownIcon,
+  LogOutIcon,
   RefreshCcwIcon,
-  XIcon,
+  XIcon
 } from "lucide-react";
-import type { DateRange } from "react-day-picker";
 
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -13,18 +14,25 @@ import {
   DropdownMenuContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
-  DropdownMenuTrigger,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
-  PopoverTrigger,
+  PopoverTrigger
 } from "@/components/ui/popover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger
+} from "@/components/ui/tooltip";
+import { useAuth } from "@/contexts/auth-context";
 
 import { toTitleCase } from "./container-utils";
-import type { GroupByOption, SortDirection } from "./container-utils";
 
+import type { DateRange } from "react-day-picker";
+import type { GroupByOption, SortDirection } from "./container-utils";
 interface ContainersToolbarProps {
   searchTerm: string;
   onSearchChange: (value: string) => void;
@@ -58,6 +66,14 @@ export function ContainersToolbar({
   onRefresh,
   isFetching,
 }: ContainersToolbarProps) {
+  const { logout, user, isAuthEnabled } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate({ to: "/login" });
+  };
+
   const renderDateRange = () => {
     if (!dateRange?.from) {
       return <span>Date range</span>;
@@ -136,7 +152,9 @@ export function ContainersToolbar({
               <DropdownMenuRadioItem value="desc">
                 Newest first
               </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="asc">Oldest first</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="asc">
+                Oldest first
+              </DropdownMenuRadioItem>
             </DropdownMenuRadioGroup>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -204,6 +222,24 @@ export function ContainersToolbar({
             className={`size-4 ${isFetching ? "animate-spin" : ""}`}
           />
         </Button>
+
+        {isAuthEnabled && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleLogout}
+                className="h-9 shrink-0"
+              >
+                <LogOutIcon className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              Logout {user?.username ? `(${user.username})` : ""}
+            </TooltipContent>
+          </Tooltip>
+        )}
       </div>
     </div>
   );

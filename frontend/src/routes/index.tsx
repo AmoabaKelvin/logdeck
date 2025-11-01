@@ -1,8 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { ContainersDashboard } from "@/features/containers/components/containers-dashboard";
+import { requireAuthIfEnabled } from "@/lib/auth-guard";
 
 export const Route = createFileRoute("/")({
+  beforeLoad: async () => {
+    await requireAuthIfEnabled();
+  },
   component: Index,
 });
 

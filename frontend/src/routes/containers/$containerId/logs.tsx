@@ -1,5 +1,5 @@
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeftIcon,
   CheckIcon,
@@ -13,10 +13,10 @@ import {
   RefreshCcwIcon,
   SearchIcon,
   SquareIcon,
-  WrapTextIcon,
+  WrapTextIcon
 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useQuery } from "@tanstack/react-query";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,28 +25,27 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Popover,
   PopoverContent,
-  PopoverTrigger,
+  PopoverTrigger
 } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Tooltip,
   TooltipContent,
-  TooltipTrigger,
+  TooltipTrigger
 } from "@/components/ui/tooltip";
-
 import {
   getContainerLogsParsed,
   getLogLevelBadgeColor,
-  streamContainerLogsParsed,
-  type LogEntry,
-  type LogLevel,
+  LogEntry,
+  LogLevel,
+  streamContainerLogsParsed
 } from "@/features/containers/api/get-container-logs-parsed";
 import { getContainers } from "@/features/containers/api/get-containers";
 import {
@@ -54,10 +53,14 @@ import {
   formatCreatedDate,
   formatUptime,
   getStateBadgeClass,
-  toTitleCase,
+  toTitleCase
 } from "@/features/containers/components/container-utils";
+import { requireAuthIfEnabled } from "@/lib/auth-guard";
 
 export const Route = createFileRoute("/containers/$containerId/logs")({
+  beforeLoad: async () => {
+    await requireAuthIfEnabled();
+  },
   component: ContainerLogsPage,
 });
 
@@ -537,9 +540,7 @@ function ContainerLogsPage() {
                   <PopoverContent align="end" className="w-56">
                     <div className="space-y-3">
                       <div>
-                        <h4 className="text-sm font-medium mb-2">
-                          Log Levels
-                        </h4>
+                        <h4 className="text-sm font-medium mb-2">Log Levels</h4>
                         <div className="space-y-2">
                           {availableLogLevels.length === 0 ? (
                             <p className="text-xs text-muted-foreground">
