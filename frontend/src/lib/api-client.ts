@@ -10,7 +10,15 @@ export async function authenticatedFetch(
 ): Promise<Response> {
   const token = localStorage.getItem(TOKEN_KEY);
 
-  const headers = new Headers(init?.headers);
+  const headers =
+    input instanceof Request ? new Headers(input.headers) : new Headers();
+
+  if (init?.headers) {
+    const initHeaders = new Headers(init.headers);
+    initHeaders.forEach((value, key) => {
+      headers.set(key, value);
+    });
+  }
 
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
