@@ -9,10 +9,16 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DemoTanstackQueryRouteImport } from './routes/demo/tanstack-query'
 import { Route as ContainersContainerIdLogsRouteImport } from './routes/containers/$containerId/logs'
 
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -32,40 +38,56 @@ const ContainersContainerIdLogsRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
   '/containers/$containerId/logs': typeof ContainersContainerIdLogsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
   '/containers/$containerId/logs': typeof ContainersContainerIdLogsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
   '/containers/$containerId/logs': typeof ContainersContainerIdLogsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/demo/tanstack-query' | '/containers/$containerId/logs'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/demo/tanstack-query'
+    | '/containers/$containerId/logs'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/demo/tanstack-query' | '/containers/$containerId/logs'
+  to: '/' | '/login' | '/demo/tanstack-query' | '/containers/$containerId/logs'
   id:
     | '__root__'
     | '/'
+    | '/login'
     | '/demo/tanstack-query'
     | '/containers/$containerId/logs'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  LoginRoute: typeof LoginRoute
   DemoTanstackQueryRoute: typeof DemoTanstackQueryRoute
   ContainersContainerIdLogsRoute: typeof ContainersContainerIdLogsRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -92,6 +114,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  LoginRoute: LoginRoute,
   DemoTanstackQueryRoute: DemoTanstackQueryRoute,
   ContainersContainerIdLogsRoute: ContainersContainerIdLogsRoute,
 }

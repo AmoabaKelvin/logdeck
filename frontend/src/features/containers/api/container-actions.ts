@@ -1,3 +1,4 @@
+import { authenticatedFetch } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 
 const BASE_URL = `${API_BASE_URL}/api/v1/containers`;
@@ -13,7 +14,7 @@ async function performContainerAction(
   action: ContainerAction
 ): Promise<string> {
   const endpoint = `${BASE_URL}/${encodeURIComponent(id)}/${action}`;
-  const response = await fetch(endpoint, {
+  const response = await authenticatedFetch(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
