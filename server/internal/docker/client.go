@@ -13,7 +13,10 @@ type Client struct {
 }
 
 func NewClient() (*Client, error) {
-	apiClient, err := client.NewClientWithOpts(client.FromEnv)
+	apiClient, err := client.NewClientWithOpts(
+		client.FromEnv,
+		client.WithAPIVersionNegotiation(),
+	)
 	if err != nil {
 		return nil, err
 	}
