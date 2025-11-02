@@ -12,4 +12,6 @@ ENV VITE_API_URL=${VITE_API_URL}
 
 RUN bun run build
 
-CMD ["bun", "run", "serve", "--", "--host", "0.0.0.0", "--port", "4173"]
+WORKDIR /app/dist
+
+CMD ["bun", "index.html"]
