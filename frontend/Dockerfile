@@ -16,4 +16,4 @@ WORKDIR /app/dist
 
 EXPOSE 3000
 
-CMD ["bun", "index.html"]
+CMD ["bun", "serve.ts"]
