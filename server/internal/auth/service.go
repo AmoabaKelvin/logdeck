@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"time"
@@ -19,10 +21,11 @@ var (
 )
 
 type Service struct {
-	jwtSecret       []byte
-	adminUsername   string
-	adminPassword   string
-	tokenExpiration time.Duration
+	jwtSecret         []byte
+	adminUsername     string
+	adminPasswordHash string
+	sha256Salt        string
+	tokenExpiration   time.Duration
 }
 
 type Claims struct {
@@ -36,29 +39,25 @@ type Claims struct {
 func NewService() (*Service, error) {
 	jwtSecret := os.Getenv("JWT_SECRET")
 	adminUsername := os.Getenv("ADMIN_USERNAME")
-	adminPassword := os.Getenv("ADMIN_PASSWORD")
+	adminPasswordHash := os.Getenv("ADMIN_PASSWORD")
+	sha256Salt := os.Getenv("ADMIN_PASSWORD_SALT")
 
 	// If none of the auth variables are set, return nil to indicate auth is disabled
-	if jwtSecret == "" && adminUsername == "" && adminPassword == "" {
+	if jwtSecret == "" && adminUsername == "" && (adminPasswordHash == "" && sha256Salt == "") {
 		return nil, nil
 	}
 
 	// If some but not all are set, return an error
-	if jwtSecret == "" || adminUsername == "" || adminPassword == "" {
+	if jwtSecret == "" || adminUsername == "" || (adminPasswordHash == "" && sha256Salt == "") {
 		return nil, ErrMissingEnvVars
 	}
 
-	// bcrypt.Cost will return an error if the password is not a valid hash
-	_, err := bcrypt.Cost([]byte(adminPassword))
-	if err != nil {
-		return nil, ErrInvalidPasswordHash
-	}
-
 	return &Service{
-		jwtSecret:       []byte(jwtSecret),
-		adminUsername:   adminUsername,
-		adminPassword:   adminPassword,
-		tokenExpiration: 7 * 24 * time.Hour, // 7 days
+		jwtSecret:         []byte(jwtSecret),
+		adminUsername:     adminUsername,
+		adminPasswordHash: adminPasswordHash,
+		sha256Salt:        sha256Salt,
+		tokenExpiration:   7 * 24 * time.Hour, // 7 days
 	}, nil
 }
 
@@ -68,9 +67,8 @@ func (s *Service) ValidateCredentials(username, password string) error {
 		return ErrInvalidCredentials
 	}
 
-	// Always use bcrypt comparison - plaintext passwords are no longer supported
-	err := bcrypt.CompareHashAndPassword([]byte(s.adminPassword), []byte(password))
-	if err != nil {
+	hash := sha256.Sum256([]byte(password + s.sha256Salt))
+	if hex.EncodeToString(hash[:]) != s.adminPasswordHash {
 		return ErrInvalidCredentials
 	}
 
