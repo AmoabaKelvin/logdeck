@@ -14,4 +14,6 @@ RUN bun run build
 
 WORKDIR /app/dist
 
+EXPOSE 3000
+
 CMD ["bun", "index.html"]
