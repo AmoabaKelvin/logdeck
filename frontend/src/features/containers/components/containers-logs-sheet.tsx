@@ -104,7 +104,7 @@ export function ContainersLogsSheet({
       const logEntries = await getContainerLogsParsed(container.id, {
         tail: logLines,
       });
-      setLogs(logEntries);
+      setLogs(logEntries as LogEntry[]);
       setTimeout(scrollToBottom, 100);
     } catch (error) {
       if (error instanceof Error) {
@@ -142,7 +142,7 @@ export function ContainersLogsSheet({
           break;
         }
 
-        setLogs((prev) => [...prev, entry]);
+        setLogs((prev) => [...prev, entry as LogEntry]);
         setTimeout(scrollToBottom, 100);
       }
     } catch (error) {
