@@ -49,10 +49,7 @@ import {
 import {
   getContainerLogsParsed,
   getLogLevelBadgeColor,
-  LogEntry,
-  LogLevel,
-  streamContainerLogsParsed,
-  type
+  streamContainerLogsParsed
 } from "../api/get-container-logs-parsed";
 
 import {
@@ -64,8 +61,8 @@ import {
   toTitleCase
 } from "./container-utils";
 
+import type { LogEntry, LogLevel } from "@/types/logs";
 import type { ContainerInfo } from "../types";
-
 interface ContainersLogsSheetProps {
   container: ContainerInfo | null;
   isOpen: boolean;
