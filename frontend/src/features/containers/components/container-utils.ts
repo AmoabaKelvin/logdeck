@@ -109,3 +109,30 @@ export function getInitialStateCounts(): StateCounts {
     other: 0,
   };
 }
+
+/**
+ * Gets the container name for use in URLs (without leading slash)
+ * Falls back to container ID if no name is available
+ */
+export function getContainerUrlIdentifier(container: ContainerInfo): string {
+  if (container.names && container.names.length > 0) {
+    const name = container.names[0];
+    return name.startsWith("/") ? name.slice(1) : name;
+  }
+  // Fallback to short ID if no name
+  return container.id.substring(0, 12);
+}
+
+/**
+ * Encodes a container identifier for use in URLs
+ */
+export function encodeContainerIdentifier(identifier: string): string {
+  return encodeURIComponent(identifier);
+}
+
+/**
+ * Decodes a container identifier from a URL
+ */
+export function decodeContainerIdentifier(encoded: string): string {
+  return decodeURIComponent(encoded);
+}
