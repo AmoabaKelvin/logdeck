@@ -56,9 +56,11 @@ import {
 import type { ContainerInfo } from "../types";
 
 import {
+  encodeContainerIdentifier,
   formatContainerName,
   formatCreatedDate,
   formatUptime,
+  getContainerUrlIdentifier,
   getStateBadgeClass,
   toTitleCase,
 } from "./container-utils";
@@ -328,9 +330,11 @@ export function ContainersLogsSheet({
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() =>
-                        window.open(`/containers/${container.id}/logs`, "_blank")
-                      }
+                      onClick={() => {
+                        const identifier = getContainerUrlIdentifier(container);
+                        const encodedIdentifier = encodeContainerIdentifier(identifier);
+                        window.open(`/containers/${encodedIdentifier}/logs`, "_blank");
+                      }}
                     >
                       <ExternalLinkIcon className="mr-2 size-4" />
                       Open in new tab
