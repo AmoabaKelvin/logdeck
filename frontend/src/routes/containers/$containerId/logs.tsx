@@ -43,12 +43,11 @@ import {
 import {
   getContainerLogsParsed,
   getLogLevelBadgeColor,
-  LogEntry,
-  LogLevel,
   streamContainerLogsParsed
 } from "@/features/containers/api/get-container-logs-parsed";
 import { getContainers } from "@/features/containers/api/get-containers";
 import {
+  decodeContainerIdentifier,
   formatContainerName,
   formatCreatedDate,
   formatUptime,
@@ -57,6 +56,10 @@ import {
 } from "@/features/containers/components/container-utils";
 import { requireAuthIfEnabled } from "@/lib/auth-guard";
 
+import type {
+  LogEntry,
+  LogLevel,
+} from "@/features/containers/api/get-container-logs-parsed";
 export const Route = createFileRoute("/containers/$containerId/logs")({
   beforeLoad: async () => {
     await requireAuthIfEnabled();
@@ -65,7 +68,7 @@ export const Route = createFileRoute("/containers/$containerId/logs")({
 });
 
 function ContainerLogsPage() {
-  const { containerId } = Route.useParams();
+  const { containerId: encodedContainerId } = Route.useParams();
   const navigate = useNavigate();
 
   const [logLines, setLogLines] = useState(100);
@@ -84,13 +87,32 @@ function ContainerLogsPage() {
   const logsEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Decode the URL parameter (could be name or ID)
+  const containerIdentifier = decodeContainerIdentifier(encodedContainerId);
+
   // Fetch container info
   const { data: containers } = useQuery({
     queryKey: ["containers"],
     queryFn: getContainers,
   });
 
-  const container = containers?.find((c) => c.id === containerId);
+  // Find container by name (preferred) or ID (fallback for backward compatibility)
+  const container = containers?.find((c) => {
+    // Check if identifier matches the container name (without leading slash)
+    if (c.names && c.names.length > 0) {
+      const cleanName = c.names[0].startsWith("/")
+        ? c.names[0].slice(1)
+        : c.names[0];
+      if (cleanName === containerIdentifier) {
+        return true;
+      }
+    }
+    // Fallback: check if it matches the ID (full or short)
+    return c.id === containerIdentifier || c.id.startsWith(containerIdentifier);
+  });
+
+  // Use the actual container ID for API calls (Docker API accepts both name and ID, but we'll use ID for consistency)
+  const actualContainerId = container?.id || containerIdentifier;
 
   const scrollToBottom = useCallback(() => {
     if (autoScroll) {
@@ -99,11 +121,11 @@ function ContainerLogsPage() {
   }, [autoScroll]);
 
   const fetchLogs = useCallback(async () => {
-    if (!containerId) return;
+    if (!actualContainerId) return;
 
     setIsLoadingLogs(true);
     try {
-      const logEntries = await getContainerLogsParsed(containerId, {
+      const logEntries = await getContainerLogsParsed(actualContainerId, {
         tail: logLines,
       });
       setLogs(logEntries);
@@ -116,10 +138,10 @@ function ContainerLogsPage() {
     } finally {
       setIsLoadingLogs(false);
     }
-  }, [containerId, logLines, scrollToBottom]);
+  }, [actualContainerId, logLines, scrollToBottom]);
 
   const startStreaming = useCallback(async () => {
-    if (!containerId) return;
+    if (!actualContainerId) return;
 
     setIsStreaming(true);
     setIsLoadingLogs(true);
@@ -130,7 +152,7 @@ function ContainerLogsPage() {
       abortControllerRef.current = abortController;
 
       const stream = streamContainerLogsParsed(
-        containerId,
+        actualContainerId,
         {
           tail: logLines,
         },
@@ -161,7 +183,7 @@ function ContainerLogsPage() {
       setIsLoadingLogs(false);
       abortControllerRef.current = null;
     }
-  }, [containerId, logLines, scrollToBottom]);
+  }, [actualContainerId, logLines, scrollToBottom]);
 
   const stopStreaming = useCallback(() => {
     if (abortControllerRef.current) {
@@ -315,7 +337,8 @@ function ContainerLogsPage() {
               <h1 className="text-2xl font-bold">Container Logs</h1>
               {container && (
                 <p className="text-sm text-muted-foreground">
-                  {container.names?.[0]?.replace(/^\//, "") || containerId}
+                  {container.names?.[0]?.replace(/^\//, "") ||
+                    containerIdentifier}
                 </p>
               )}
             </div>
