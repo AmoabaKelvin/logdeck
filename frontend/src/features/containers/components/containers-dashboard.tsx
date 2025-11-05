@@ -20,6 +20,7 @@ import {
   stopContainer,
 } from "../api/container-actions";
 import { useContainersQuery } from "../hooks/use-containers-query";
+import { useContainersDashboardUrlState } from "../hooks/use-containers-dashboard-url-state";
 
 import {
   formatContainerName,
@@ -57,13 +58,23 @@ export function ContainersDashboard() {
     useContainersQuery();
   const containers = data ?? [];
 
-  const [searchTerm, setSearchTerm] = useState("");
-  const [stateFilter, setStateFilter] = useState<string>("all");
-  const [dateRange, setDateRange] = useState<DateRange | undefined>();
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-  const [groupBy, setGroupBy] = useState<GroupByOption>("none");
-  const [pageSize, setPageSize] = useState(10);
-  const [page, setPage] = useState(1);
+  const {
+    searchTerm,
+    setSearchTerm,
+    stateFilter,
+    setStateFilter,
+    sortDirection,
+    setSortDirection,
+    groupBy,
+    setGroupBy,
+    dateRange,
+    setDateRange,
+    clearDateRange,
+    pageSize,
+    setPageSize,
+    page,
+    setPage,
+  } = useContainersDashboardUrlState();
   const [selectedContainer, setSelectedContainer] =
     useState<ContainerInfo | null>(null);
   const [isLogsSheetOpen, setIsLogsSheetOpen] = useState(false);
@@ -124,12 +135,10 @@ export function ContainersDashboard() {
       : Math.ceil(filteredContainers.length / pageSize);
 
   useEffect(() => {
-    setPage(1);
-  }, [searchTerm, stateFilter, dateRange, sortDirection, groupBy]);
-
-  useEffect(() => {
-    setPage((current) => Math.min(current, totalPages));
-  }, [totalPages]);
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages, setPage]);
 
   const startIndex = filteredContainers.length ? (page - 1) * pageSize + 1 : 0;
   const endIndex = filteredContainers.length
@@ -217,12 +226,10 @@ export function ContainersDashboard() {
 
   const handleSearchChange = (value: string) => {
     setSearchTerm(value);
-    setPage(1);
   };
 
   const handleStateFilterChange = (value: string) => {
     setStateFilter(value);
-    setPage(1);
   };
 
   const handleSortDirectionChange = (direction: SortDirection) => {
@@ -238,12 +245,11 @@ export function ContainersDashboard() {
   };
 
   const handleDateRangeClear = () => {
-    setDateRange(undefined);
+    clearDateRange();
   };
 
   const handlePageSizeChange = (size: number) => {
     setPageSize(size);
-    setPage(1);
   };
 
   const handlePageChange = (nextPage: number) => {
