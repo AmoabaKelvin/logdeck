@@ -47,7 +47,6 @@ import {
 } from "@/features/containers/api/get-container-logs-parsed";
 import { getContainers } from "@/features/containers/api/get-containers";
 import {
-  decodeContainerIdentifier,
   formatContainerName,
   formatCreatedDate,
   formatUptime,
@@ -88,7 +87,7 @@ function ContainerLogsPage() {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // Decode the URL parameter (could be name or ID)
-  const containerIdentifier = decodeContainerIdentifier(encodedContainerId);
+  const containerIdentifier = decodeURIComponent(encodedContainerId);
 
   // Fetch container info
   const { data: containers } = useQuery({

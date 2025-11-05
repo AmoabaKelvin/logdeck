@@ -122,17 +122,3 @@ export function getContainerUrlIdentifier(container: ContainerInfo): string {
   // Fallback to short ID if no name
   return container.id.substring(0, 12);
 }
-
-/**
- * Encodes a container identifier for use in URLs
- */
-export function encodeContainerIdentifier(identifier: string): string {
-  return encodeURIComponent(identifier);
-}
-
-/**
- * Decodes a container identifier from a URL
- */
-export function decodeContainerIdentifier(encoded: string): string {
-  return decodeURIComponent(encoded);
-}
