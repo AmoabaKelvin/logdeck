@@ -64,21 +64,13 @@ export function useContainersDashboardUrlState() {
   } = params;
 
   // Convert from/to into DateRange format
+  // Supports open-ended ranges: from without to, to without from, or both
   const dateRange = useMemo((): DateRange | undefined => {
     if (!from && !to) {
       return undefined;
     }
 
-    if (from && to) {
-      return { from, to };
-    }
-
-    const fallback = from ?? to;
-    if (!fallback) {
-      return undefined;
-    }
-
-    return { from: fallback, to: fallback };
+    return { from: from ?? undefined, to: to ?? undefined };
   }, [from, to]);
 
   const setSearchTerm = useCallback(
@@ -125,7 +117,7 @@ export function useContainersDashboardUrlState() {
     (range: DateRange | undefined) => {
       setParams({
         from: range?.from ?? null,
-        to: range?.to ?? range?.from ?? null,
+        to: range?.to ?? null,
         page: 1,
       });
     },
