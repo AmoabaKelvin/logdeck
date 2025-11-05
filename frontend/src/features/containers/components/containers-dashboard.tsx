@@ -114,12 +114,12 @@ export function ContainersDashboard() {
       const containerDate = new Date(container.created * 1000);
       const matchesDateRange =
         !dateRange ||
-        (!dateRange.from && !dateRange.to) ||
         (dateRange.from &&
           dateRange.to &&
           containerDate >= dateRange.from &&
           containerDate <= dateRange.to) ||
-        (dateRange.from && !dateRange.to && containerDate >= dateRange.from);
+        (dateRange.from && !dateRange.to && containerDate >= dateRange.from) ||
+        (!dateRange.from && dateRange.to && containerDate <= dateRange.to);
 
       return matchesSearch && matchesState && matchesDateRange;
     });
