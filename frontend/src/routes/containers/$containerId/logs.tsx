@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import {
   ArrowLeftIcon,
   CheckIcon,
@@ -69,6 +69,7 @@ export const Route = createFileRoute("/containers/$containerId/logs")({
 function ContainerLogsPage() {
   const { containerId: encodedContainerId } = Route.useParams();
   const navigate = useNavigate();
+  const dashboardSearch = useSearch({ from: "/" });
 
   const [logLines, setLogLines] = useState(100);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -325,7 +326,12 @@ function ContainerLogsPage() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => navigate({ to: "/" })}
+                  onClick={() =>
+                    navigate({
+                      to: "/",
+                      search: () => ({ ...dashboardSearch }),
+                    })
+                  }
                 >
                   <ArrowLeftIcon className="size-4" />
                 </Button>

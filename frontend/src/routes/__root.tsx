@@ -1,13 +1,14 @@
 import { TanStackDevtools } from "@tanstack/react-devtools";
 import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
+import { NuqsAdapter } from "nuqs/adapters/tanstack-router";
 
 import { Toaster } from "@/components/ui/sonner";
-import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
 import { AuthProvider } from "@/contexts/auth-context";
 
-import type { QueryClient } from "@tanstack/react-query";
+import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
 
+import type { QueryClient } from "@tanstack/react-query";
 interface MyRouterContext {
   queryClient: QueryClient;
 }
@@ -15,7 +16,9 @@ interface MyRouterContext {
 export const Route = createRootRouteWithContext<MyRouterContext>()({
   component: () => (
     <AuthProvider>
-      <Outlet />
+      <NuqsAdapter>
+        <Outlet />
+      </NuqsAdapter>
       <Toaster />
       <TanStackDevtools
         config={{
