@@ -1,19 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckIcon,
   ChevronDownIcon,
   CopyIcon,
   DownloadIcon,
+  ExternalLinkIcon,
   EyeIcon,
   EyeOffIcon,
-  ExternalLinkIcon,
   FilterIcon,
   PlayIcon,
   RefreshCcwIcon,
   SearchIcon,
   SquareIcon,
-  WrapTextIcon,
+  WrapTextIcon
 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -23,46 +23,46 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Popover,
   PopoverContent,
-  PopoverTrigger,
+  PopoverTrigger
 } from "@/components/ui/popover";
 import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetHeader,
-  SheetTitle,
+  SheetTitle
 } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Tooltip,
   TooltipContent,
-  TooltipTrigger,
+  TooltipTrigger
 } from "@/components/ui/tooltip";
 
 import {
   getContainerLogsParsed,
   getLogLevelBadgeColor,
-  streamContainerLogsParsed,
-  type LogEntry,
-  type LogLevel,
+  streamContainerLogsParsed
 } from "../api/get-container-logs-parsed";
-import type { ContainerInfo } from "../types";
 
 import {
   formatContainerName,
   formatCreatedDate,
   formatUptime,
+  getContainerUrlIdentifier,
   getStateBadgeClass,
-  toTitleCase,
+  toTitleCase
 } from "./container-utils";
 
+import type { LogEntry, LogLevel } from "@/types/logs";
+import type { ContainerInfo } from "../types";
 interface ContainersLogsSheetProps {
   container: ContainerInfo | null;
   isOpen: boolean;
@@ -80,7 +80,9 @@ export function ContainersLogsSheet({
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
   const [searchText, setSearchText] = useState("");
-  const [selectedLevels, setSelectedLevels] = useState<Set<LogLevel>>(new Set());
+  const [selectedLevels, setSelectedLevels] = useState<Set<LogLevel>>(
+    new Set()
+  );
   const [showTimestamps, setShowTimestamps] = useState(true);
   const [autoScroll, setAutoScroll] = useState(true);
   const [wrapText, setWrapText] = useState(false);
@@ -102,7 +104,7 @@ export function ContainersLogsSheet({
       const logEntries = await getContainerLogsParsed(container.id, {
         tail: logLines,
       });
-      setLogs(logEntries);
+      setLogs(logEntries as LogEntry[]);
       setTimeout(scrollToBottom, 100);
     } catch (error) {
       if (error instanceof Error) {
@@ -140,13 +142,14 @@ export function ContainersLogsSheet({
           break;
         }
 
-        setLogs((prev) => [...prev, entry]);
+        setLogs((prev) => [...prev, entry as LogEntry]);
         setTimeout(scrollToBottom, 100);
       }
     } catch (error) {
       if (error instanceof Error) {
         const message = error.message.toLowerCase();
-        const isAbort = error.name === "AbortError" || message.includes("aborted");
+        const isAbort =
+          error.name === "AbortError" || message.includes("aborted");
         if (!isAbort) {
           toast.error(`Failed to start streaming: ${error.message}`);
         }
@@ -225,7 +228,8 @@ export function ContainersLogsSheet({
 
   const handleCopyLog = (entry: LogEntry) => {
     const text = entry.message || entry.raw || "";
-    navigator.clipboard.writeText(text)
+    navigator.clipboard
+      .writeText(text)
       .then(() => {
         toast.success("Log entry copied to clipboard");
       })
@@ -243,7 +247,10 @@ export function ContainersLogsSheet({
     const containerName = (container?.names?.[0] || "container")
       .replace(/^\//, "")
       .replace(/[/\\:*?"<>|]/g, "-");
-    const timestamp = new Date().toISOString().replace(/:/g, "-").replace(/\..+/, "");
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/:/g, "-")
+      .replace(/\..+/, "");
     const filename = `${containerName}-logs-${timestamp}.${format}`;
     let content: string;
     let mimeType: string;
@@ -328,9 +335,13 @@ export function ContainersLogsSheet({
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() =>
-                        window.open(`/containers/${container.id}/logs`, "_blank")
-                      }
+                      onClick={() => {
+                        const identifier = getContainerUrlIdentifier(container);
+                        window.open(
+                          `/containers/${encodeURIComponent(identifier)}/logs`,
+                          "_blank"
+                        );
+                      }}
                     >
                       <ExternalLinkIcon className="mr-2 size-4" />
                       Open in new tab
@@ -511,15 +522,14 @@ export function ContainersLogsSheet({
 
                 <Popover open={showFilters} onOpenChange={setShowFilters}>
                   <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-9"
-                    >
+                    <Button variant="outline" size="sm" className="h-9">
                       <FilterIcon className="mr-2 size-4" />
                       Filter
                       {selectedLevels.size > 0 && (
-                        <Badge variant="outline" className="ml-2 px-1 py-0 h-4 text-xs">
+                        <Badge
+                          variant="outline"
+                          className="ml-2 px-1 py-0 h-4 text-xs"
+                        >
                           {selectedLevels.size}
                         </Badge>
                       )}
@@ -624,7 +634,9 @@ export function ContainersLogsSheet({
                       onClick={() => setWrapText(!wrapText)}
                       className="h-9"
                     >
-                      <WrapTextIcon className={`size-4 ${wrapText ? "text-primary" : ""}`} />
+                      <WrapTextIcon
+                        className={`size-4 ${wrapText ? "text-primary" : ""}`}
+                      />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
@@ -640,7 +652,9 @@ export function ContainersLogsSheet({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => handleDownloadLogs("json")}>
+                    <DropdownMenuItem
+                      onClick={() => handleDownloadLogs("json")}
+                    >
                       Download as JSON
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => handleDownloadLogs("txt")}>
@@ -666,7 +680,9 @@ export function ContainersLogsSheet({
                         No logs match the current filters
                       </div>
                     ) : (
-                      <div className={`font-mono text-xs min-w-full ${wrapText ? "" : "w-fit"}`}>
+                      <div
+                        className={`font-mono text-xs min-w-full ${wrapText ? "" : "w-fit"}`}
+                      >
                         {filteredLogs
                           .filter((entry) => entry.message?.trim())
                           .map((entry, index) => {
@@ -704,7 +720,9 @@ export function ContainersLogsSheet({
                                 >
                                   {entry.level ?? "UNKNOWN"}
                                 </Badge>
-                                <span className={`text-foreground flex-1 ${wrapText ? "break-words" : ""}`}>
+                                <span
+                                  className={`text-foreground flex-1 ${wrapText ? "break-words" : ""}`}
+                                >
                                   {entry.message ?? ""}
                                 </span>
                                 <Tooltip>
@@ -716,7 +734,9 @@ export function ContainersLogsSheet({
                                       <CopyIcon className="size-3 text-muted-foreground" />
                                     </button>
                                   </TooltipTrigger>
-                                  <TooltipContent>Copy log entry</TooltipContent>
+                                  <TooltipContent>
+                                    Copy log entry
+                                  </TooltipContent>
                                 </Tooltip>
                               </div>
                             );
