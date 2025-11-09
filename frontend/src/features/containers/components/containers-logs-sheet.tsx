@@ -1,3 +1,4 @@
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -13,7 +14,14 @@ import {
   SquareIcon,
   WrapTextIcon
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -87,12 +95,14 @@ export function ContainersLogsSheet({
   const [autoScroll, setAutoScroll] = useState(true);
   const [wrapText, setWrapText] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
-  const logsEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const parentRef = useRef<HTMLDivElement>(null);
+  const logLinesInputId = useId();
 
   const scrollToBottom = useCallback(() => {
-    if (autoScroll) {
-      logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (autoScroll && parentRef.current) {
+      // For virtualized list, scroll the parent container to bottom
+      parentRef.current.scrollTop = parentRef.current.scrollHeight;
     }
   }, [autoScroll]);
 
@@ -205,7 +215,7 @@ export function ContainersLogsSheet({
     if (container && isOpen && !isStreaming) {
       fetchLogs();
     }
-  }, [logLines, container, isOpen, isStreaming, fetchLogs]);
+  }, [container, isOpen, isStreaming, fetchLogs]);
 
   const handleLogLinesChange = (value: string) => {
     const num = parseInt(value, 10);
@@ -314,6 +324,14 @@ export function ContainersLogsSheet({
     });
     return Array.from(levels).sort();
   }, [logs]);
+
+  // Virtualization setup
+  const rowVirtualizer = useVirtualizer({
+    count: filteredLogs.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => (wrapText ? 60 : 36),
+    overscan: 5,
+  });
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
@@ -464,13 +482,13 @@ export function ContainersLogsSheet({
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-2">
                     <Label
-                      htmlFor="log-lines"
+                      htmlFor={logLinesInputId}
                       className="text-xs text-muted-foreground"
                     >
                       Lines
                     </Label>
                     <Input
-                      id="log-lines"
+                      id={logLinesInputId}
                       type="number"
                       min="1"
                       value={logLines}
@@ -665,7 +683,10 @@ export function ContainersLogsSheet({
               </div>
               <Card>
                 <CardContent className="p-0">
-                  <div className="h-[400px] w-full overflow-auto">
+                  <div
+                    ref={parentRef}
+                    className="h-[400px] w-full overflow-auto"
+                  >
                     {isLoadingLogs && logs.length === 0 ? (
                       <div className="flex items-center justify-center py-8 text-muted-foreground">
                         <Spinner className="mr-2 size-4" />
@@ -681,67 +702,80 @@ export function ContainersLogsSheet({
                       </div>
                     ) : (
                       <div
-                        className={`font-mono text-xs min-w-full ${wrapText ? "" : "w-fit"}`}
+                        style={{
+                          height: `${rowVirtualizer.getTotalSize()}px`,
+                          width: "100%",
+                          position: "relative",
+                        }}
+                        className={`font-mono text-xs ${wrapText ? "" : "w-fit min-w-full"}`}
                       >
-                        {filteredLogs
-                          .filter((entry) => entry.message?.trim())
-                          .map((entry, index) => {
-                            const timestamp = entry.timestamp
-                              ? new Date(entry.timestamp)
-                              : null;
-                            const dateLabel = timestamp
-                              ? `${timestamp.toLocaleDateString("en-GB", {
-                                  day: "2-digit",
-                                  month: "2-digit",
-                                  year: "numeric",
-                                })} ${timestamp.toLocaleTimeString("en-US", {
-                                  hour12: false,
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                  second: "2-digit",
-                                })}`
-                              : "—";
+                        {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                          const entry = filteredLogs[virtualRow.index];
+                          if (!entry.message?.trim()) return null;
 
-                            return (
-                              <div
-                                key={`${entry.timestamp}-${index}`}
-                                className={`group flex items-start gap-3 px-4 py-1.5 hover:bg-muted/50 ${
-                                  wrapText ? "" : "whitespace-nowrap"
-                                } ${index % 2 === 0 ? "bg-muted/30" : ""}`}
-                              >
-                                {showTimestamps && (
-                                  <span className="text-muted-foreground shrink-0 text-[11px]">
-                                    {dateLabel}
-                                  </span>
-                                )}
-                                <Badge
-                                  variant="outline"
-                                  className={`shrink-0 text-xs px-1.5 py-0 h-5 ${getLogLevelBadgeColor(entry.level ?? "UNKNOWN")}`}
-                                >
-                                  {entry.level ?? "UNKNOWN"}
-                                </Badge>
-                                <span
-                                  className={`text-foreground flex-1 ${wrapText ? "break-words" : ""}`}
-                                >
-                                  {entry.message ?? ""}
+                          const timestamp = entry.timestamp
+                            ? new Date(entry.timestamp)
+                            : null;
+                          const dateLabel = timestamp
+                            ? `${timestamp.toLocaleDateString("en-GB", {
+                                day: "2-digit",
+                                month: "2-digit",
+                                year: "numeric",
+                              })} ${timestamp.toLocaleTimeString("en-US", {
+                                hour12: false,
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                second: "2-digit",
+                              })}`
+                            : "—";
+
+                          return (
+                            <div
+                              key={virtualRow.key}
+                              data-index={virtualRow.index}
+                              ref={rowVirtualizer.measureElement}
+                              style={{
+                                position: "absolute",
+                                top: 0,
+                                left: 0,
+                                width: "100%",
+                                transform: `translateY(${virtualRow.start}px)`,
+                              }}
+                              className={`group flex items-start gap-3 px-4 py-1.5 hover:bg-muted/50 ${
+                                wrapText ? "" : "whitespace-nowrap"
+                              } ${virtualRow.index % 2 === 0 ? "bg-muted/30" : ""}`}
+                            >
+                              {showTimestamps && (
+                                <span className="text-muted-foreground shrink-0 text-[11px]">
+                                  {dateLabel}
                                 </span>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <button
-                                      onClick={() => handleCopyLog(entry)}
-                                      className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-muted rounded"
-                                    >
-                                      <CopyIcon className="size-3 text-muted-foreground" />
-                                    </button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    Copy log entry
-                                  </TooltipContent>
-                                </Tooltip>
-                              </div>
-                            );
-                          })}
-                        <div ref={logsEndRef} />
+                              )}
+                              <Badge
+                                variant="outline"
+                                className={`shrink-0 text-xs px-1.5 py-0 h-5 ${getLogLevelBadgeColor(entry.level ?? "UNKNOWN")}`}
+                              >
+                                {entry.level ?? "UNKNOWN"}
+                              </Badge>
+                              <span
+                                className={`text-foreground flex-1 ${wrapText ? "break-words" : ""}`}
+                              >
+                                {entry.message ?? ""}
+                              </span>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyLog(entry)}
+                                    className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-muted rounded"
+                                  >
+                                    <CopyIcon className="size-3 text-muted-foreground" />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent>Copy log entry</TooltipContent>
+                              </Tooltip>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
