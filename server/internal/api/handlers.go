@@ -2,7 +2,9 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 
 	"github.com/AmoabaKelvin/logdeck/internal/models"
@@ -202,6 +204,15 @@ func (ar *APIRouter) UpdateEnvVariables(w http.ResponseWriter, r *http.Request) 
 	if err := json.NewDecoder(r.Body).Decode(&envVariables); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+
+	// Validate environment variable keys
+	envKeyRegex := regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
+	for key := range envVariables.Env {
+		if !envKeyRegex.MatchString(key) {
+			http.Error(w, fmt.Sprintf("invalid environment variable key: %s", key), http.StatusBadRequest)
+			return
+		}
 	}
 
 	newContainerID, err := ar.docker.SetEnvVariables(id, envVariables.Env)
