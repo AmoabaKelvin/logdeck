@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import {
@@ -54,6 +55,7 @@ const STATIC_SYSTEM_USAGE = {
 };
 
 export function ContainersDashboard() {
+  const queryClient = useQueryClient();
   const { data, error, isError, isFetching, isLoading, refetch } =
     useContainersQuery();
   const containers = data ?? [];
@@ -268,6 +270,19 @@ export function ContainersDashboard() {
     }
   };
 
+  const handleContainerRecreated = async (newContainerId: string) => {
+    // Refetch the containers list to get the updated container
+    await queryClient.invalidateQueries({ queryKey: ["containers"] });
+    // Wait a bit for the query to refetch
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    // Find the new container by ID
+    const updatedContainers = queryClient.getQueryData<ContainerInfo[]>(["containers"]);
+    const newContainer = updatedContainers?.find((c) => c.id === newContainerId);
+    if (newContainer) {
+      setSelectedContainer(newContainer);
+    }
+  };
+
   const handleStartContainer = (container: ContainerInfo) => {
     void executeAction("start", container);
   };
@@ -432,6 +447,7 @@ export function ContainersDashboard() {
         container={selectedContainer}
         isOpen={isLogsSheetOpen}
         onOpenChange={handleLogsSheetOpenChange}
+        onContainerRecreated={handleContainerRecreated}
       />
     </div>
   );
