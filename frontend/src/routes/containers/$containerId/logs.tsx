@@ -61,6 +61,7 @@ import {
   getStateBadgeClass,
   toTitleCase
 } from "@/features/containers/components/container-utils";
+import { EnvironmentVariables } from "@/features/containers/components/environment-variables";
 import { requireAuthIfEnabled } from "@/lib/auth-guard";
 
 import type {
@@ -91,6 +92,7 @@ function ContainerLogsPage() {
   const [wrapText, setWrapText] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [showLabels, setShowLabels] = useState(false);
+  const [showEnvVariables, setShowEnvVariables] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
   const logLinesInputId = useId();
@@ -121,6 +123,14 @@ function ContainerLogsPage() {
 
   // Use the actual container ID for API calls (Docker API accepts both name and ID, but we'll use ID for consistency)
   const actualContainerId = container?.id || containerIdentifier;
+
+  const handleContainerRecreated = (_newContainerId: string) => {
+    // When container is recreated, refetch the containers list
+    // The component will automatically update since the container name stays the same
+    // and we look up by name
+    // Just refetch to get the updated container with new ID
+    window.location.reload();
+  };
 
   const scrollToBottom = useCallback(() => {
     if (autoScroll && parentRef.current) {
@@ -490,6 +500,31 @@ function ContainerLogsPage() {
                         )}
                       </div>
                     )}
+
+                  {/* Environment Variables Section */}
+                  <div className="space-y-2 border-t pt-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowEnvVariables((value) => !value)}
+                      className="h-8 w-full justify-start text-muted-foreground hover:text-foreground"
+                    >
+                      <ChevronDownIcon
+                        className={`mr-2 size-4 transition-transform ${
+                          showEnvVariables ? "rotate-180" : ""
+                        }`}
+                      />
+                      {showEnvVariables ? "Hide" : "Show"} environment variables
+                    </Button>
+                    {showEnvVariables && (
+                      <div className="max-h-[300px] overflow-y-auto">
+                        <EnvironmentVariables
+                          containerId={actualContainerId}
+                          onContainerIdChange={handleContainerRecreated}
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>

@@ -68,6 +68,7 @@ import {
   getStateBadgeClass,
   toTitleCase
 } from "./container-utils";
+import { EnvironmentVariables } from "./environment-variables";
 
 import type { LogEntry, LogLevel } from "@/types/logs";
 import type { ContainerInfo } from "../types";
@@ -75,14 +76,17 @@ interface ContainersLogsSheetProps {
   container: ContainerInfo | null;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
+  onContainerRecreated?: (newContainerId: string) => void;
 }
 
 export function ContainersLogsSheet({
   container,
   isOpen,
   onOpenChange,
+  onContainerRecreated,
 }: ContainersLogsSheetProps) {
   const [showLabels, setShowLabels] = useState(false);
+  const [showEnvVariables, setShowEnvVariables] = useState(false);
   const [logLines, setLogLines] = useState(100);
   const [isStreaming, setIsStreaming] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -196,6 +200,7 @@ export function ContainersLogsSheet({
   useEffect(() => {
     if (!isOpen) {
       setShowLabels(false);
+      setShowEnvVariables(false);
       stopStreaming();
       setLogs([]);
     }
@@ -203,6 +208,7 @@ export function ContainersLogsSheet({
 
   useEffect(() => {
     setShowLabels(false);
+    setShowEnvVariables(false);
     stopStreaming();
     setLogs([]);
 
@@ -426,6 +432,7 @@ export function ContainersLogsSheet({
                         {container.command}
                       </span>
                     </div>
+                    {/* Labels Section */}
                     {container.labels &&
                       Object.keys(container.labels).length > 0 && (
                         <div className="space-y-2 border-t pt-2">
@@ -464,6 +471,31 @@ export function ContainersLogsSheet({
                           )}
                         </div>
                       )}
+
+                    {/* Environment Variables Section */}
+                    <div className="space-y-2 border-t pt-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowEnvVariables((value) => !value)}
+                        className="h-8 w-full justify-start text-muted-foreground hover:text-foreground"
+                      >
+                        <ChevronDownIcon
+                          className={`mr-2 size-4 transition-transform ${
+                            showEnvVariables ? "rotate-180" : ""
+                          }`}
+                        />
+                        {showEnvVariables ? "Hide" : "Show"} environment variables
+                      </Button>
+                      {showEnvVariables && (
+                        <div className="max-h-[300px] overflow-y-auto">
+                          <EnvironmentVariables
+                            containerId={container.id}
+                            onContainerIdChange={onContainerRecreated}
+                          />
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </CardContent>
