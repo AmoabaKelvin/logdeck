@@ -77,6 +77,15 @@ func (c *Client) SetEnvVariables(id string, envVariables map[string]string) (str
 			envMap[parts[0]] = parts[1]
 		}
 	}
+
+	// Delete keys from envMap that are not present in envVariables
+	for key := range envMap {
+		if _, exists := envVariables[key]; !exists {
+			delete(envMap, key)
+		}
+	}
+
+	// Copy updated/new variables from envVariables into envMap
 	maps.Copy(envMap, envVariables)
 
 	envs := make([]string, 0, len(envMap))
