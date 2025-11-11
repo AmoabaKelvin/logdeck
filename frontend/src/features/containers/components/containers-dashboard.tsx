@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -10,23 +10,23 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialogTitle
 } from "@/components/ui/alert-dialog";
 import { Spinner } from "@/components/ui/spinner";
 
 import {
-  restartContainer,
   removeContainer,
+  restartContainer,
   startContainer,
-  stopContainer,
+  stopContainer
 } from "../api/container-actions";
-import { useContainersQuery } from "../hooks/use-containers-query";
 import { useContainersDashboardUrlState } from "../hooks/use-containers-dashboard-url-state";
+import { useContainersQuery } from "../hooks/use-containers-query";
 
 import {
   formatContainerName,
   getInitialStateCounts,
-  groupByCompose,
+  groupByCompose
 } from "./container-utils";
 import { ContainersLogsSheet } from "./containers-logs-sheet";
 import { ContainersPagination } from "./containers-pagination";
@@ -36,14 +36,12 @@ import { ContainersTable } from "./containers-table";
 import { ContainersToolbar } from "./containers-toolbar";
 
 import type { DateRange } from "react-day-picker";
+import type { ContainerInfo } from "../types";
 import type {
   ContainerActionType,
   GroupByOption,
   SortDirection,
 } from "./container-utils";
-
-import type { ContainerInfo } from "../types";
-
 const STATIC_HOST_INFO = {
   host: "local-docker",
   dockerVersion: "24.0.7",
@@ -80,8 +78,10 @@ export function ContainersDashboard() {
   const [selectedContainer, setSelectedContainer] =
     useState<ContainerInfo | null>(null);
   const [isLogsSheetOpen, setIsLogsSheetOpen] = useState(false);
-  const [pendingAction, setPendingAction] =
-    useState<{ id: string; type: ContainerActionType } | null>(null);
+  const [pendingAction, setPendingAction] = useState<{
+    id: string;
+    type: ContainerActionType;
+  } | null>(null);
   const [confirmAction, setConfirmAction] = useState<{
     type: Extract<ContainerActionType, "stop" | "remove">;
     container: ContainerInfo;
@@ -271,13 +271,18 @@ export function ContainersDashboard() {
   };
 
   const handleContainerRecreated = async (newContainerId: string) => {
-    // Refetch the containers list to get the updated container
-    await queryClient.invalidateQueries({ queryKey: ["containers"] });
-    // Wait a bit for the query to refetch
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    // Find the new container by ID
-    const updatedContainers = queryClient.getQueryData<ContainerInfo[]>(["containers"]);
-    const newContainer = updatedContainers?.find((c) => c.id === newContainerId);
+    await queryClient.refetchQueries({
+      queryKey: ["containers"],
+      exact: false,
+    });
+
+    const updatedContainers = queryClient.getQueryData<ContainerInfo[]>([
+      "containers",
+    ]);
+    const newContainer = updatedContainers?.find(
+      (c) => c.id === newContainerId
+    );
+
     if (newContainer) {
       setSelectedContainer(newContainer);
     }

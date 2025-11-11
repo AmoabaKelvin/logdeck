@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -78,6 +78,7 @@ export const Route = createFileRoute("/containers/$containerId/logs")({
 function ContainerLogsPage() {
   const { containerId: encodedContainerId } = Route.useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const [logLines, setLogLines] = useState(100);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -124,12 +125,16 @@ function ContainerLogsPage() {
   // Use the actual container ID for API calls (Docker API accepts both name and ID, but we'll use ID for consistency)
   const actualContainerId = container?.id || containerIdentifier;
 
-  const handleContainerRecreated = (_newContainerId: string) => {
-    // When container is recreated, refetch the containers list
-    // The component will automatically update since the container name stays the same
-    // and we look up by name
-    // Just refetch to get the updated container with new ID
-    window.location.reload();
+  const handleContainerRecreated = async (_newContainerId: string) => {
+    await queryClient.invalidateQueries({ queryKey: ["containers"] });
+    if (isStreaming) {
+      stopStreaming();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      void startStreaming();
+    } else {
+      // If not streaming, just refetch logs
+      await fetchLogs();
+    }
   };
 
   const scrollToBottom = useCallback(() => {
