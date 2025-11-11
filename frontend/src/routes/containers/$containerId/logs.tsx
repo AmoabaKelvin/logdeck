@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -61,6 +61,7 @@ import {
   getStateBadgeClass,
   toTitleCase
 } from "@/features/containers/components/container-utils";
+import { EnvironmentVariables } from "@/features/containers/components/environment-variables";
 import { requireAuthIfEnabled } from "@/lib/auth-guard";
 
 import type {
@@ -77,6 +78,7 @@ export const Route = createFileRoute("/containers/$containerId/logs")({
 function ContainerLogsPage() {
   const { containerId: encodedContainerId } = Route.useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const [logLines, setLogLines] = useState(100);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -91,6 +93,7 @@ function ContainerLogsPage() {
   const [wrapText, setWrapText] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [showLabels, setShowLabels] = useState(false);
+  const [showEnvVariables, setShowEnvVariables] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
   const logLinesInputId = useId();
@@ -121,6 +124,18 @@ function ContainerLogsPage() {
 
   // Use the actual container ID for API calls (Docker API accepts both name and ID, but we'll use ID for consistency)
   const actualContainerId = container?.id || containerIdentifier;
+
+  const handleContainerRecreated = async (_newContainerId: string) => {
+    await queryClient.invalidateQueries({ queryKey: ["containers"] });
+    if (isStreaming) {
+      stopStreaming();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      void startStreaming();
+    } else {
+      // If not streaming, just refetch logs
+      await fetchLogs();
+    }
+  };
 
   const scrollToBottom = useCallback(() => {
     if (autoScroll && parentRef.current) {
@@ -490,6 +505,31 @@ function ContainerLogsPage() {
                         )}
                       </div>
                     )}
+
+                  {/* Environment Variables Section */}
+                  <div className="space-y-2 border-t pt-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowEnvVariables((value) => !value)}
+                      className="h-8 w-full justify-start text-muted-foreground hover:text-foreground"
+                    >
+                      <ChevronDownIcon
+                        className={`mr-2 size-4 transition-transform ${
+                          showEnvVariables ? "rotate-180" : ""
+                        }`}
+                      />
+                      {showEnvVariables ? "Hide" : "Show"} environment variables
+                    </Button>
+                    {showEnvVariables && (
+                      <div className="max-h-[300px] overflow-y-auto">
+                        <EnvironmentVariables
+                          containerId={actualContainerId}
+                          onContainerIdChange={handleContainerRecreated}
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>

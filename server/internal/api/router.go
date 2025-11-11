@@ -75,5 +75,7 @@ func (ar *APIRouter) registerContainerRoutes(r chi.Router) {
 		r.Post("/restart", ar.RestartContainer)
 		r.Post("/remove", ar.RemoveContainer)
 		r.Get("/logs/parsed", ar.GetContainerLogsParsed)
+		r.Get("/env", ar.GetEnvVariables)
+		r.Put("/env", ar.UpdateEnvVariables)
 	})
 }

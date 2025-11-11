@@ -1,7 +1,10 @@
 package api
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 
 	"github.com/AmoabaKelvin/logdeck/internal/models"
@@ -178,4 +181,48 @@ func parseLogOptions(r *http.Request) models.LogOptions {
 	}
 
 	return options
+}
+
+func (ar *APIRouter) GetEnvVariables(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	envVariables, err := ar.docker.GetEnvVariables(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	WriteJsonResponse(w, http.StatusOK, map[string]any{
+		"env": envVariables,
+	})
+}
+
+func (ar *APIRouter) UpdateEnvVariables(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	var envVariables models.EnvVariables
+	if err := json.NewDecoder(r.Body).Decode(&envVariables); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Validate environment variable keys
+	envKeyRegex := regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
+	for key := range envVariables.Env {
+		if !envKeyRegex.MatchString(key) {
+			http.Error(w, fmt.Sprintf("invalid environment variable key: %s", key), http.StatusBadRequest)
+			return
+		}
+	}
+
+	newContainerID, err := ar.docker.SetEnvVariables(id, envVariables.Env)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	WriteJsonResponse(w, http.StatusOK, map[string]any{
+		"message":           "Environment variables updated",
+		"new_container_id":  newContainerID,
+	})
 }
