@@ -36,3 +36,8 @@ func DefaultLogOptions() LogOptions {
 		Details:    false,
 	}
 }
+
+// EnvVariables represents the environment variables for a container
+type EnvVariables struct {
+	Env map[string]string `json:"env"`
+}

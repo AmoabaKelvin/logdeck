@@ -54,37 +54,3 @@ func (c *Client) GetContainer(id string) (container.InspectResponse, error) {
 	}
 	return result, nil
 }
-
-// container life cycle methods, start, stop, restart, remove
-
-func (c *Client) StartContainer(id string) error {
-	err := c.apiClient.ContainerStart(context.Background(), id, container.StartOptions{})
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (c *Client) StopContainer(id string) error {
-	err := c.apiClient.ContainerStop(context.Background(), id, container.StopOptions{})
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (c *Client) RestartContainer(id string) error {
-	err := c.apiClient.ContainerRestart(context.Background(), id, container.StopOptions{})
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (c *Client) RemoveContainer(id string) error {
-	err := c.apiClient.ContainerRemove(context.Background(), id, container.RemoveOptions{})
-	if err != nil {
-		return err
-	}
-	return nil
-}
