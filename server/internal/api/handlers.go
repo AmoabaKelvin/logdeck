@@ -19,6 +19,7 @@ func (ar *APIRouter) GetContainers(w http.ResponseWriter, r *http.Request) {
 	}
 	WriteJsonResponse(w, http.StatusOK, map[string]any{
 		"containers": containers,
+		"readOnly":   ar.config.ReadOnly,
 	})
 }
 
@@ -222,7 +223,7 @@ func (ar *APIRouter) UpdateEnvVariables(w http.ResponseWriter, r *http.Request) 
 	}
 
 	WriteJsonResponse(w, http.StatusOK, map[string]any{
-		"message":           "Environment variables updated",
-		"new_container_id":  newContainerID,
+		"message":          "Environment variables updated",
+		"new_container_id": newContainerID,
 	})
 }
