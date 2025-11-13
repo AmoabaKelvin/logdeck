@@ -75,6 +75,7 @@ import type { ContainerInfo } from "../types";
 interface ContainersLogsSheetProps {
   container: ContainerInfo | null;
   isOpen: boolean;
+  isReadOnly?: boolean;
   onOpenChange: (open: boolean) => void;
   onContainerRecreated?: (newContainerId: string) => void;
 }
@@ -82,6 +83,7 @@ interface ContainersLogsSheetProps {
 export function ContainersLogsSheet({
   container,
   isOpen,
+  isReadOnly = false,
   onOpenChange,
   onContainerRecreated,
 }: ContainersLogsSheetProps) {
@@ -491,6 +493,7 @@ export function ContainersLogsSheet({
                         <div className="max-h-[300px] overflow-y-auto">
                           <EnvironmentVariables
                             containerId={container.id}
+                            isReadOnly={isReadOnly}
                             onContainerIdChange={onContainerRecreated}
                           />
                         </div>

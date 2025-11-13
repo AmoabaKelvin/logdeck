@@ -56,7 +56,8 @@ export function ContainersDashboard() {
   const queryClient = useQueryClient();
   const { data, error, isError, isFetching, isLoading, refetch } =
     useContainersQuery();
-  const containers = data ?? [];
+  const containers = data?.containers ?? [];
+  const isReadOnly = data?.readOnly ?? false;
 
   const {
     searchTerm,
@@ -276,10 +277,10 @@ export function ContainersDashboard() {
       exact: false,
     });
 
-    const updatedContainers = queryClient.getQueryData<ContainerInfo[]>([
+    const updatedData = queryClient.getQueryData<{ containers: ContainerInfo[]; readOnly: boolean }>([
       "containers",
     ]);
-    const newContainer = updatedContainers?.find(
+    const newContainer = updatedData?.containers?.find(
       (c) => c.id === newContainerId
     );
 
@@ -366,6 +367,7 @@ export function ContainersDashboard() {
           groupedItems={groupedItems}
           pageItems={pageItems}
           pendingAction={pendingAction}
+          isReadOnly={isReadOnly}
           onStart={handleStartContainer}
           onStop={handleStopContainer}
           onRestart={handleRestartContainer}
@@ -451,6 +453,7 @@ export function ContainersDashboard() {
       <ContainersLogsSheet
         container={selectedContainer}
         isOpen={isLogsSheetOpen}
+        isReadOnly={isReadOnly}
         onOpenChange={handleLogsSheetOpenChange}
         onContainerRecreated={handleContainerRecreated}
       />
