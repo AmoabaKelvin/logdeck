@@ -75,14 +75,9 @@ function buildLogsUrl(id: string, options?: ContainerLogsOptions) {
     query.set("follow", String(merged.follow));
   }
 
-  const url = new URL(
-    `${BASE_URL}/${encodeURIComponent(id)}/logs/parsed`
-  );
+  const path = `${BASE_URL}/${encodeURIComponent(id)}/logs/parsed`;
   const queryString = query.toString();
-  if (queryString) {
-    url.search = queryString;
-  }
-  return url.toString();
+  return queryString ? `${path}?${queryString}` : path;
 }
 
 export async function getContainerLogsParsed(

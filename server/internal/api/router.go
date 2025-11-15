@@ -2,10 +2,12 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/AmoabaKelvin/logdeck/internal/auth"
 	"github.com/AmoabaKelvin/logdeck/internal/docker"
+	"github.com/AmoabaKelvin/logdeck/internal/static"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
 )
@@ -46,6 +48,7 @@ func (ar *APIRouter) Routes() *chi.Mux {
 		AllowedHeaders: []string{"*"},
 	}))
 
+	// API routes
 	ar.router.Route("/api/v1", func(r chi.Router) {
 		if ar.authService != nil {
 			authHandlers := NewAuthHandlers(ar.authService)
@@ -62,6 +65,17 @@ func (ar *APIRouter) Routes() *chi.Mux {
 
 		ar.registerContainerRoutes(r)
 	})
+
+	// Serve embedded frontend static files
+	// This handles all non-API routes and serves the React SPA
+	staticFS, err := static.GetFileSystem()
+	if err != nil {
+		log.Printf("Warning: Could not load embedded frontend files: %v", err)
+		log.Println("The frontend will not be available. API routes will still work.")
+	} else {
+		spaHandler := static.NewSPAHandler(staticFS)
+		ar.router.Handle("/*", spaHandler)
+	}
 
 	return ar.router
 }

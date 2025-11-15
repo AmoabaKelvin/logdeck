@@ -1,23 +1,15 @@
 services:
-  backend:
+  logdeck:
     build:
-      context: ./server
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./server/Dockerfile
+    ports:
+      - "8080:8080"
     environment:
       - JWT_SECRET=${JWT_SECRET}
       - ADMIN_USERNAME=${ADMIN_USERNAME}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - ADMIN_PASSWORD_SALT=${ADMIN_PASSWORD_SALT}
       - DOCKER_HOST=${DOCKER_HOST:-unix:///var/run/docker.sock}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        VITE_API_URL: ${VITE_API_URL:-http://backend:8080}
-    environment:
-      - VITE_API_URL=${VITE_API_URL:-http://backend:8080}
-    depends_on:
-      - backend
