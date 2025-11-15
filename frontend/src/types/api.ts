@@ -34,6 +34,7 @@ export type ContainerState =
 
 export interface ContainersResponse {
   containers: Container[];
+  readOnly?: boolean;
 }
 
 export interface ContainerResponse {
@@ -156,5 +157,3 @@ export function canStartContainer(container: Container): boolean {
 export function canStopContainer(container: Container): boolean {
   return container.state === "running" || container.state === "paused";
 }
-
-

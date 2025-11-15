@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/AmoabaKelvin/logdeck/internal/api/middleware"
 	"github.com/AmoabaKelvin/logdeck/internal/auth"
+	"github.com/AmoabaKelvin/logdeck/internal/config"
 	"github.com/AmoabaKelvin/logdeck/internal/docker"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
@@ -14,13 +16,15 @@ type APIRouter struct {
 	router      *chi.Mux
 	docker      *docker.Client
 	authService *auth.Service
+	config      *config.Config
 }
 
-func NewRouter(docker *docker.Client, authService *auth.Service) *chi.Mux {
+func NewRouter(docker *docker.Client, authService *auth.Service, config *config.Config) *chi.Mux {
 	r := &APIRouter{
 		router:      chi.NewRouter(),
 		docker:      docker,
 		authService: authService,
+		config:      config,
 	}
 
 	return r.Routes()
@@ -69,13 +73,19 @@ func (ar *APIRouter) Routes() *chi.Mux {
 func (ar *APIRouter) registerContainerRoutes(r chi.Router) {
 	r.Get("/containers", ar.GetContainers)
 	r.Route("/containers/{id}", func(r chi.Router) {
+		// Read-only routes (always available)
 		r.Get("/", ar.GetContainer)
-		r.Post("/start", ar.StartContainer)
-		r.Post("/stop", ar.StopContainer)
-		r.Post("/restart", ar.RestartContainer)
-		r.Post("/remove", ar.RemoveContainer)
 		r.Get("/logs/parsed", ar.GetContainerLogsParsed)
 		r.Get("/env", ar.GetEnvVariables)
-		r.Put("/env", ar.UpdateEnvVariables)
+
+		// Mutating routes (blocked in read-only mode)
+		r.Group(func(mutating chi.Router) {
+			mutating.Use(middleware.ReadOnly(ar.config))
+			mutating.Post("/start", ar.StartContainer)
+			mutating.Post("/stop", ar.StopContainer)
+			mutating.Post("/restart", ar.RestartContainer)
+			mutating.Post("/remove", ar.RemoveContainer)
+			mutating.Put("/env", ar.UpdateEnvVariables)
+		})
 	})
 }

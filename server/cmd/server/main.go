@@ -6,10 +6,13 @@ import (
 
 	"github.com/AmoabaKelvin/logdeck/internal/api"
 	"github.com/AmoabaKelvin/logdeck/internal/auth"
+	"github.com/AmoabaKelvin/logdeck/internal/config"
 	"github.com/AmoabaKelvin/logdeck/internal/docker"
 )
 
 func main() {
+	config := config.NewConfig()
+
 	client, err := docker.NewClient()
 	if err != nil {
 		panic(err)
@@ -27,7 +30,14 @@ func main() {
 		log.Println("Authentication is ENABLED")
 	}
 
-	apiRouter := api.NewRouter(client, authService)
+	if config.ReadOnly {
+		log.Println("READ-ONLY MODE is ENABLED - all mutating operations are disabled")
+		log.Println("   To disable read-only mode, set: READONLY_MODE=false or unset the variable")
+	} else {
+		log.Println("Read-only mode is DISABLED - all operations are allowed")
+	}
+
+	apiRouter := api.NewRouter(client, authService, config)
 
 	log.Println("Server starting on :8080")
 	http.ListenAndServe(":8080", apiRouter)

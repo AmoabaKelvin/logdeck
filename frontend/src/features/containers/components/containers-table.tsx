@@ -44,6 +44,7 @@ interface ContainersTableProps {
   groupedItems: GroupedContainers[] | null;
   pageItems: ContainerInfo[];
   pendingAction: { id: string; type: ContainerActionType } | null;
+  isReadOnly: boolean;
   onStart: (container: ContainerInfo) => void;
   onStop: (container: ContainerInfo) => void;
   onRestart: (container: ContainerInfo) => void;
@@ -61,6 +62,7 @@ export function ContainersTable({
   groupedItems,
   pageItems,
   pendingAction,
+  isReadOnly,
   onStart,
   onStop,
   onRestart,
@@ -126,78 +128,94 @@ export function ContainersTable({
               {state === "exited" && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => onStart(container)}
-                      disabled={busy}
-                    >
-                      {startPending ? (
-                        <Spinner className="size-4" />
-                      ) : (
-                        <PlayIcon className="size-4" />
-                      )}
-                    </Button>
+                    <span className="inline-block">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => onStart(container)}
+                        disabled={busy || isReadOnly}
+                      >
+                        {startPending ? (
+                          <Spinner className="size-4" />
+                        ) : (
+                          <PlayIcon className="size-4" />
+                        )}
+                      </Button>
+                    </span>
                   </TooltipTrigger>
-                  <TooltipContent>Start</TooltipContent>
+                  <TooltipContent>
+                    {isReadOnly ? "Start (Read-only mode)" : "Start"}
+                  </TooltipContent>
                 </Tooltip>
               )}
               {state === "running" && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => onStop(container)}
-                      disabled={busy}
-                    >
-                      {stopPending ? (
-                        <Spinner className="size-4" />
-                      ) : (
-                        <SquareIcon className="size-4" />
-                      )}
-                    </Button>
+                    <span className="inline-block">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => onStop(container)}
+                        disabled={busy || isReadOnly}
+                      >
+                        {stopPending ? (
+                          <Spinner className="size-4" />
+                        ) : (
+                          <SquareIcon className="size-4" />
+                        )}
+                      </Button>
+                    </span>
                   </TooltipTrigger>
-                  <TooltipContent>Stop</TooltipContent>
+                  <TooltipContent>
+                    {isReadOnly ? "Stop (Read-only mode)" : "Stop"}
+                  </TooltipContent>
                 </Tooltip>
               )}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => onRestart(container)}
-                    disabled={busy}
-                  >
-                    {restartPending ? (
-                      <Spinner className="size-4" />
-                    ) : (
-                      <RotateCwIcon className="size-4" />
-                    )}
-                  </Button>
+                  <span className="inline-block">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => onRestart(container)}
+                      disabled={busy || isReadOnly}
+                    >
+                      {restartPending ? (
+                        <Spinner className="size-4" />
+                      ) : (
+                        <RotateCwIcon className="size-4" />
+                      )}
+                    </Button>
+                  </span>
                 </TooltipTrigger>
-                <TooltipContent>Restart</TooltipContent>
+                <TooltipContent>
+                  {isReadOnly ? "Restart (Read-only mode)" : "Restart"}
+                </TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8 text-destructive hover:bg-destructive hover:text-white"
-                    onClick={() => onDelete(container)}
-                    disabled={busy}
-                  >
-                    {removePending ? (
-                      <Spinner className="size-4" />
-                    ) : (
-                      <Trash2Icon className="size-4" />
-                    )}
-                  </Button>
+                  <span className="inline-block">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8 text-destructive hover:bg-destructive hover:text-white"
+                      onClick={() => onDelete(container)}
+                      disabled={busy || isReadOnly}
+                    >
+                      {removePending ? (
+                        <Spinner className="size-4" />
+                      ) : (
+                        <Trash2Icon className="size-4" />
+                      )}
+                    </Button>
+                  </span>
                 </TooltipTrigger>
-                <TooltipContent>Delete</TooltipContent>
+                <TooltipContent>
+                  {isReadOnly ? "Delete (Read-only mode)" : "Delete"}
+                </TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>

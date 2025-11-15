@@ -17,12 +17,19 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 import { getContainerEnvVariables } from "../api/get-container-env-variables";
 import { updateContainerEnvVariables } from "../api/update-container-env-variables";
 
 interface EnvironmentVariablesProps {
   containerId: string;
+  isReadOnly?: boolean;
   onContainerIdChange?: (newContainerId: string) => void;
 }
 
@@ -66,6 +73,7 @@ function parseEnvFile(content: string): Record<string, string> {
 
 export function EnvironmentVariables({
   containerId,
+  isReadOnly = false,
   onContainerIdChange,
 }: EnvironmentVariablesProps) {
   const queryClient = useQueryClient();
@@ -286,15 +294,27 @@ export function EnvironmentVariables({
       {/* Edit/Save/Cancel buttons */}
       <div className="flex items-center gap-2 justify-end border-b pb-2">
         {!isEditing ? (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleEdit}
-            className="h-8"
-          >
-            <Edit2 className="mr-2 h-3.5 w-3.5" />
-            Edit
-          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleEdit}
+                  disabled={isReadOnly}
+                  className="h-8"
+                >
+                  <Edit2 className="mr-2 h-3.5 w-3.5" />
+                  Edit
+                </Button>
+              </TooltipTrigger>
+              {isReadOnly && (
+                <TooltipContent>
+                  Cannot edit in read-only mode
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
         ) : (
           <>
             <Button
