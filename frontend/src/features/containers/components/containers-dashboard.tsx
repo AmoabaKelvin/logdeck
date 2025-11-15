@@ -20,6 +20,7 @@ import {
   startContainer,
   stopContainer
 } from "../api/container-actions";
+import type { GetContainersResponse } from "../api/get-containers";
 import { useContainersDashboardUrlState } from "../hooks/use-containers-dashboard-url-state";
 import { useContainersQuery } from "../hooks/use-containers-query";
 
@@ -277,7 +278,7 @@ export function ContainersDashboard() {
       exact: false,
     });
 
-    const updatedData = queryClient.getQueryData<{ containers: ContainerInfo[]; readOnly: boolean }>([
+    const updatedData = queryClient.getQueryData<GetContainersResponse>([
       "containers",
     ]);
     const newContainer = updatedData?.containers?.find(
