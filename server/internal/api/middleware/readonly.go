@@ -1,0 +1,30 @@
+package middleware
+
+import (
+	"encoding/json"
+	"net/http"
+
+	"github.com/AmoabaKelvin/logdeck/internal/config"
+)
+
+// ReadOnly creates a middleware that blocks mutating requests when in read-only mode
+func ReadOnly(cfg *config.Config) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if cfg.ReadOnly {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+
+				response := map[string]any{
+					"error":     "Operation not allowed in read-only mode",
+					"read_only": true,
+				}
+
+				json.NewEncoder(w).Encode(response)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
