@@ -66,12 +66,9 @@ function buildLogsUrl(id: string, options?: ContainerLogsOptions) {
     query.set("stderr", String(merged.stderr));
   }
 
-  const url = new URL(`${BASE_URL}/${encodeURIComponent(id)}/logs`);
+  const path = `${BASE_URL}/${encodeURIComponent(id)}/logs`;
   const queryString = query.toString();
-  if (queryString) {
-    url.search = queryString;
-  }
-  return url.toString();
+  return queryString ? `${path}?${queryString}` : path;
 }
 
 export async function getContainerLogs(

@@ -1,19 +1,46 @@
-FROM --platform=$BUILDPLATFORM golang:1.23 AS builder
+# Stage 1: Build the frontend
+FROM oven/bun:latest AS frontend-builder
+
+WORKDIR /frontend
+
+# Copy frontend package files
+COPY frontend/package.json frontend/bun.lock ./
+
+# Install dependencies
+RUN bun install --frozen-lockfile
+
+# Copy frontend source
+COPY frontend/ ./
+
+# Build frontend (outputs to ./dist)
+RUN bun run build
+
+# Stage 2: Build the backend with embedded frontend
+FROM --platform=$BUILDPLATFORM golang:1.23 AS backend-builder
 
 WORKDIR /app
 
-COPY go.mod go.sum ./
+# Copy Go module files
+COPY server/go.mod server/go.sum ./
 ENV GOTOOLCHAIN=auto
 RUN go mod download
 
-COPY . .
+# Copy backend source
+COPY server/ .
+
+# Copy built frontend into the static embed directory
+COPY --from=frontend-builder /frontend/dist ./internal/static/dist
+
+# Build Go binary with embedded frontend
 ARG TARGETARCH
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -o logdeck-server ./cmd/server
 
+# Stage 3: Final minimal image
 FROM gcr.io/distroless/static-debian12
 
 WORKDIR /app
 
-COPY --from=builder /app/logdeck-server ./logdeck-server
+# Copy only the binary (frontend is embedded)
+COPY --from=backend-builder /app/logdeck-server ./logdeck-server
 
 ENTRYPOINT ["/app/logdeck-server"]
