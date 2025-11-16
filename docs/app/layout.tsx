@@ -13,7 +13,7 @@ const vendSans = Vend_Sans({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://logdeck.io"),
+  metadataBase: new URL("https://logdeck.dev"),
   title: {
     default: "LogDeck - Beautiful Docker Container Logs & Management",
     template: "%s | LogDeck",
@@ -37,7 +37,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: "https://logdeck.io",
+    url: "https://logdeck.dev",
     title: "LogDeck - Beautiful Docker Container Logs & Management",
     description:
       "The most intuitive and visually appealing tool for monitoring Docker container logs and managing containers.",
