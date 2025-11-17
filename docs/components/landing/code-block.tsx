@@ -25,12 +25,12 @@ export function CodeBlock({ code, language = "bash", showLineNumbers = false }: 
   }
 
   return (
-    <div className="relative group">
+    <div className="relative group w-full">
       <div className="absolute right-2 top-2 z-10">
         <Button
           size="icon"
           variant="ghost"
-          className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 hover:bg-background"
+          className="h-8 w-8 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity bg-background/80 hover:bg-background"
           onClick={handleCopy}
         >
           {copied ? (
@@ -40,7 +40,7 @@ export function CodeBlock({ code, language = "bash", showLineNumbers = false }: 
           )}
         </Button>
       </div>
-      <div className="overflow-hidden rounded-lg border">
+      <div className="overflow-x-auto rounded-lg border w-full">
         <SyntaxHighlighter
           language={language}
           style={theme === "dark" ? oneDark : oneLight}
@@ -48,12 +48,13 @@ export function CodeBlock({ code, language = "bash", showLineNumbers = false }: 
           customStyle={{
             margin: 0,
             borderRadius: 0,
-            fontSize: '0.875rem',
-            padding: '1rem',
+            fontSize: '0.75rem',
+            padding: '0.75rem',
+            minWidth: '100%',
           }}
           codeTagProps={{
+            className: "text-xs sm:text-sm",
             style: {
-              fontSize: '0.875rem',
               fontFamily: 'var(--font-geist-mono), monospace',
             }
           }}

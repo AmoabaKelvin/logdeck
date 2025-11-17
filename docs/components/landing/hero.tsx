@@ -35,12 +35,12 @@ export function Hero() {
       <div className="absolute bottom-0 left-0 -z-10 h-96 w-96 rounded-full bg-purple-500/10 blur-3xl" />
 
       <div className="container relative">
-        <div className="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center py-20 text-center">
+        <div className="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center py-12 sm:py-20 text-center px-4">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="flex flex-col items-center gap-6 max-w-4xl"
+            className="flex flex-col items-center gap-6 w-full max-w-4xl"
           >
             {/* New badge */}
             <HeroBadge
@@ -55,7 +55,7 @@ export function Hero() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2, duration: 0.5 }}
-              className="text-4xl font-bold tracking-tight sm:text-6xl lg:text-7xl"
+              className="text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl px-4"
             >
               The better way to{" "}
               <span className="text-primary">manage your containers</span>
@@ -66,7 +66,7 @@ export function Hero() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3, duration: 0.5 }}
-              className="text-xl text-muted-foreground max-w-2xl sm:text-2xl"
+              className="text-base text-muted-foreground max-w-2xl sm:text-lg md:text-xl lg:text-2xl px-4"
             >
               The most intuitive and visually appealing tool for monitoring
               Docker container logs and managing containers.
@@ -119,16 +119,18 @@ export function Hero() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.5, duration: 0.5 }}
-              className="mt-8 w-full max-w-2xl"
+              className="mt-8 w-full max-w-2xl px-4"
             >
-              <CodeBlock
-                //               code={`docker run -d \\
-                // -p 8123:8123 \\
-                // -v /var/run/docker.sock:/var/run/docker.sock \\
-                // logdeck/logdeck`}
-                code="docker run -d -p 8123:8123 -v /var/run/docker.sock:/var/run/docker.sock logdeck/logdeck"
-                language="bash"
-              />
+              <div className="w-full overflow-hidden">
+                <CodeBlock
+                  //               code={`docker run -d \\
+                  // -p 8123:8123 \\
+                  // -v /var/run/docker.sock:/var/run/docker.sock \\
+                  // logdeck/logdeck`}
+                  code="docker run -d -p 8123:8123 -v /var/run/docker.sock:/var/run/docker.sock logdeck/logdeck"
+                  language="bash"
+                />
+              </div>
               <p className="mt-3 text-xs text-muted-foreground">
                 Logs viewing and container management shouldn&apos;t be that
                 hard.
