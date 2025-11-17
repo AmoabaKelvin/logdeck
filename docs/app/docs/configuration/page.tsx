@@ -24,8 +24,8 @@ export default function ConfigurationPage() {
       <Separator />
 
       <div className="prose prose-neutral dark:prose-invert max-w-none">
-        <h2>Environment Variables</h2>
-        <p>
+        <h2 className="mb-4 text-3xl font-bold tracking-tight">Environment Variables</h2>
+        <p className="mb-6 text-base">
           LogDeck is configured entirely through environment variables. This makes it easy to deploy
           across different environments with different configurations.
         </p>
@@ -190,15 +190,17 @@ DOCKER_HOST=tcp://192.168.1.100:2376`}
         </Card>
       </div>
 
-      <div className="prose prose-neutral dark:prose-invert max-w-none mt-8">
-        <h2>Password Hashing</h2>
-        <p>
+      <Separator className="my-12" />
+
+      <div className="prose prose-neutral dark:prose-invert max-w-none">
+        <h2 className="mb-4 text-3xl font-bold tracking-tight">Password Hashing</h2>
+        <p className="mb-6 text-base">
           For security, LogDeck uses SHA256 hashing with a salt. Never use plain text passwords
           in the <code>ADMIN_PASSWORD</code> environment variable. The password is hashed as SHA256(password + salt).
         </p>
 
-        <h3>Quick Method: Using Shell Commands</h3>
-        <p>Generate both salt and password hash in one go:</p>
+        <h3 className="mb-4 mt-8 text-xl font-semibold">Quick Method: Using Shell Commands</h3>
+        <p className="mb-4 text-sm">Generate both salt and password hash in one go:</p>
 
         <div className="not-prose mb-4">
           <div className="space-y-3">
@@ -227,8 +229,9 @@ echo -n "admin123mysalt" | shasum -a 256 | awk '{print $1}'`}
           </div>
         </div>
 
-        <h3>Alternative: Using Python</h3>
-        <CodeBlock
+        <h3 className="mb-4 mt-8 text-xl font-semibold">Alternative: Using Python</h3>
+        <div className="mb-6">
+          <CodeBlock
           code={`import hashlib
 
 password = "your-password"
@@ -236,10 +239,12 @@ salt = "your-salt"
 hash_value = hashlib.sha256((password + salt).encode()).hexdigest()
 print(hash_value)`}
           language="python"
-        />
+          />
+        </div>
 
-        <h3>Alternative: Using Node.js</h3>
-        <CodeBlock
+        <h3 className="mb-4 mt-8 text-xl font-semibold">Alternative: Using Node.js</h3>
+        <div className="mb-6">
+          <CodeBlock
           code={`const crypto = require('crypto');
 
 const password = 'your-password';
@@ -247,9 +252,10 @@ const salt = 'your-salt';
 const hash = crypto.createHash('sha256').update(password + salt).digest('hex');
 console.log(hash);`}
           language="javascript"
-        />
+          />
+        </div>
 
-        <div className="not-prose mt-6">
+        <div className="not-prose mt-8">
           <Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20">
             <CardHeader>
               <div className="flex items-start gap-2">
@@ -278,12 +284,13 @@ console.log(hash);`}
           </Card>
         </div>
 
-        <Separator className="my-8" />
+        <Separator className="my-12" />
 
-        <h2>Complete Example</h2>
-        <p>Here&apos;s a complete <code>docker-compose.yml</code> with all configuration options:</p>
+        <h2 className="mb-4 text-3xl font-bold tracking-tight">Complete Example</h2>
+        <p className="mb-6 text-base">Here&apos;s a complete <code>docker-compose.yml</code> with all configuration options:</p>
 
-        <CodeBlock
+        <div className="mb-8">
+          <CodeBlock
           code={`version: '3.8'
 
 services:
@@ -315,30 +322,31 @@ services:
       retries: 3
       start_period: 40s`}
           language="yaml"
-        />
+          />
+        </div>
 
-        <Separator className="my-8" />
+        <Separator className="my-12" />
 
-        <h2>Read-Only Mode</h2>
-        <p>
+        <h2 className="mb-4 text-3xl font-bold tracking-tight">Read-Only Mode</h2>
+        <p className="mb-4 text-base">
           LogDeck supports a read-only mode that prevents any container management operations.
           This is useful in production environments where you want to view logs but not modify containers.
         </p>
-        <p>
+        <p className="mb-8 text-base">
           Read-only mode is controlled via a feature flag in the backend code. When enabled, all
           mutating operations (start, stop, restart, remove, env updates) will be blocked.
         </p>
 
-        <Separator className="my-8" />
+        <Separator className="my-12" />
 
-        <h2>Docker Socket Permissions</h2>
-        <p>
+        <h2 className="mb-4 text-3xl font-bold tracking-tight">Docker Socket Permissions</h2>
+        <p className="mb-6 text-base">
           LogDeck needs access to the Docker socket to interact with containers. Here are some
           important considerations:
         </p>
 
-        <h3>Security Best Practices</h3>
-        <ul>
+        <h3 className="mb-4 mt-8 text-xl font-semibold">Security Best Practices</h3>
+        <ul className="mb-8 space-y-2">
           <li>Run LogDeck only on trusted networks</li>
           <li>Enable authentication if exposing LogDeck to untrusted users</li>
           <li>Consider mounting the socket as read-only (<code>:ro</code>) if you only need log viewing</li>
@@ -346,30 +354,33 @@ services:
           <li>Keep LogDeck behind a reverse proxy with TLS in production</li>
         </ul>
 
-        <h3>Permission Issues</h3>
-        <p>
+        <h3 className="mb-4 mt-8 text-xl font-semibold">Permission Issues</h3>
+        <p className="mb-4 text-sm">
           If you encounter permission errors accessing the Docker socket, ensure the user running
           LogDeck has appropriate permissions:
         </p>
-        <CodeBlock
+        <div className="mb-8">
+          <CodeBlock
           code={`# Check socket permissions
 ls -l /var/run/docker.sock
 
 # If needed, add user to docker group (Linux)
 sudo usermod -aG docker $USER`}
           language="bash"
-        />
+          />
+        </div>
 
-        <Separator className="my-8" />
+        <Separator className="my-12" />
 
-        <h2>Reverse Proxy Setup</h2>
-        <p>
+        <h2 className="mb-4 text-3xl font-bold tracking-tight">Reverse Proxy Setup</h2>
+        <p className="mb-8 text-base">
           For production deployments, it&apos;s recommended to run LogDeck behind a reverse proxy
           like Nginx or Traefik with TLS enabled.
         </p>
 
-        <h3>Nginx Example</h3>
-        <CodeBlock
+        <h3 className="mb-4 mt-8 text-xl font-semibold">Nginx Example</h3>
+        <div className="mb-8">
+          <CodeBlock
           code={`server {
     listen 443 ssl http2;
     server_name logdeck.example.com;
@@ -389,10 +400,12 @@ sudo usermod -aG docker $USER`}
     }
 }`}
           language="nginx"
-        />
+          />
+        </div>
 
-        <h3>Traefik Example (Docker Labels)</h3>
-        <CodeBlock
+        <h3 className="mb-4 mt-8 text-xl font-semibold">Traefik Example (Docker Labels)</h3>
+        <div className="mb-8">
+          <CodeBlock
           code={`version: '3.8'
 
 services:
@@ -409,7 +422,8 @@ services:
       - "traefik.http.services.logdeck.loadbalancer.server.port=8123"
     restart: unless-stopped`}
           language="yaml"
-        />
+          />
+        </div>
       </div>
     </div>
   )

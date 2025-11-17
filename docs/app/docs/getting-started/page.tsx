@@ -22,16 +22,18 @@ export default function GettingStartedPage() {
       <Separator />
 
       <div className="prose prose-neutral dark:prose-invert max-w-none">
-        <h2>What is LogDeck?</h2>
-        <p>
+        <h2 className="mb-4 text-3xl font-bold tracking-tight">What is LogDeck?</h2>
+        <p className="mb-8 text-base">
           LogDeck is an open-source tool designed to be the most intuitive and visually appealing solution for monitoring Docker container logs and managing containers. Built with modern web technologies and a Go backend, LogDeck provides a beautiful interface for working with Docker.
         </p>
 
-        <h2>Why LogDeck?</h2>
-        <p>
+        <Separator className="my-12" />
+
+        <h2 className="mb-4 text-3xl font-bold tracking-tight">Why LogDeck?</h2>
+        <p className="mb-6 text-base">
           Docker&apos;s command-line tools are powerful but can be cumbersome for everyday use. LogDeck provides:
         </p>
-        <ul>
+        <ul className="mb-8 space-y-2">
           <li><strong>Real-time log streaming</strong> - Watch your container logs update in real-time with automatic scrolling</li>
           <li><strong>Advanced filtering</strong> - Search, filter by log level, and use regex to find exactly what you need</li>
           <li><strong>Container management</strong> - Start, stop, restart, and remove containers with a single click</li>
@@ -40,12 +42,15 @@ export default function GettingStartedPage() {
           <li><strong>Optional authentication</strong> - Secure your instance or run it completely open</li>
         </ul>
 
-        <h2>Quick Start</h2>
-        <p>
+        <Separator className="my-12" />
+
+        <h2 className="mb-4 text-3xl font-bold tracking-tight">Quick Start</h2>
+        <p className="mb-6 text-base">
           The fastest way to get LogDeck running is with Docker Compose:
         </p>
 
-        <CodeBlock
+        <div className="mb-6">
+          <CodeBlock
           code={`version: '3.8'
 
 services:
@@ -58,22 +63,27 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     restart: unless-stopped`}
           language="yaml"
-        />
+          />
+        </div>
 
-        <p>Save this as <code>docker-compose.yml</code> and run:</p>
+        <p className="mb-4 text-sm">Save this as <code>docker-compose.yml</code> and run:</p>
 
-        <CodeBlock code="docker-compose up -d" language="bash" />
+        <div className="mb-6">
+          <CodeBlock code="docker-compose up -d" language="bash" />
+        </div>
 
-        <p>
+        <p className="mb-8 text-sm">
           Then open your browser to{" "}
           <a href="http://localhost:8123" target="_blank" rel="noopener noreferrer">
             http://localhost:8123
           </a>
         </p>
 
-        <h2>What&apos;s Next?</h2>
-        <p>Now that you have LogDeck running, here are some next steps:</p>
-        <ul>
+        <Separator className="my-12" />
+
+        <h2 className="mb-4 text-3xl font-bold tracking-tight">What&apos;s Next?</h2>
+        <p className="mb-4 text-base">Now that you have LogDeck running, here are some next steps:</p>
+        <ul className="mb-8 space-y-2">
           <li>
             <a href="/docs/installation">Installation Guide</a> - Learn about different deployment options
           </li>
@@ -85,18 +95,22 @@ services:
           </li>
         </ul>
 
-        <h2>System Requirements</h2>
-        <ul>
+        <Separator className="my-12" />
+
+        <h2 className="mb-4 text-3xl font-bold tracking-tight">System Requirements</h2>
+        <ul className="mb-8 space-y-2">
           <li>Docker Engine 20.10 or later</li>
           <li>Access to the Docker socket (<code>/var/run/docker.sock</code>)</li>
           <li>Modern web browser (Chrome, Firefox, Safari, or Edge)</li>
         </ul>
 
-        <h2>Getting Help</h2>
-        <p>
+        <Separator className="my-12" />
+
+        <h2 className="mb-4 text-3xl font-bold tracking-tight">Getting Help</h2>
+        <p className="mb-4 text-base">
           If you encounter any issues or have questions:
         </p>
-        <ul>
+        <ul className="space-y-2">
           <li>
             Check the{" "}
             <a href="https://github.com/AmoabaKelvin/logdeck/issues" target="_blank" rel="noopener noreferrer">
