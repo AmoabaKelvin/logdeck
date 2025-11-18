@@ -117,7 +117,7 @@ export function ContainersLogsSheet({
 
     setIsLoadingLogs(true);
     try {
-      const logEntries = await getContainerLogsParsed(container.id, {
+      const logEntries = await getContainerLogsParsed(container.id, container.host, {
         tail: logLines,
       });
       setLogs(logEntries as LogEntry[]);
@@ -145,6 +145,7 @@ export function ContainersLogsSheet({
 
       const stream = streamContainerLogsParsed(
         container.id,
+        container.host,
         {
           tail: logLines,
         },
@@ -493,6 +494,7 @@ export function ContainersLogsSheet({
                         <div className="max-h-[300px] overflow-y-auto">
                           <EnvironmentVariables
                             containerId={container.id}
+                            containerHost={container.host}
                             isReadOnly={isReadOnly}
                             onContainerIdChange={onContainerRecreated}
                           />
