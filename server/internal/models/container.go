@@ -11,6 +11,7 @@ type ContainerInfo struct {
 	State   string            `json:"state"`
 	Status  string            `json:"status"`
 	Labels  map[string]string `json:"labels,omitempty"`
+	Host    string            `json:"host"`
 }
 
 // LogOptions represents options for fetching container logs
