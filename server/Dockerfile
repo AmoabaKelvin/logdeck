@@ -35,8 +35,12 @@ COPY --from=frontend-builder /frontend/dist ./internal/static/dist
 ARG TARGETARCH
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -o logdeck-server ./cmd/server
 
-# Stage 3: Final minimal image
-FROM gcr.io/distroless/static-debian12
+# Stage 3: Final runtime image with SSH client for remote Docker hosts
+FROM debian:bookworm-slim
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates openssh-client \
+  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
