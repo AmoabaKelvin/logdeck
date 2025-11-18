@@ -59,12 +59,15 @@ export function ContainersDashboard() {
     useContainersQuery();
   const containers = data?.containers ?? [];
   const isReadOnly = data?.readOnly ?? false;
+  const hosts = data?.hosts ?? [];
 
   const {
     searchTerm,
     setSearchTerm,
     stateFilter,
     setStateFilter,
+    hostFilter,
+    setHostFilter,
     sortDirection,
     setSortDirection,
     groupBy,
@@ -89,20 +92,11 @@ export function ContainersDashboard() {
     container: ContainerInfo;
   } | null>(null);
 
-  const availableStates = useMemo(() => {
-    const unique = new Set<string>();
-    containers.forEach((container) => {
-      if (container.state) {
-        unique.add(container.state.toLowerCase());
-      }
-    });
-    return Array.from(unique).sort();
-  }, [containers]);
-
-  const filteredContainers = useMemo(() => {
+  // Helper function to check if a container matches filters
+  const matchesFilters = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
 
-    const filtered = containers.filter((container) => {
+    return (container: ContainerInfo, options: { includeStateFilter?: boolean } = {}) => {
       const matchesSearch =
         !normalizedSearch ||
         container.id.toLowerCase().startsWith(normalizedSearch) ||
@@ -111,9 +105,8 @@ export function ContainersDashboard() {
           name.toLowerCase().includes(normalizedSearch)
         );
 
-      const normalizedState = container.state.toLowerCase();
-      const matchesState =
-        stateFilter === "all" || normalizedState === stateFilter;
+      const matchesHost =
+        hostFilter === "all" || container.host === hostFilter;
 
       const containerDate = new Date(container.created * 1000);
       const matchesDateRange =
@@ -125,13 +118,33 @@ export function ContainersDashboard() {
         (dateRange.from && !dateRange.to && containerDate >= dateRange.from) ||
         (!dateRange.from && dateRange.to && containerDate <= dateRange.to);
 
-      return matchesSearch && matchesState && matchesDateRange;
+      const matchesState = options.includeStateFilter
+        ? stateFilter === "all" || container.state.toLowerCase() === stateFilter
+        : true;
+
+      return matchesSearch && matchesHost && matchesDateRange && matchesState;
+    };
+  }, [searchTerm, hostFilter, dateRange, stateFilter]);
+
+  const availableStates = useMemo(() => {
+    const unique = new Set<string>();
+    containers.forEach((container) => {
+      if (container.state) {
+        unique.add(container.state.toLowerCase());
+      }
     });
+    return Array.from(unique).sort();
+  }, [containers]);
+
+  const filteredContainers = useMemo(() => {
+    const filtered = containers.filter((container) =>
+      matchesFilters(container, { includeStateFilter: true })
+    );
 
     return filtered.sort((a, b) =>
       sortDirection === "desc" ? b.created - a.created : a.created - b.created
     );
-  }, [containers, searchTerm, stateFilter, dateRange, sortDirection]);
+  }, [containers, matchesFilters, sortDirection]);
 
   const totalPages =
     filteredContainers.length === 0
@@ -164,18 +177,22 @@ export function ContainersDashboard() {
   const stateCounts = useMemo(() => {
     const counts = getInitialStateCounts();
 
+    // Filter by host, search, and date - but NOT by state filter
+    // This way state counts reflect the current host selection
     containers.forEach((container) => {
-      const state = container.state.toLowerCase();
-      if (state === "running") counts.running++;
-      else if (state === "exited") counts.exited++;
-      else if (state === "paused") counts.paused++;
-      else if (state === "restarting") counts.restarting++;
-      else if (state === "dead") counts.dead++;
-      else counts.other++;
+      if (matchesFilters(container, { includeStateFilter: false })) {
+        const state = container.state.toLowerCase();
+        if (state === "running") counts.running++;
+        else if (state === "exited") counts.exited++;
+        else if (state === "paused") counts.paused++;
+        else if (state === "restarting") counts.restarting++;
+        else if (state === "dead") counts.dead++;
+        else counts.other++;
+      }
     });
 
     return counts;
-  }, [containers]);
+  }, [containers, matchesFilters]);
 
   const executeAction = async (
     actionType: ContainerActionType,
@@ -186,16 +203,16 @@ export function ContainersDashboard() {
       let message = "";
       switch (actionType) {
         case "start":
-          message = await startContainer(container.id);
+          message = await startContainer(container.id, container.host);
           break;
         case "stop":
-          message = await stopContainer(container.id);
+          message = await stopContainer(container.id, container.host);
           break;
         case "restart":
-          message = await restartContainer(container.id);
+          message = await restartContainer(container.id, container.host);
           break;
         case "remove":
-          message = await removeContainer(container.id);
+          message = await removeContainer(container.id, container.host);
           break;
         default:
           return;
@@ -234,6 +251,10 @@ export function ContainersDashboard() {
 
   const handleStateFilterChange = (value: string) => {
     setStateFilter(value);
+  };
+
+  const handleHostFilterChange = (value: string) => {
+    setHostFilter(value);
   };
 
   const handleSortDirectionChange = (direction: SortDirection) => {
@@ -346,6 +367,9 @@ export function ContainersDashboard() {
           stateFilter={stateFilter}
           onStateFilterChange={handleStateFilterChange}
           availableStates={availableStates}
+          hostFilter={hostFilter}
+          onHostFilterChange={handleHostFilterChange}
+          availableHosts={hosts}
           sortDirection={sortDirection}
           onSortDirectionChange={handleSortDirectionChange}
           groupBy={groupBy}

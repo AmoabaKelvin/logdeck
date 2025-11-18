@@ -46,12 +46,14 @@ const DEFAULT_OPTIONS: Required<
   stderr: true,
 };
 
-function buildLogsUrl(id: string, options?: ContainerLogsOptions) {
+function buildLogsUrl(id: string, host: string, options?: ContainerLogsOptions) {
   const query = new URLSearchParams();
   const merged: ContainerLogsOptions = {
     ...DEFAULT_OPTIONS,
     ...options,
   };
+
+  query.set("host", host);
 
   if (merged.since) {
     query.set("since", merged.since);
@@ -82,9 +84,10 @@ function buildLogsUrl(id: string, options?: ContainerLogsOptions) {
 
 export async function getContainerLogsParsed(
   id: string,
+  host: string,
   options?: ContainerLogsOptions
 ): Promise<LogEntry[]> {
-  const response = await authenticatedFetch(buildLogsUrl(id, options), {
+  const response = await authenticatedFetch(buildLogsUrl(id, host, options), {
     headers: {
       Accept: "application/json",
     },
@@ -150,11 +153,12 @@ async function* iterateNDJSONStream(
 
 export async function* streamContainerLogsParsed(
   id: string,
+  host: string,
   options?: ContainerLogsOptions,
   signal?: AbortSignal
 ): AsyncGenerator<LogEntry, void, unknown> {
   const streamOptions = { ...options, follow: true };
-  const response = await authenticatedFetch(buildLogsUrl(id, streamOptions), {
+  const response = await authenticatedFetch(buildLogsUrl(id, host, streamOptions), {
     headers: {
       Accept: "application/x-ndjson",
     },

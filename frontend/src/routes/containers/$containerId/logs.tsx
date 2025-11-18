@@ -102,13 +102,15 @@ function ContainerLogsPage() {
   const containerIdentifier = decodeURIComponent(encodedContainerId);
 
   // Fetch container info
-  const { data: containers } = useQuery({
+  const { data: containersData } = useQuery({
     queryKey: ["containers"],
     queryFn: getContainers,
   });
 
+  const containers = containersData?.containers ?? [];
+
   // Find container by name (preferred) or ID (fallback for backward compatibility)
-  const container = containers?.find((c) => {
+  const container = containers.find((c) => {
     // Check if identifier matches the container name (without leading slash)
     if (c.names && c.names.length > 0) {
       const cleanName = c.names[0].startsWith("/")
@@ -145,11 +147,11 @@ function ContainerLogsPage() {
   }, [autoScroll]);
 
   const fetchLogs = useCallback(async () => {
-    if (!actualContainerId) return;
+    if (!actualContainerId || !container?.host) return;
 
     setIsLoadingLogs(true);
     try {
-      const logEntries = await getContainerLogsParsed(actualContainerId, {
+      const logEntries = await getContainerLogsParsed(actualContainerId, container.host, {
         tail: logLines,
       });
       setLogs(logEntries);
@@ -162,10 +164,10 @@ function ContainerLogsPage() {
     } finally {
       setIsLoadingLogs(false);
     }
-  }, [actualContainerId, logLines, scrollToBottom]);
+  }, [actualContainerId, container?.host, logLines, scrollToBottom]);
 
   const startStreaming = useCallback(async () => {
-    if (!actualContainerId) return;
+    if (!actualContainerId || !container?.host) return;
 
     setIsStreaming(true);
     setIsLoadingLogs(true);
@@ -177,6 +179,7 @@ function ContainerLogsPage() {
 
       const stream = streamContainerLogsParsed(
         actualContainerId,
+        container.host,
         {
           tail: logLines,
         },
@@ -207,7 +210,7 @@ function ContainerLogsPage() {
       setIsLoadingLogs(false);
       abortControllerRef.current = null;
     }
-  }, [actualContainerId, logLines, scrollToBottom]);
+  }, [actualContainerId, container?.host, logLines, scrollToBottom]);
 
   const stopStreaming = useCallback(() => {
     if (abortControllerRef.current) {
@@ -521,10 +524,11 @@ function ContainerLogsPage() {
                       />
                       {showEnvVariables ? "Hide" : "Show"} environment variables
                     </Button>
-                    {showEnvVariables && (
+                    {showEnvVariables && container && (
                       <div className="max-h-[300px] overflow-y-auto">
                         <EnvironmentVariables
                           containerId={actualContainerId}
+                          containerHost={container.host}
                           onContainerIdChange={handleContainerRecreated}
                         />
                       </div>

@@ -8,10 +8,11 @@ interface UpdateEnvResponse {
 
 export async function updateContainerEnvVariables(
   id: string,
+  host: string,
   env: Record<string, string>
 ): Promise<string> {
   const response = await authenticatedFetch(
-    `${API_BASE_URL}/api/v1/containers/${encodeURIComponent(id)}/env`,
+    `${API_BASE_URL}/api/v1/containers/${encodeURIComponent(id)}/env?host=${encodeURIComponent(host)}`,
     {
       method: "PUT",
       headers: {

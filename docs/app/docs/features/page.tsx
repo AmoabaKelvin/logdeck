@@ -56,6 +56,17 @@ const features = [
     ],
   },
   {
+    title: "Multi-Host Management",
+    description:
+      "Operate across multiple Docker hosts from a single LogDeck dashboard while keeping actions scoped to the right daemon.",
+    items: [
+      "Connect to local sockets, remote TCP endpoints, or SSH hosts via DOCKER_HOSTS",
+      "Unified container list with host badges so you always know where a container lives",
+      "Host-aware lifecycle actions, environment variable edits, and log streaming",
+      "Automatic fallback to the local Docker socket when no hosts are provided",
+    ],
+  },
+  {
     title: "Container Management",
     description:
       "Manage your containers with simple, intuitive controls.",

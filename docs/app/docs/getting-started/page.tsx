@@ -35,6 +35,7 @@ export default function GettingStartedPage() {
         </p>
         <ul className="mb-8 space-y-2">
           <li><strong>Real-time log streaming</strong> - Watch your container logs update in real-time with automatic scrolling</li>
+          <li><strong>Multi-host management</strong> - Connect to multiple Docker daemons (local, TCP, or SSH) and manage them from one UI</li>
           <li><strong>Advanced filtering</strong> - Search, filter by log level, and use regex to find exactly what you need</li>
           <li><strong>Container management</strong> - Start, stop, restart, and remove containers with a single click</li>
           <li><strong>Beautiful UI</strong> - A modern, responsive interface that works on desktop and mobile</li>
@@ -102,6 +103,7 @@ services:
           <li>Docker Engine 20.10 or later</li>
           <li>Access to the Docker socket (<code>/var/run/docker.sock</code>)</li>
           <li>Modern web browser (Chrome, Firefox, Safari, or Edge)</li>
+          <li>Network access and credentials for any remote Docker hosts if using multi-host mode</li>
         </ul>
 
         <Separator className="my-12" />

@@ -16,12 +16,12 @@ import (
 
 type APIRouter struct {
 	router      *chi.Mux
-	docker      *docker.Client
+	docker      *docker.MultiHostClient
 	authService *auth.Service
 	config      *config.Config
 }
 
-func NewRouter(docker *docker.Client, authService *auth.Service, config *config.Config) *chi.Mux {
+func NewRouter(docker *docker.MultiHostClient, authService *auth.Service, config *config.Config) *chi.Mux {
 	r := &APIRouter{
 		router:      chi.NewRouter(),
 		docker:      docker,

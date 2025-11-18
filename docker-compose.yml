@@ -13,3 +13,4 @@ services:
       - DOCKER_HOST=${DOCKER_HOST:-unix:///var/run/docker.sock}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ~/.ssh:/root/.ssh:ro

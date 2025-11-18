@@ -12,67 +12,6 @@ import (
 	"github.com/docker/docker/pkg/stdcopy"
 )
 
-// GetContainerLogsStream returns raw logs as a ReadCloser (for streaming)
-func (c *Client) GetContainerLogsStream(id string, options models.LogOptions) (io.ReadCloser, error) {
-	logs, err := c.apiClient.ContainerLogs(context.Background(), id, buildLogsOptions(options, options.Follow, options.Timestamps))
-	if err != nil {
-		return nil, err
-	}
-	return logs, nil
-}
-
-// GetContainerLogsParsed returns structured log entries
-func (c *Client) GetContainerLogsParsed(id string, options models.LogOptions) ([]models.LogEntry, error) {
-	logs, err := c.apiClient.ContainerLogs(context.Background(), id, buildLogsOptions(options, false, true))
-	if err != nil {
-		return nil, err
-	}
-	defer logs.Close()
-
-	return parseDockerLogs(logs)
-}
-
-// StreamContainerLogsParsed streams structured log entries as JSON lines.
-func (c *Client) StreamContainerLogsParsed(id string, options models.LogOptions) (io.ReadCloser, error) {
-	logs, err := c.apiClient.ContainerLogs(context.Background(), id, buildLogsOptions(options, options.Follow, true))
-	if err != nil {
-		return nil, err
-	}
-
-	pipeReader, pipeWriter := io.Pipe()
-
-	go func() {
-		defer logs.Close()
-		defer pipeWriter.Close()
-
-		encoder := json.NewEncoder(pipeWriter)
-		var mu sync.Mutex
-
-		stdout := &streamingLogWriter{
-			stream:     "stdout",
-			encoder:    encoder,
-			encoderMu:  &mu,
-			pipeWriter: pipeWriter,
-		}
-		stderr := &streamingLogWriter{
-			stream:     "stderr",
-			encoder:    encoder,
-			encoderMu:  &mu,
-			pipeWriter: pipeWriter,
-		}
-
-		_, err = stdcopy.StdCopy(stdout, stderr, logs)
-		stdout.Flush()
-		stderr.Flush()
-
-		if err != nil && err != io.EOF {
-			pipeWriter.CloseWithError(err)
-		}
-	}()
-
-	return pipeReader, nil
-}
-
 // parseDockerLogs parses the Docker log stream into structured entries
 func parseDockerLogs(reader io.Reader) ([]models.LogEntry, error) {
 	var entries []models.LogEntry
@@ -213,4 +152,65 @@ func buildLogsOptions(options models.LogOptions, follow, timestamps bool) contai
 		ShowStdout: options.ShowStdout,
 		ShowStderr: options.ShowStderr,
 	}
+}
+
+// multi host client methods
+func (c *MultiHostClient) GetContainerLogsParsed(hostName, id string, options models.LogOptions) ([]models.LogEntry, error) {
+	apiClient, err := c.GetClient(hostName)
+	if err != nil {
+		return nil, err
+	}
+
+	logs, err := apiClient.ContainerLogs(context.Background(), id, buildLogsOptions(options, false, true))
+	if err != nil {
+		return nil, err
+	}
+	defer logs.Close()
+
+	return parseDockerLogs(logs)
+}
+
+func (c *MultiHostClient) StreamContainerLogsParsed(hostName, id string, options models.LogOptions) (io.ReadCloser, error) {
+	apiClient, err := c.GetClient(hostName)
+	if err != nil {
+		return nil, err
+	}
+
+	logs, err := apiClient.ContainerLogs(context.Background(), id, buildLogsOptions(options, options.Follow, true))
+	if err != nil {
+		return nil, err
+	}
+
+	pipeReader, pipeWriter := io.Pipe()
+
+	go func() {
+		defer logs.Close()
+		defer pipeWriter.Close()
+
+		encoder := json.NewEncoder(pipeWriter)
+		var mu sync.Mutex
+
+		stdout := &streamingLogWriter{
+			stream:     "stdout",
+			encoder:    encoder,
+			encoderMu:  &mu,
+			pipeWriter: pipeWriter,
+		}
+		stderr := &streamingLogWriter{
+			stream:     "stderr",
+			encoder:    encoder,
+			encoderMu:  &mu,
+			pipeWriter: pipeWriter,
+		}
+
+		_, err = stdcopy.StdCopy(stdout, stderr, logs)
+		stdout.Flush()
+		stderr.Flush()
+
+		if err != nil && err != io.EOF {
+			pipeWriter.CloseWithError(err)
+		}
+	}()
+
+	return pipeReader, nil
 }

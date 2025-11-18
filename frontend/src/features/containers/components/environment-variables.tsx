@@ -29,6 +29,7 @@ import { updateContainerEnvVariables } from "../api/update-container-env-variabl
 
 interface EnvironmentVariablesProps {
   containerId: string;
+  containerHost: string;
   isReadOnly?: boolean;
   onContainerIdChange?: (newContainerId: string) => void;
 }
@@ -73,6 +74,7 @@ function parseEnvFile(content: string): Record<string, string> {
 
 export function EnvironmentVariables({
   containerId,
+  containerHost,
   isReadOnly = false,
   onContainerIdChange,
 }: EnvironmentVariablesProps) {
@@ -98,14 +100,14 @@ export function EnvironmentVariables({
     isLoading,
     error,
   } = useQuery({
-    queryKey: ["container-env", containerId],
-    queryFn: () => getContainerEnvVariables(containerId),
-    enabled: !!containerId,
+    queryKey: ["container-env", containerId, containerHost],
+    queryFn: () => getContainerEnvVariables(containerId, containerHost),
+    enabled: !!containerId && !!containerHost,
   });
 
   const updateMutation = useMutation({
     mutationFn: (env: Record<string, string>) =>
-      updateContainerEnvVariables(containerId, env),
+      updateContainerEnvVariables(containerId, containerHost, env),
     onSuccess: (newContainerId) => {
       // Invalidate queries for BOTH old and new container IDs
       queryClient.invalidateQueries({

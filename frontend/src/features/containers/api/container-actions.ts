@@ -11,9 +11,10 @@ interface ActionResponse {
 
 async function performContainerAction(
   id: string,
-  action: ContainerAction
+  action: ContainerAction,
+  host: string
 ): Promise<string> {
-  const endpoint = `${BASE_URL}/${encodeURIComponent(id)}/${action}`;
+  const endpoint = `${BASE_URL}/${encodeURIComponent(id)}/${action}?host=${encodeURIComponent(host)}`;
   const response = await authenticatedFetch(endpoint, {
     method: "POST",
     headers: {
@@ -35,18 +36,18 @@ async function performContainerAction(
   return "Action completed successfully";
 }
 
-export function startContainer(id: string) {
-  return performContainerAction(id, "start");
+export function startContainer(id: string, host: string) {
+  return performContainerAction(id, "start", host);
 }
 
-export function stopContainer(id: string) {
-  return performContainerAction(id, "stop");
+export function stopContainer(id: string, host: string) {
+  return performContainerAction(id, "stop", host);
 }
 
-export function restartContainer(id: string) {
-  return performContainerAction(id, "restart");
+export function restartContainer(id: string, host: string) {
+  return performContainerAction(id, "restart", host);
 }
 
-export function removeContainer(id: string) {
-  return performContainerAction(id, "remove");
+export function removeContainer(id: string, host: string) {
+  return performContainerAction(id, "remove", host);
 }

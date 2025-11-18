@@ -9,43 +9,57 @@ import (
 	"github.com/docker/docker/api/types/network"
 )
 
-// container life cycle methods, start, stop, restart, remove
+func (c *MultiHostClient) GetContainer(hostName, id string) (container.InspectResponse, error) {
+	apiClient, err := c.GetClient(hostName)
+	if err != nil {
+		return container.InspectResponse{}, err
+	}
+	result, err := apiClient.ContainerInspect(context.Background(), id)
+	if err != nil {
+		return container.InspectResponse{}, err
+	}
+	return result, nil
+}
 
-func (c *Client) StartContainer(id string) error {
-	err := c.apiClient.ContainerStart(context.Background(), id, container.StartOptions{})
+func (c *MultiHostClient) StartContainer(hostName, id string) error {
+	apiClient, err := c.GetClient(hostName)
 	if err != nil {
 		return err
 	}
-	return nil
+	return apiClient.ContainerStart(context.Background(), id, container.StartOptions{})
 }
 
-func (c *Client) StopContainer(id string) error {
-	err := c.apiClient.ContainerStop(context.Background(), id, container.StopOptions{})
+func (c *MultiHostClient) StopContainer(hostName, id string) error {
+	apiClient, err := c.GetClient(hostName)
 	if err != nil {
 		return err
 	}
-	return nil
+	return apiClient.ContainerStop(context.Background(), id, container.StopOptions{})
 }
 
-func (c *Client) RestartContainer(id string) error {
-	err := c.apiClient.ContainerRestart(context.Background(), id, container.StopOptions{})
+func (c *MultiHostClient) RestartContainer(hostName, id string) error {
+	apiClient, err := c.GetClient(hostName)
 	if err != nil {
 		return err
 	}
-	return nil
+	return apiClient.ContainerRestart(context.Background(), id, container.StopOptions{})
 }
 
-func (c *Client) RemoveContainer(id string) error {
-	err := c.apiClient.ContainerRemove(context.Background(), id, container.RemoveOptions{})
+func (c *MultiHostClient) RemoveContainer(hostName, id string) error {
+	apiClient, err := c.GetClient(hostName)
 	if err != nil {
 		return err
 	}
-	return nil
+	return apiClient.ContainerRemove(context.Background(), id, container.RemoveOptions{})
 }
 
-// GetEnvVariables returns the environment variables for a container
-func (c *Client) GetEnvVariables(id string) (map[string]string, error) {
-	inspect, err := c.apiClient.ContainerInspect(context.Background(), id)
+func (c *MultiHostClient) GetEnvVariables(hostName, id string) (map[string]string, error) {
+	apiClient, err := c.GetClient(hostName)
+	if err != nil {
+		return nil, err
+	}
+
+	inspect, err := apiClient.ContainerInspect(context.Background(), id)
 	if err != nil {
 		return nil, err
 	}
@@ -60,11 +74,13 @@ func (c *Client) GetEnvVariables(id string) (map[string]string, error) {
 	return envMap, nil
 }
 
-func (c *Client) SetEnvVariables(id string, envVariables map[string]string) (string, error) {
-	// we cannot directly update the env variables of a container, we have to first get the
-	// previous commands and things used to create the container, then stop it.
-	// create a new container with the same configuration but updated env vars and then start it.
-	inspect, err := c.apiClient.ContainerInspect(context.Background(), id)
+func (c *MultiHostClient) SetEnvVariables(hostName, id string, envVariables map[string]string) (string, error) {
+	apiClient, err := c.GetClient(hostName)
+	if err != nil {
+		return "", err
+	}
+
+	inspect, err := apiClient.ContainerInspect(context.Background(), id)
 	if err != nil {
 		return "", err
 	}
@@ -96,12 +112,12 @@ func (c *Client) SetEnvVariables(id string, envVariables map[string]string) (str
 	containerName := inspect.Name
 	containerName = strings.TrimPrefix(containerName, "/")
 
-	err = c.apiClient.ContainerStop(context.Background(), id, container.StopOptions{})
+	err = apiClient.ContainerStop(context.Background(), id, container.StopOptions{})
 	if err != nil {
 		return "", err
 	}
 
-	err = c.apiClient.ContainerRemove(context.Background(), id, container.RemoveOptions{})
+	err = apiClient.ContainerRemove(context.Background(), id, container.RemoveOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -109,7 +125,7 @@ func (c *Client) SetEnvVariables(id string, envVariables map[string]string) (str
 	newConfig := inspect.Config
 	newConfig.Env = envs
 
-	resp, err := c.apiClient.ContainerCreate(
+	resp, err := apiClient.ContainerCreate(
 		context.Background(),
 		newConfig,
 		inspect.HostConfig,
@@ -123,7 +139,7 @@ func (c *Client) SetEnvVariables(id string, envVariables map[string]string) (str
 		return "", err
 	}
 
-	err = c.apiClient.ContainerStart(context.Background(), resp.ID, container.StartOptions{})
+	err = apiClient.ContainerStart(context.Background(), resp.ID, container.StartOptions{})
 	if err != nil {
 		return "", err
 	}

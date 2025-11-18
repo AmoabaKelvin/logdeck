@@ -1,32 +1,56 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"regexp"
 	"strconv"
+	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/models"
 	"github.com/go-chi/chi/v5"
 )
 
 func (ar *APIRouter) GetContainers(w http.ResponseWriter, r *http.Request) {
-	containers, err := ar.docker.ListContainers()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	containersMap, hostErrors, err := ar.docker.ListContainersAllHosts(ctx)
+
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	if len(hostErrors) > 0 {
+		http.Error(w, fmt.Sprintf("Error listing containers on some hosts: %v", hostErrors), http.StatusInternalServerError)
+		return
+	}
+
+	// Flatten the map for easier frontend consumption
+	allContainers := []models.ContainerInfo{}
+	for _, containers := range containersMap {
+		allContainers = append(allContainers, containers...)
+	}
+
 	WriteJsonResponse(w, http.StatusOK, map[string]any{
-		"containers": containers,
+		"containers": allContainers,
+		"hosts":      ar.docker.GetHosts(),
 		"readOnly":   ar.config.ReadOnly,
 	})
 }
 
 func (ar *APIRouter) GetContainer(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	host := r.URL.Query().Get("host")
 
-	container, err := ar.docker.GetContainer(id)
+	if host == "" {
+		http.Error(w, "host parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	container, err := ar.docker.GetContainer(host, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -38,8 +62,14 @@ func (ar *APIRouter) GetContainer(w http.ResponseWriter, r *http.Request) {
 
 func (ar *APIRouter) StartContainer(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	host := r.URL.Query().Get("host")
 
-	err := ar.docker.StartContainer(id)
+	if host == "" {
+		http.Error(w, "host parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	err := ar.docker.StartContainer(host, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -51,8 +81,14 @@ func (ar *APIRouter) StartContainer(w http.ResponseWriter, r *http.Request) {
 
 func (ar *APIRouter) StopContainer(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	host := r.URL.Query().Get("host")
 
-	err := ar.docker.StopContainer(id)
+	if host == "" {
+		http.Error(w, "host parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	err := ar.docker.StopContainer(host, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -64,8 +100,14 @@ func (ar *APIRouter) StopContainer(w http.ResponseWriter, r *http.Request) {
 
 func (ar *APIRouter) RestartContainer(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	host := r.URL.Query().Get("host")
 
-	err := ar.docker.RestartContainer(id)
+	if host == "" {
+		http.Error(w, "host parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	err := ar.docker.RestartContainer(host, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -77,8 +119,14 @@ func (ar *APIRouter) RestartContainer(w http.ResponseWriter, r *http.Request) {
 
 func (ar *APIRouter) RemoveContainer(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	host := r.URL.Query().Get("host")
 
-	err := ar.docker.RemoveContainer(id)
+	if host == "" {
+		http.Error(w, "host parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	err := ar.docker.RemoveContainer(host, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -90,16 +138,22 @@ func (ar *APIRouter) RemoveContainer(w http.ResponseWriter, r *http.Request) {
 
 func (ar *APIRouter) GetContainerLogsParsed(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	host := r.URL.Query().Get("host")
+
+	if host == "" {
+		http.Error(w, "host parameter is required", http.StatusBadRequest)
+		return
+	}
 
 	// Parse query parameters for log options
 	options := parseLogOptions(r)
 
 	if options.Follow {
-		ar.streamParsedLogs(w, id, options)
+		ar.streamParsedLogs(w, host, id, options)
 		return
 	}
 
-	logs, err := ar.docker.GetContainerLogsParsed(id, options)
+	logs, err := ar.docker.GetContainerLogsParsed(host, id, options)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -111,8 +165,8 @@ func (ar *APIRouter) GetContainerLogsParsed(w http.ResponseWriter, r *http.Reque
 	})
 }
 
-func (ar *APIRouter) streamParsedLogs(w http.ResponseWriter, id string, options models.LogOptions) {
-	stream, err := ar.docker.StreamContainerLogsParsed(id, options)
+func (ar *APIRouter) streamParsedLogs(w http.ResponseWriter, host, id string, options models.LogOptions) {
+	stream, err := ar.docker.StreamContainerLogsParsed(host, id, options)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -186,8 +240,14 @@ func parseLogOptions(r *http.Request) models.LogOptions {
 
 func (ar *APIRouter) GetEnvVariables(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	host := r.URL.Query().Get("host")
 
-	envVariables, err := ar.docker.GetEnvVariables(id)
+	if host == "" {
+		http.Error(w, "host parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	envVariables, err := ar.docker.GetEnvVariables(host, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -200,6 +260,12 @@ func (ar *APIRouter) GetEnvVariables(w http.ResponseWriter, r *http.Request) {
 
 func (ar *APIRouter) UpdateEnvVariables(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	host := r.URL.Query().Get("host")
+
+	if host == "" {
+		http.Error(w, "host parameter is required", http.StatusBadRequest)
+		return
+	}
 
 	var envVariables models.EnvVariables
 	if err := json.NewDecoder(r.Body).Decode(&envVariables); err != nil {
@@ -216,7 +282,7 @@ func (ar *APIRouter) UpdateEnvVariables(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	newContainerID, err := ar.docker.SetEnvVariables(id, envVariables.Env)
+	newContainerID, err := ar.docker.SetEnvVariables(host, id, envVariables.Env)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

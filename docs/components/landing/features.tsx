@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Container, Download, Eye, Layers, Shield, Zap } from "lucide-react";
+import { Container, Download, Eye, Layers, Server, Shield } from "lucide-react";
 
 import {
   Card,
@@ -20,24 +20,24 @@ const features = [
     number: "01",
   },
   {
+    icon: Server,
+    title: "Multi-Host Management",
+    description:
+      "Connect to multiple Docker hosts at once (local Unix sockets, TCP endpoints, or SSH targets) and manage them from a single LogDeck dashboard.",
+    number: "02",
+  },
+  {
     icon: Container,
     title: "Container Management",
     description:
       "Start, stop, restart, and remove containers with a single click. View detailed information including environment variables, volumes, and ports.",
-    number: "02",
+    number: "03",
   },
   {
     icon: Layers,
     title: "Beautiful Interface",
     description:
       "Enjoy a modern, intuitive UI with dark and light mode support. Built with React and Tailwind CSS for a smooth, responsive experience.",
-    number: "03",
-  },
-  {
-    icon: Zap,
-    title: "Lightning Fast",
-    description:
-      "Built with Go and optimized for performance. Single binary deployment with embedded frontend. No complex setup required.",
     number: "04",
   },
   {

@@ -2,55 +2,114 @@ package docker
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"strings"
 
+	"github.com/AmoabaKelvin/logdeck/internal/config"
 	"github.com/AmoabaKelvin/logdeck/internal/models"
+	"github.com/docker/cli/cli/connhelper"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 )
 
-type Client struct {
-	apiClient *client.Client
+type MultiHostClient struct {
+	clients map[string]*client.Client
+	hosts   []config.DockerHost
 }
 
-func NewClient() (*Client, error) {
-	apiClient, err := client.NewClientWithOpts(
-		client.FromEnv,
-		client.WithAPIVersionNegotiation(),
-	)
-	if err != nil {
-		return nil, err
+func NewMultiHostClient(hosts []config.DockerHost) (*MultiHostClient, error) {
+	clients := make(map[string]*client.Client)
+
+	for _, host := range hosts {
+		var (
+			apiClient *client.Client
+			err       error
+		)
+
+		if strings.HasPrefix(host.Host, "ssh://") {
+			helper, helperErr := connhelper.GetConnectionHelper(host.Host)
+			if helperErr != nil {
+				return nil, fmt.Errorf("failed to setup SSH helper for host %s (%s): %w", host.Name, host.Host, helperErr)
+			}
+
+			httpClient := &http.Client{
+				Transport: &http.Transport{
+					DialContext: helper.Dialer,
+				},
+			}
+
+			apiClient, err = client.NewClientWithOpts(
+				client.WithHTTPClient(httpClient),
+				client.WithHost(helper.Host),
+				client.WithDialContext(helper.Dialer),
+				client.WithAPIVersionNegotiation(),
+			)
+		} else {
+			apiClient, err = client.NewClientWithOpts(
+				client.WithHost(host.Host),
+				client.WithAPIVersionNegotiation(),
+				client.FromEnv,
+			)
+		}
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to host %s (%s): %w", host.Name, host.Host, err)
+		}
+		clients[host.Name] = apiClient
 	}
-	return &Client{apiClient: apiClient}, nil
+
+	return &MultiHostClient{
+		clients: clients,
+		hosts:   hosts,
+	}, nil
 }
 
-func (c *Client) ListContainers() ([]models.ContainerInfo, error) {
-	containers, err := c.apiClient.ContainerList(context.Background(), container.ListOptions{All: true})
-	if err != nil {
-		return nil, err
-	}
-
-	result := make([]models.ContainerInfo, 0, len(containers))
-	for _, ctr := range containers {
-		result = append(result, models.ContainerInfo{
-			ID:      ctr.ID,
-			Names:   ctr.Names,
-			Image:   ctr.Image,
-			ImageID: ctr.ImageID,
-			Command: ctr.Command,
-			Created: ctr.Created,
-			State:   ctr.State,
-			Status:  ctr.Status,
-			Labels:  ctr.Labels,
-		})
-	}
-
-	return result, nil
+type HostError struct {
+	HostName string
+	Err      error
 }
 
-func (c *Client) GetContainer(id string) (container.InspectResponse, error) {
-	result, err := c.apiClient.ContainerInspect(context.Background(), id)
-	if err != nil {
-		return container.InspectResponse{}, err
+func (c *MultiHostClient) ListContainersAllHosts(ctx context.Context) (map[string][]models.ContainerInfo, []HostError, error) {
+	result := make(map[string][]models.ContainerInfo)
+	var hostErrors []HostError
+
+	for hostName, apiClient := range c.clients {
+		containers, err := apiClient.ContainerList(ctx, container.ListOptions{All: true})
+		if err != nil {
+			hostErrors = append(hostErrors, HostError{HostName: hostName, Err: err})
+			continue
+		}
+
+		hostContainers := make([]models.ContainerInfo, 0, len(containers))
+		for _, ctr := range containers {
+			hostContainers = append(hostContainers, models.ContainerInfo{
+				ID:      ctr.ID,
+				Names:   ctr.Names,
+				Image:   ctr.Image,
+				ImageID: ctr.ImageID,
+				Command: ctr.Command,
+				Created: ctr.Created,
+				State:   ctr.State,
+				Status:  ctr.Status,
+				Labels:  ctr.Labels,
+				Host:    hostName,
+			})
+		}
+		result[hostName] = hostContainers
 	}
-	return result, nil
+
+	return result, hostErrors, nil
+}
+
+func (c *MultiHostClient) GetClient(hostName string) (*client.Client, error) {
+	apiClient, ok := c.clients[hostName]
+	if !ok {
+		return nil, fmt.Errorf("host %s not found", hostName)
+	}
+	return apiClient, nil
+}
+
+func (c *MultiHostClient) GetHosts() []config.DockerHost {
+	return c.hosts
 }

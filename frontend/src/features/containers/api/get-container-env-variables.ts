@@ -6,10 +6,11 @@ interface EnvVariablesResponse {
 }
 
 export async function getContainerEnvVariables(
-  id: string
+  id: string,
+  host: string
 ): Promise<Record<string, string>> {
   const response = await authenticatedFetch(
-    `${API_BASE_URL}/api/v1/containers/${encodeURIComponent(id)}/env`
+    `${API_BASE_URL}/api/v1/containers/${encodeURIComponent(id)}/env?host=${encodeURIComponent(host)}`
   );
 
   if (!response.ok) {

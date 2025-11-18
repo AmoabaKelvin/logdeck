@@ -33,12 +33,17 @@ import { toTitleCase } from "./container-utils";
 
 import type { DateRange } from "react-day-picker";
 import type { GroupByOption, SortDirection } from "./container-utils";
+import type { DockerHost } from "../types";
+
 interface ContainersToolbarProps {
   searchTerm: string;
   onSearchChange: (value: string) => void;
   stateFilter: string;
   onStateFilterChange: (value: string) => void;
   availableStates: string[];
+  hostFilter: string;
+  onHostFilterChange: (value: string) => void;
+  availableHosts: DockerHost[];
   sortDirection: SortDirection;
   onSortDirectionChange: (direction: SortDirection) => void;
   groupBy: GroupByOption;
@@ -56,6 +61,9 @@ export function ContainersToolbar({
   stateFilter,
   onStateFilterChange,
   availableStates,
+  hostFilter,
+  onHostFilterChange,
+  availableHosts,
   sortDirection,
   onSortDirectionChange,
   groupBy,
@@ -111,6 +119,30 @@ export function ContainersToolbar({
         className="sm:max-w-sm"
       />
       <div className="flex items-center gap-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="h-9">
+              {hostFilter === "all" ? "All hosts" : hostFilter}
+              <ChevronDownIcon className="ml-2 size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuRadioGroup
+              value={hostFilter}
+              onValueChange={onHostFilterChange}
+            >
+              <DropdownMenuRadioItem value="all">
+                All hosts
+              </DropdownMenuRadioItem>
+              {availableHosts.map((host) => (
+                <DropdownMenuRadioItem key={host.Name} value={host.Name}>
+                  {host.Name}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="h-9">

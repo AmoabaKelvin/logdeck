@@ -57,18 +57,23 @@ services:
     container_name: logdeck
     ports:
       - "8123:8123"
-    volumes:
-      # Mount the Docker socket (read-only for security)
-      - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       # Optional: Configure backend port
       # BACKEND_PORT: 8080
+
+      # Optional: Manage multiple Docker hosts
+      # DOCKER_HOSTS: local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.example.com
 
       # Optional: Enable authentication
       # JWT_SECRET: your-super-secret-key-min-32-chars
       # ADMIN_USERNAME: admin
       # ADMIN_PASSWORD_SALT: your-random-salt-change-this
       # ADMIN_PASSWORD: your-sha256-hash
+    volumes:
+      # Mount the Docker socket (read-only for security)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Mount SSH keys if you use ssh:// hosts
+      # - ~/.ssh:/root/.ssh:ro
     restart: unless-stopped`}
             language="yaml"
           />
@@ -140,6 +145,24 @@ services:
           />
         </div>
 
+        <h3 className="mb-4 mt-8 text-xl font-semibold">
+          Configure Multiple Docker Hosts
+        </h3>
+        <p className="mb-4 text-sm">
+          Manage more than one Docker daemon by setting <code>DOCKER_HOSTS</code> with comma-separated <code>name=host</code> entries.
+        </p>
+        <div className="mb-4">
+          <CodeBlock
+            code={`# Local Docker + remote SSH host
+export DOCKER_HOSTS="local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.example.com"
+# Then start LogDeck with docker run or docker compose`}
+            language="bash"
+          />
+        </div>
+        <p className="mb-8 text-sm">
+          For <code>ssh://</code> targets, mount your SSH keys (e.g., <code>~/.ssh</code>) or forward your SSH agent socket into the container.
+        </p>
+
         <Separator className="my-12" />
 
         <h2 className="mb-4 text-3xl font-bold tracking-tight">
@@ -158,18 +181,18 @@ services:
               <div>
                 <code className="text-sm bg-muted px-2 py-1 rounded">
                   BACKEND_PORT
+              </code>
+              <p className="text-sm text-muted-foreground mt-1">
+                Port for the backend server. Default: <code>8080</code>
+              </p>
+            </div>
+            <div>
+              <code className="text-sm bg-muted px-2 py-1 rounded">
+                  DOCKER_HOSTS
                 </code>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Port for the backend server. Default: <code>8080</code>
-                </p>
-              </div>
-              <div>
-                <code className="text-sm bg-muted px-2 py-1 rounded">
-                  DOCKER_HOST
-                </code>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Docker daemon socket. Default:{" "}
-                  <code>unix:///var/run/docker.sock</code>
+                  Comma-separated Docker hosts using <code>name=host</code> format (supports <code>unix://</code>, <code>tcp://</code>, and <code>ssh://</code>).
+                  Defaults to <code>local=unix:///var/run/docker.sock</code> when unset.
                 </p>
               </div>
             </CardContent>
