@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 
@@ -12,8 +13,9 @@ import (
 
 func main() {
 	config := config.NewConfig()
+	fmt.Println("Config", config)
 
-	client, err := docker.NewClient()
+	multiHostClient, err := docker.NewMultiHostClient(config.DockerHosts)
 	if err != nil {
 		panic(err)
 	}
@@ -37,7 +39,7 @@ func main() {
 		log.Println("Read-only mode is DISABLED - all operations are allowed")
 	}
 
-	apiRouter := api.NewRouter(client, authService, config)
+	apiRouter := api.NewRouter(multiHostClient, authService, config)
 
 	log.Println("Server starting on :8080")
 	http.ListenAndServe(":8080", apiRouter)
