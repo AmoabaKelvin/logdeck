@@ -64,33 +64,36 @@ export default function ConfigurationPage() {
 
             <div>
               <div className="flex items-baseline gap-2 mb-1">
-                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">DOCKER_HOST</code>
+                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">DOCKER_HOSTS</code>
                 <span className="text-xs text-muted-foreground">Optional</span>
               </div>
               <p className="text-sm text-muted-foreground">
-                Docker daemon socket location. Can be a Unix socket or TCP connection.
+                Comma-separated list of Docker hosts to manage. Each entry uses <code>name=host</code> format and supports <code>unix://</code>, <code>tcp://</code>, and <code>ssh://</code> URLs.
               </p>
               <div className="mt-2">
                 <span className="text-xs font-medium">Default:</span>{" "}
-                <code className="text-xs bg-muted px-1.5 py-0.5 rounded">unix:///var/run/docker.sock</code>
+                <code className="text-xs bg-muted px-1.5 py-0.5 rounded">local=unix:///var/run/docker.sock</code>
               </div>
               <div className="mt-2">
-                <CodeBlock code='DOCKER_HOST=unix:///var/run/docker.sock' language="bash" />
+                <CodeBlock code='DOCKER_HOSTS=local=unix:///var/run/docker.sock' language="bash" />
               </div>
               <div className="mt-2 text-sm">
                 <p className="font-medium">Examples:</p>
                 <CodeBlock
-                  code={`# Unix socket (local Docker)
-DOCKER_HOST=unix:///var/run/docker.sock
+                  code={`# Local only
+DOCKER_HOSTS=local=unix:///var/run/docker.sock
 
-# TCP connection (remote Docker)
-DOCKER_HOST=tcp://192.168.1.100:2375
+# Mix of local and remote TCP
+DOCKER_HOSTS=local=unix:///var/run/docker.sock,staging=tcp://192.168.1.100:2375
 
-# TLS secured connection
-DOCKER_HOST=tcp://192.168.1.100:2376`}
+# SSH connection (mount your SSH keys or forward agent)
+DOCKER_HOSTS=local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.example.com`}
                   language="bash"
                 />
               </div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Host names appear in the UI and in the container list so you always know which Docker daemon you are interacting with.
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -306,8 +309,8 @@ services:
       # Server configuration
       BACKEND_PORT: 8080
 
-      # Docker configuration
-      DOCKER_HOST: unix:///var/run/docker.sock
+      # Docker hosts (local + remote example)
+      DOCKER_HOSTS: "local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.example.com"
 
       # Authentication (optional - remove to disable auth)
       JWT_SECRET: "your-super-secret-key-min-32-characters-long"
