@@ -39,6 +39,7 @@ const parseAsGroupBy = createParser({
 const searchParamsConfig = {
   search: parseAsString.withDefault(""),
   state: parseAsString.withDefault("all"),
+  host: parseAsString.withDefault("all"),
   sort: parseAsSortDirection.withDefault("desc" as SortDirection),
   group: parseAsGroupBy.withDefault("none" as GroupByOption),
   page: parseAsInteger.withDefault(1),
@@ -55,6 +56,7 @@ export function useContainersDashboardUrlState() {
   const {
     search: searchTerm,
     state: stateFilter,
+    host: hostFilter,
     sort: sortDirection,
     group: groupBy,
     page,
@@ -88,6 +90,17 @@ export function useContainersDashboardUrlState() {
       const normalized = value || "all";
       setParams({
         state: normalized,
+        page: 1,
+      });
+    },
+    [setParams]
+  );
+
+  const setHostFilter = useCallback(
+    (value: string) => {
+      const normalized = value || "all";
+      setParams({
+        host: normalized,
         page: 1,
       });
     },
@@ -156,6 +169,8 @@ export function useContainersDashboardUrlState() {
     setSearchTerm,
     stateFilter,
     setStateFilter,
+    hostFilter,
+    setHostFilter,
     sortDirection,
     setSortDirection,
     groupBy,
