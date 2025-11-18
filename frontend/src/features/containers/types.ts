@@ -1,3 +1,8 @@
+export interface DockerHost {
+  Name: string
+  Host: string
+}
+
 export interface ContainerInfo {
   id: string
   names: string[]
@@ -8,6 +13,7 @@ export interface ContainerInfo {
   state: string
   status: string
   labels?: Record<string, string>
+  host: string
 }
 
 export interface ContainersQueryParams {
@@ -15,4 +21,5 @@ export interface ContainersQueryParams {
   state?: string
   sortCreated?: "asc" | "desc"
   groupBy?: "none" | "compose"
+  host?: string
 }
