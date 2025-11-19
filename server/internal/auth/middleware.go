@@ -16,19 +16,24 @@ func Middleware(authService *Service) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
-			if authHeader == "" {
-				http.Error(w, "Authorization header required", http.StatusUnauthorized)
-				return
-			}
+			var tokenString string
 
-			// Check if the header starts with "Bearer "
-			parts := strings.SplitN(authHeader, " ", 2)
-			if len(parts) != 2 || parts[0] != "Bearer" {
-				http.Error(w, "Invalid authorization header format", http.StatusUnauthorized)
-				return
+			if authHeader != "" {
+				// Check if the header starts with "Bearer "
+				parts := strings.SplitN(authHeader, " ", 2)
+				if len(parts) != 2 || parts[0] != "Bearer" {
+					http.Error(w, "Invalid authorization header format", http.StatusUnauthorized)
+					return
+				}
+				tokenString = parts[1]
+			} else {
+				// Try to get token from query parameter (useful for WebSockets)
+				tokenString = r.URL.Query().Get("token")
+				if tokenString == "" {
+					http.Error(w, "Authorization header or token query parameter required", http.StatusUnauthorized)
+					return
+				}
 			}
-
-			tokenString := parts[1]
 
 			claims, err := authService.VerifyToken(tokenString)
 			if err != nil {
