@@ -14,6 +14,7 @@ import {
   RefreshCcwIcon,
   SearchIcon,
   SquareIcon,
+  TerminalIcon,
   WrapTextIcon
 } from "lucide-react";
 import {
@@ -62,6 +63,7 @@ import {
   toTitleCase
 } from "@/features/containers/components/container-utils";
 import { EnvironmentVariables } from "@/features/containers/components/environment-variables";
+import { Terminal } from "@/features/containers/components/terminal";
 import { requireAuthIfEnabled } from "@/lib/auth-guard";
 
 import type {
@@ -94,6 +96,7 @@ function ContainerLogsPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [showLabels, setShowLabels] = useState(false);
   const [showEnvVariables, setShowEnvVariables] = useState(false);
+  const [showTerminal, setShowTerminal] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
   const logLinesInputId = useId();
@@ -530,6 +533,32 @@ function ContainerLogsPage() {
                           containerId={actualContainerId}
                           containerHost={container.host}
                           onContainerIdChange={handleContainerRecreated}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Terminal Section */}
+                  <div className="space-y-2 border-t pt-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowTerminal((value) => !value)}
+                      className="h-8 w-full justify-start text-muted-foreground hover:text-foreground"
+                    >
+                      <ChevronDownIcon
+                        className={`mr-2 size-4 transition-transform ${
+                          showTerminal ? "rotate-180" : ""
+                        }`}
+                      />
+                      <TerminalIcon className="mr-2 size-4" />
+                      {showTerminal ? "Hide" : "Show"} terminal
+                    </Button>
+                    {container && (
+                      <div className={`mt-2 ${showTerminal ? "" : "hidden"}`}>
+                        <Terminal
+                          containerId={actualContainerId}
+                          host={container.host}
                         />
                       </div>
                     )}
