@@ -1,7 +1,7 @@
 import "xterm/css/xterm.css";
 
-import { ArrowDownIcon, CopyIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { ArrowDownIcon, CopyIcon, RefreshCwIcon } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Terminal as XTerm } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
@@ -93,7 +93,11 @@ const buildWebSocketUrl = (containerId: string, host: string) => {
 export function Terminal({ containerId, host }: TerminalProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const cleanupRef = useRef<(() => void) | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
 
   const handleCopyTerminal = () => {
     if (!xtermRef.current) return;
@@ -120,19 +124,39 @@ export function Terminal({ containerId, host }: TerminalProps) {
     xtermRef.current.scrollToLine(buffer.baseY + buffer.cursorY);
   };
 
-  useEffect(() => {
+  const connect = useCallback(() => {
     if (!terminalRef.current) return;
 
-    const { term, fitAddon } = createTerminal();
-    term.open(terminalRef.current);
-    fitAddon.fit();
-    xtermRef.current = term;
+    // Clean up existing connection if any
+    if (cleanupRef.current) {
+      cleanupRef.current();
+      cleanupRef.current = null;
+    }
+
+    setIsReconnecting(true);
+
+    // Create or reuse terminal
+    if (!xtermRef.current) {
+      const { term, fitAddon } = createTerminal();
+      term.open(terminalRef.current);
+      fitAddon.fit();
+      xtermRef.current = term;
+      fitAddonRef.current = fitAddon;
+    } else {
+      // Clear existing content for reconnection
+      xtermRef.current.clear();
+    }
+
+    const term = xtermRef.current;
+    const fitAddon = fitAddonRef.current!;
+
     const focusTimeout = window.setTimeout(() => {
       term.focus();
     }, 100);
 
     const ws = new WebSocket(buildWebSocketUrl(containerId, host));
     ws.binaryType = "arraybuffer";
+    wsRef.current = ws;
 
     const sendResize = () => {
       if (!terminalRef.current) return;
@@ -145,11 +169,11 @@ export function Terminal({ containerId, host }: TerminalProps) {
 
     ws.onopen = () => {
       setIsConnected(true);
+      setIsReconnecting(false);
       term.write(
         "\r\n\x1b[32m✓ Connected to container terminal\x1b[0m\r\n\r\n"
       );
       sendResize();
-      // Ensure we're scrolled to bottom after connection
       term.scrollToBottom();
     };
 
@@ -159,25 +183,25 @@ export function Terminal({ containerId, host }: TerminalProps) {
       } else if (typeof event.data === "string") {
         term.write(event.data);
       }
-      // Auto-scroll to bottom when new data arrives
       term.scrollToBottom();
     };
 
     ws.onclose = () => {
       setIsConnected(false);
+      setIsReconnecting(false);
       term.write("\r\n\x1b[31m✗ Connection closed\x1b[0m\r\n");
     };
 
     ws.onerror = (error) => {
       console.error("WebSocket error:", error);
       setIsConnected(false);
+      setIsReconnecting(false);
       term.write("\r\n\x1b[31m✗ WebSocket error\x1b[0m\r\n");
     };
 
     const dataSubscription = term.onData((data) => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(data);
-        // Auto-scroll to bottom when user types
         term.scrollToBottom();
       }
     });
@@ -198,16 +222,40 @@ export function Terminal({ containerId, host }: TerminalProps) {
       sendResize();
     }, 100);
 
-    return () => {
+    // Store cleanup function
+    cleanupRef.current = () => {
       window.removeEventListener("resize", sendResize);
       resizeObserver?.disconnect();
       window.clearTimeout(resizeTimeout);
       window.clearTimeout(focusTimeout);
       dataSubscription.dispose();
-      ws.close();
-      term.dispose();
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+        ws.close();
+      }
     };
   }, [containerId, host]);
+
+  const handleReconnect = () => {
+    if (isReconnecting) return;
+    toast.info("Reconnecting to terminal...");
+    connect();
+  };
+
+  useEffect(() => {
+    connect();
+
+    return () => {
+      if (cleanupRef.current) {
+        cleanupRef.current();
+        cleanupRef.current = null;
+      }
+      if (xtermRef.current) {
+        xtermRef.current.dispose();
+        xtermRef.current = null;
+        fitAddonRef.current = null;
+      }
+    };
+  }, [connect]);
 
   return (
     <div className="w-full space-y-2">
@@ -223,6 +271,28 @@ export function Terminal({ containerId, host }: TerminalProps) {
           </div>
         </div>
         <div className="flex items-center gap-1">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleReconnect}
+                disabled={isReconnecting || isConnected}
+                className="h-7 px-2"
+              >
+                <RefreshCwIcon
+                  className={`size-3.5 ${isReconnecting ? "animate-spin" : ""}`}
+                />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {isConnected
+                ? "Connected"
+                : isReconnecting
+                  ? "Reconnecting..."
+                  : "Reconnect"}
+            </TooltipContent>
+          </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
