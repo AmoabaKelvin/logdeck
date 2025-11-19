@@ -100,6 +100,7 @@ func (ar *APIRouter) registerContainerRoutes(r chi.Router) {
 			mutating.Post("/restart", ar.RestartContainer)
 			mutating.Post("/remove", ar.RemoveContainer)
 			mutating.Put("/env", ar.UpdateEnvVariables)
+			mutating.Get("/exec", ar.HandleTerminal)
 		})
 	})
 }
