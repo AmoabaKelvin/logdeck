@@ -20,7 +20,9 @@ func ReadOnly(cfg *config.Config) func(http.Handler) http.Handler {
 					"read_only": true,
 				}
 
-				json.NewEncoder(w).Encode(response)
+				if err := json.NewEncoder(w).Encode(response); err != nil {
+					http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+				}
 				return
 			}
 
