@@ -10,7 +10,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
-  AlertDialogTitle
+  AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -18,16 +18,16 @@ import {
   removeContainer,
   restartContainer,
   startContainer,
-  stopContainer
+  stopContainer,
 } from "../api/container-actions";
-import type { GetContainersResponse } from "../api/get-containers";
 import { useContainersDashboardUrlState } from "../hooks/use-containers-dashboard-url-state";
 import { useContainersQuery } from "../hooks/use-containers-query";
+import { useSystemStats } from "../hooks/use-system-stats";
 
 import {
   formatContainerName,
   getInitialStateCounts,
-  groupByCompose
+  groupByCompose,
 } from "./container-utils";
 import { ContainersLogsSheet } from "./containers-logs-sheet";
 import { ContainersPagination } from "./containers-pagination";
@@ -37,29 +37,40 @@ import { ContainersTable } from "./containers-table";
 import { ContainersToolbar } from "./containers-toolbar";
 
 import type { DateRange } from "react-day-picker";
+import type { GetContainersResponse } from "../api/get-containers";
 import type { ContainerInfo } from "../types";
 import type {
   ContainerActionType,
   GroupByOption,
   SortDirection,
 } from "./container-utils";
-const STATIC_HOST_INFO = {
-  host: "local-docker",
-  dockerVersion: "24.0.7",
-};
-
-const STATIC_SYSTEM_USAGE = {
-  cpu: 37,
-  memory: 62,
-};
 
 export function ContainersDashboard() {
   const queryClient = useQueryClient();
   const { data, error, isError, isFetching, isLoading, refetch } =
     useContainersQuery();
+  const { data: systemStats } = useSystemStats();
+
   const containers = data?.containers ?? [];
   const isReadOnly = data?.readOnly ?? false;
   const hosts = data?.hosts ?? [];
+
+  const hostInfo = useMemo(
+    () => ({
+      hostname: systemStats?.hostInfo.hostname ?? "Loading...",
+      os: systemStats?.hostInfo.platform ?? "Unknown",
+      kernel: systemStats?.hostInfo.kernelVersion ?? "Unknown",
+    }),
+    [systemStats]
+  );
+
+  const systemUsage = useMemo(
+    () => ({
+      cpu: Math.round(systemStats?.usage.cpuPercent ?? 0),
+      memory: Math.round(systemStats?.usage.memoryPercent ?? 0),
+    }),
+    [systemStats]
+  );
 
   const {
     searchTerm,
@@ -96,7 +107,10 @@ export function ContainersDashboard() {
   const matchesFilters = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
 
-    return (container: ContainerInfo, options: { includeStateFilter?: boolean } = {}) => {
+    return (
+      container: ContainerInfo,
+      options: { includeStateFilter?: boolean } = {}
+    ) => {
       const matchesSearch =
         !normalizedSearch ||
         container.id.toLowerCase().startsWith(normalizedSearch) ||
@@ -105,8 +119,7 @@ export function ContainersDashboard() {
           name.toLowerCase().includes(normalizedSearch)
         );
 
-      const matchesHost =
-        hostFilter === "all" || container.host === hostFilter;
+      const matchesHost = hostFilter === "all" || container.host === hostFilter;
 
       const containerDate = new Date(container.created * 1000);
       const matchesDateRange =
@@ -356,8 +369,8 @@ export function ContainersDashboard() {
     <div className="w-full space-y-8">
       <ContainersSummaryCards
         totalContainers={containers.length}
-        hostInfo={STATIC_HOST_INFO}
-        systemUsage={STATIC_SYSTEM_USAGE}
+        hostInfo={hostInfo}
+        systemUsage={systemUsage}
       />
 
       <section className="space-y-4">

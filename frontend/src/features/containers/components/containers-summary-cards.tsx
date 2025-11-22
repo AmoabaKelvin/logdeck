@@ -1,8 +1,9 @@
 import { Card, CardContent } from "@/components/ui/card";
 
 interface HostInfo {
-  host: string;
-  dockerVersion: string;
+  hostname: string;
+  os: string;
+  kernel: string;
 }
 
 interface SystemUsage {
@@ -27,9 +28,14 @@ export function ContainersSummaryCards({
         <CardContent className="px-6 py-0">
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">Host</p>
-            <p className="text-2xl font-semibold">{hostInfo.host}</p>
+            <p
+              className="text-2xl font-semibold truncate"
+              title={hostInfo.hostname}
+            >
+              {hostInfo.hostname}
+            </p>
             <p className="text-xs text-muted-foreground">
-              Docker {hostInfo.dockerVersion}
+              {hostInfo.os} • {hostInfo.kernel}
             </p>
           </div>
         </CardContent>
