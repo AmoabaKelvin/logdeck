@@ -74,7 +74,6 @@ export function getLogLevelColor(level: LogLevel): string {
     case "FATAL":
     case "PANIC":
       return "text-red-800";
-    case "UNKNOWN":
     default:
       return "text-gray-700";
   }
@@ -96,7 +95,6 @@ export function getLogLevelBgColor(level: LogLevel): string {
     case "FATAL":
     case "PANIC":
       return "bg-red-100";
-    case "UNKNOWN":
     default:
       return "bg-gray-50";
   }
@@ -138,7 +136,6 @@ export function getLogLevelPriority(level: LogLevel): number {
     case "FATAL":
     case "PANIC":
       return 5;
-    case "UNKNOWN":
     default:
       return 2;
   }
@@ -262,5 +259,3 @@ export function highlightSearchTerm(
   const regex = new RegExp(`(${searchTerm})`, "gi");
   return message.replace(regex, "<mark>$1</mark>");
 }
-
-

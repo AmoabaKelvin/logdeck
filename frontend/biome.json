@@ -1,5 +1,5 @@
 {
-	"$schema": "https://biomejs.dev/schemas/2.2.4/schema.json",
+	"$schema": "https://biomejs.dev/schemas/2.2.5/schema.json",
 	"vcs": {
 		"enabled": false,
 		"clientKind": "git",
@@ -12,7 +12,9 @@
 			"**/.vscode/**/*",
 			"**/index.html",
 			"**/vite.config.js",
-			"!**/src/routeTree.gen.ts"
+			"!**/src/routeTree.gen.ts",
+			"!**/src/components/ui/**/*",
+			"!**/styles.css"
 		]
 	},
 	"formatter": {
@@ -31,7 +33,7 @@
 		"rules": {
 			"recommended": true,
 			"correctness": {
-				"useUniqueElementIds": "warn"
+				"useUniqueElementIds": "off"
 			}
 		}
 	},

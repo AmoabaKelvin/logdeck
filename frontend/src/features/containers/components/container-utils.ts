@@ -91,7 +91,7 @@ export function groupByCompose(
     if (!groups.has(key)) {
       groups.set(key, []);
     }
-    groups.get(key)!.push(container);
+    groups.get(key)?.push(container)
   });
 
   return Array.from(groups.entries())
