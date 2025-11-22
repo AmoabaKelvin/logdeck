@@ -19,6 +19,11 @@ jobs:
         with:
           go-version-file: "server/go.mod"
 
+      - name: Create placeholder static files
+        run: |
+          mkdir -p server/internal/static/dist
+          touch server/internal/static/dist/index.html
+
       - name: Lint
         uses: golangci/golangci-lint-action@v6
         with:
