@@ -10,8 +10,20 @@ import (
 	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/models"
+	"github.com/AmoabaKelvin/logdeck/internal/system"
 	"github.com/go-chi/chi/v5"
 )
+
+func (ar *APIRouter) GetSystemStats(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	stats, err := system.GetStats(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	WriteJsonResponse(w, http.StatusOK, stats)
+}
 
 func (ar *APIRouter) GetContainers(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

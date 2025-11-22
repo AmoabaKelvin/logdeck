@@ -54,6 +54,9 @@ func (ar *APIRouter) Routes() *chi.Mux {
 
 	// API routes
 	ar.router.Route("/api/v1", func(r chi.Router) {
+		// System stats - publicly available for now
+		r.Get("/system/stats", ar.GetSystemStats)
+
 		if ar.authService != nil {
 			authHandlers := NewAuthHandlers(ar.authService)
 			r.Post("/auth/login", authHandlers.Login)
@@ -62,11 +65,13 @@ func (ar *APIRouter) Routes() *chi.Mux {
 				protected.Use(auth.Middleware(ar.authService))
 
 				protected.Get("/auth/me", authHandlers.GetMe)
+				// protected.Get("/system/stats", ar.GetSystemStats) // Moved to public
 				ar.registerContainerRoutes(protected)
 			})
 			return
 		}
 
+		// r.Get("/system/stats", ar.GetSystemStats) // Already registered above
 		ar.registerContainerRoutes(r)
 	})
 
