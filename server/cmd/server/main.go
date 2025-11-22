@@ -42,5 +42,7 @@ func main() {
 	apiRouter := api.NewRouter(multiHostClient, authService, config)
 
 	log.Println("Server starting on :8080")
-	http.ListenAndServe(":8080", apiRouter)
+	if err := http.ListenAndServe(":8080", apiRouter); err != nil {
+		log.Fatalf("Server failed to start: %v", err)
+	}
 }

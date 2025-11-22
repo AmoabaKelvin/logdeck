@@ -1,11 +1,19 @@
-import type { Metadata } from "next"
-import { Separator } from "@/components/ui/separator"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+
+import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Features",
-  description: "Explore all the features LogDeck offers for Docker container log viewing and management.",
-}
+  description:
+    "Explore all the features LogDeck offers for Docker container log viewing and management.",
+};
 
 const features = [
   {
@@ -68,8 +76,7 @@ const features = [
   },
   {
     title: "Container Management",
-    description:
-      "Manage your containers with simple, intuitive controls.",
+    description: "Manage your containers with simple, intuitive controls.",
     items: [
       "Start, stop, and restart containers",
       "Remove containers (with confirmation)",
@@ -113,7 +120,7 @@ const features = [
       "Can be toggled via environment variable",
     ],
   },
-]
+];
 
 export default function FeaturesPage() {
   return (
@@ -123,7 +130,8 @@ export default function FeaturesPage() {
           Features
         </h1>
         <p className="text-lg text-muted-foreground mt-2">
-          Discover everything LogDeck has to offer for Docker container management.
+          Discover everything LogDeck has to offer for Docker container
+          management.
         </p>
       </div>
 
@@ -131,8 +139,9 @@ export default function FeaturesPage() {
 
       <div className="prose prose-neutral dark:prose-invert max-w-none">
         <p>
-          LogDeck is packed with features designed to make Docker container log viewing and management
-          as intuitive and efficient as possible. Here&apos;s a comprehensive look at what LogDeck can do.
+          LogDeck is packed with features designed to make Docker container log
+          viewing and management as intuitive and efficient as possible.
+          Here&apos;s a comprehensive look at what LogDeck can do.
         </p>
       </div>
 
@@ -141,15 +150,17 @@ export default function FeaturesPage() {
           return (
             <Card key={feature.title}>
               <CardHeader>
-                <CardTitle className="text-2xl font-bold">{feature.title}</CardTitle>
+                <CardTitle className="text-2xl font-bold">
+                  {feature.title}
+                </CardTitle>
                 <CardDescription className="mt-2 text-base">
                   {feature.description}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2 text-sm">
-                  {feature.items.map((item, i) => (
-                    <li key={i} className="flex items-start gap-2">
+                  {feature.items.map((item) => (
+                    <li key={item} className="flex items-start gap-2">
                       <div className="h-1.5 w-1.5 rounded-full bg-primary mt-2 shrink-0" />
                       <span>{item}</span>
                     </li>
@@ -157,7 +168,7 @@ export default function FeaturesPage() {
                 </ul>
               </CardContent>
             </Card>
-          )
+          );
         })}
       </div>
 
@@ -166,30 +177,70 @@ export default function FeaturesPage() {
       <div className="prose prose-neutral dark:prose-invert max-w-none">
         <h2>User Interface Features</h2>
         <p>
-          Beyond the core functionality, LogDeck offers a polished user experience:
+          Beyond the core functionality, LogDeck offers a polished user
+          experience:
         </p>
         <ul>
-          <li><strong>Dark and Light Mode</strong> - Automatic theme switching based on system preferences with manual toggle</li>
-          <li><strong>Responsive Design</strong> - Works seamlessly on desktop, tablet, and mobile devices</li>
-          <li><strong>Modern UI</strong> - Built with React, Tailwind CSS, and Radix UI for a clean, professional look</li>
-          <li><strong>Toast Notifications</strong> - Get immediate feedback on actions with non-intrusive notifications</li>
-          <li><strong>Keyboard Shortcuts</strong> - Navigate and control LogDeck efficiently with keyboard shortcuts</li>
-          <li><strong>Virtualized Lists</strong> - Handle thousands of log lines without performance degradation</li>
+          <li>
+            <strong>Dark and Light Mode</strong> - Automatic theme switching
+            based on system preferences with manual toggle
+          </li>
+          <li>
+            <strong>Responsive Design</strong> - Works seamlessly on desktop,
+            tablet, and mobile devices
+          </li>
+          <li>
+            <strong>Modern UI</strong> - Built with React, Tailwind CSS, and
+            Radix UI for a clean, professional look
+          </li>
+          <li>
+            <strong>Toast Notifications</strong> - Get immediate feedback on
+            actions with non-intrusive notifications
+          </li>
+          <li>
+            <strong>Keyboard Shortcuts</strong> - Navigate and control LogDeck
+            efficiently with keyboard shortcuts
+          </li>
+          <li>
+            <strong>Virtualized Lists</strong> - Handle thousands of log lines
+            without performance degradation
+          </li>
         </ul>
 
         <h2>Technical Features</h2>
         <ul>
-          <li><strong>Single Binary Deployment</strong> - Frontend embedded in Go binary for easy deployment</li>
-          <li><strong>No Database Required</strong> - All state managed through Docker API</li>
-          <li><strong>Lightweight</strong> - Small resource footprint, suitable for resource-constrained environments</li>
-          <li><strong>Fast</strong> - Built with Go for high performance and low latency</li>
-          <li><strong>Open Source</strong> - GPL-3.0 licensed, community-driven development</li>
+          <li>
+            <strong>Single Binary Deployment</strong> - Frontend embedded in Go
+            binary for easy deployment
+          </li>
+          <li>
+            <strong>No Database Required</strong> - All state managed through
+            Docker API
+          </li>
+          <li>
+            <strong>Lightweight</strong> - Small resource footprint, suitable
+            for resource-constrained environments
+          </li>
+          <li>
+            <strong>Fast</strong> - Built with Go for high performance and low
+            latency
+          </li>
+          <li>
+            <strong>Open Source</strong> - GPL-3.0 licensed, community-driven
+            development
+          </li>
         </ul>
 
         <h2>Coming Soon</h2>
-        <p>LogDeck is actively developed. Here are some features planned for future releases:</p>
+        <p>
+          LogDeck is actively developed. Here are some features planned for
+          future releases:
+        </p>
         <ul>
-          <li>Multi-container log viewing (view logs from multiple containers simultaneously)</li>
+          <li>
+            Multi-container log viewing (view logs from multiple containers
+            simultaneously)
+          </li>
           <li>Log persistence and history</li>
           <li>Alert system for specific log patterns</li>
           <li>Container stats and metrics visualization</li>
@@ -198,7 +249,7 @@ export default function FeaturesPage() {
         </ul>
 
         <p className="mt-8">
-          Have a feature request? {" "}
+          Have a feature request?{" "}
           <a
             href="https://github.com/AmoabaKelvin/logdeck/issues/new"
             target="_blank"
@@ -210,5 +261,5 @@ export default function FeaturesPage() {
         </p>
       </div>
     </div>
-  )
+  );
 }

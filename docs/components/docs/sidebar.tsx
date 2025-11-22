@@ -1,10 +1,11 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { cn } from "@/lib/utils"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { ChevronRight, BookOpen, Settings, Layers, Rocket } from "lucide-react"
+import { BookOpen, ChevronRight, Layers, Rocket, Settings } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 
 const docsNav = [
   {
@@ -37,24 +38,24 @@ const docsNav = [
       },
     ],
   },
-]
+];
 
 export function DocsSidebar() {
-  const pathname = usePathname()
+  const pathname = usePathname();
 
   return (
     <aside className="fixed top-16 z-30 hidden h-[calc(100vh-4rem)] w-full shrink-0 md:sticky md:block border-r">
       <ScrollArea className="h-full py-6 pr-6 lg:py-8">
         <div className="w-full">
-          {docsNav.map((section, i) => (
-            <div key={i} className="pb-8">
+          {docsNav.map((section) => (
+            <div key={section.title} className="pb-8">
               <h4 className="mb-1 rounded-md px-2 py-1 text-sm font-semibold">
                 {section.title}
               </h4>
               <div className="grid grid-flow-row auto-rows-max text-sm">
                 {section.items.map((item) => {
-                  const Icon = item.icon
-                  const isActive = pathname === item.href
+                  const Icon = item.icon;
+                  const isActive = pathname === item.href;
                   return (
                     <Link
                       key={item.href}
@@ -68,7 +69,7 @@ export function DocsSidebar() {
                       <span>{item.title}</span>
                       {isActive && <ChevronRight className="ml-auto h-4 w-4" />}
                     </Link>
-                  )
+                  );
                 })}
               </div>
             </div>
@@ -76,5 +77,5 @@ export function DocsSidebar() {
         </div>
       </ScrollArea>
     </aside>
-  )
+  );
 }

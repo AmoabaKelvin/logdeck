@@ -1,11 +1,9 @@
 "use client";
 
-import { motion, useAnimation, Variants } from "framer-motion";
+import { motion, useAnimation, type Variants } from "framer-motion";
 import Link from "next/link";
 
 import { cn } from "@/lib/utils";
-
-const ease = [0.16, 1, 0.3, 1];
 
 interface HeroBadgeProps {
   href?: string;
@@ -48,9 +46,6 @@ export default function HeroBadge({
   const controls = useAnimation();
 
   const BadgeWrapper = href ? Link : motion.button;
-  const wrapperProps = href
-    ? { href }
-    : ({ onClick } as React.ButtonHTMLAttributes<HTMLButtonElement>);
 
   const baseClassName = cn(
     "inline-flex items-center rounded-full border transition-colors",

@@ -12,7 +12,9 @@
 			"**/.vscode/**/*",
 			"**/index.html",
 			"**/vite.config.js",
-			"!**/src/routeTree.gen.ts"
+			"!**/src/routeTree.gen.ts",
+			"!**/src/components/ui/**/*",
+			"!**/styles.css"
 		]
 	},
 	"formatter": {
@@ -31,7 +33,7 @@
 		"rules": {
 			"recommended": true,
 			"correctness": {
-				"useUniqueElementIds": "warn"
+				"useUniqueElementIds": "off"
 			}
 		}
 	},

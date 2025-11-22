@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
-  TooltipTrigger
+  TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { getAuthToken } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
@@ -136,19 +136,23 @@ export function Terminal({ containerId, host }: TerminalProps) {
     setIsReconnecting(true);
 
     // Create or reuse terminal
-    if (!xtermRef.current) {
-      const { term, fitAddon } = createTerminal();
+    let term = xtermRef.current;
+    let fitAddon = fitAddonRef.current;
+
+    if (!term || !fitAddon) {
+      const created = createTerminal();
+      term = created.term;
+      fitAddon = created.fitAddon;
+
       term.open(terminalRef.current);
       fitAddon.fit();
+
       xtermRef.current = term;
       fitAddonRef.current = fitAddon;
     } else {
       // Clear existing content for reconnection
-      xtermRef.current.clear();
+      term.clear();
     }
-
-    const term = xtermRef.current;
-    const fitAddon = fitAddonRef.current!;
 
     const focusTimeout = window.setTimeout(() => {
       term.focus();
@@ -229,7 +233,10 @@ export function Terminal({ containerId, host }: TerminalProps) {
       window.clearTimeout(resizeTimeout);
       window.clearTimeout(focusTimeout);
       dataSubscription.dispose();
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+      if (
+        ws.readyState === WebSocket.OPEN ||
+        ws.readyState === WebSocket.CONNECTING
+      ) {
         ws.close();
       }
     };

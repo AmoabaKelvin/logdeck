@@ -48,7 +48,9 @@ func (ar *APIRouter) HandleTerminal(w http.ResponseWriter, r *http.Request) {
 	execID, resp, err := ar.startExecSession(ctx, host, id)
 	if err != nil {
 		log.Printf("terminal session init failed: %v", err)
-		ws.WriteMessage(websocket.TextMessage, []byte("Error creating terminal session: "+err.Error()))
+		if writeErr := ws.WriteMessage(websocket.TextMessage, []byte("Error creating terminal session: "+err.Error())); writeErr != nil {
+			log.Printf("failed to send error message to websocket: %v", writeErr)
+		}
 		return
 	}
 	defer resp.Close()

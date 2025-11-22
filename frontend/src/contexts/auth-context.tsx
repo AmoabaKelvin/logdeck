@@ -1,4 +1,11 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import type React from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 
 import { API_BASE_URL } from "@/types/api";
 
@@ -28,18 +35,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthEnabled, setIsAuthEnabled] = useState(true);
 
-  useEffect(() => {
-    const storedToken = localStorage.getItem(TOKEN_KEY);
-    if (storedToken) {
-      setToken(storedToken);
-      verifyToken(storedToken);
-    } else {
-      checkIfAuthEnabled();
-    }
-  }, []);
-
   // Check if authentication is enabled on the backend
-  const checkIfAuthEnabled = async () => {
+  const checkIfAuthEnabled = useCallback(async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
         method: "POST",
@@ -59,9 +56,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const verifyToken = async (tokenToVerify: string) => {
+  const verifyToken = useCallback(async (tokenToVerify: string) => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/v1/auth/me`, {
         headers: {
@@ -94,7 +91,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const storedToken = localStorage.getItem(TOKEN_KEY);
+    if (storedToken) {
+      setToken(storedToken);
+      verifyToken(storedToken);
+    } else {
+      checkIfAuthEnabled();
+    }
+  }, [verifyToken, checkIfAuthEnabled]);
 
   // Check authentication status
   const checkAuth = async (): Promise<boolean> => {
