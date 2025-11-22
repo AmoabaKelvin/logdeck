@@ -21,8 +21,8 @@ jobs:
 
       - name: Create placeholder static files
         run: |
-          mkdir -p server/internal/static/dist
-          touch server/internal/static/dist/index.html
+          mkdir -p internal/static/dist
+          touch internal/static/dist/index.html
 
       - name: Lint
         uses: golangci/golangci-lint-action@v6
