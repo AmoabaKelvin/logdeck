@@ -9,9 +9,12 @@ import (
 	"github.com/AmoabaKelvin/logdeck/internal/auth"
 	"github.com/AmoabaKelvin/logdeck/internal/config"
 	"github.com/AmoabaKelvin/logdeck/internal/docker"
+	"github.com/AmoabaKelvin/logdeck/internal/system"
 )
 
 func main() {
+	system.Init()
+
 	config := config.NewConfig()
 	fmt.Println("Config", config)
 
