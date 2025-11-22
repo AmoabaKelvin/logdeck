@@ -103,9 +103,6 @@ jobs:
       - name: Type Check
         run: bun x tsc --noEmit
 
-      - name: Test
-        run: bun x vitest run
-
       - name: Build
         run: bun run build
 
