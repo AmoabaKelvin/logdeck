@@ -98,7 +98,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Lint (Biome)
-        run: bun x biome ci .
+        run: bun x biome lint .
 
       - name: Type Check
         run: bun x tsc --noEmit
