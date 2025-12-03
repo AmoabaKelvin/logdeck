@@ -1,8 +1,10 @@
 services:
   logdeck:
-    build:
-      context: .
-      dockerfile: ./server/Dockerfile
+    image: amoabakelvin/logdeck:latest
+    # To build locally instead, comment out 'image' and uncomment below:
+    # build:
+    #   context: .
+    #   dockerfile: ./server/Dockerfile
     ports:
       - "8123:8080"
     environment:
@@ -14,3 +16,4 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /root/.ssh:/root/.ssh:ro
+      - /proc:/host/proc:ro
