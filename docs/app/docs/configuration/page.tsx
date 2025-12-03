@@ -45,25 +45,6 @@ export default function ConfigurationPage() {
           <CardContent className="space-y-4">
             <div>
               <div className="flex items-baseline gap-2 mb-1">
-                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">BACKEND_PORT</code>
-                <span className="text-xs text-muted-foreground">Optional</span>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Port for the backend server to listen on.
-              </p>
-              <div className="mt-2">
-                <span className="text-xs font-medium">Default:</span>{" "}
-                <code className="text-xs bg-muted px-1.5 py-0.5 rounded">8080</code>
-              </div>
-              <div className="mt-2">
-                <CodeBlock code='BACKEND_PORT=8080' language="bash" />
-              </div>
-            </div>
-
-            <Separator />
-
-            <div>
-              <div className="flex items-baseline gap-2 mb-1">
                 <code className="text-sm font-mono bg-muted px-2 py-1 rounded">DOCKER_HOSTS</code>
                 <span className="text-xs text-muted-foreground">Optional</span>
               </div>
@@ -294,21 +275,18 @@ console.log(hash);`}
 
         <div className="mb-8">
           <CodeBlock
-          code={`version: '3.8'
-
-services:
+          code={`services:
   logdeck:
-    image: logdeck/logdeck:latest
+    image: amoabakelvin/logdeck:latest
     container_name: logdeck
     ports:
-      - "8123:8123"
+      - "8123:8080"
     volumes:
-      # Mount Docker socket
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Mount Docker socket for container management
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount /proc for system stats
+      - /proc:/host/proc:ro
     environment:
-      # Server configuration
-      BACKEND_PORT: 8080
-
       # Docker hosts (local + remote example)
       DOCKER_HOSTS: "local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.example.com"
 
@@ -319,7 +297,7 @@ services:
       ADMIN_PASSWORD: "your-sha256-hash"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8123"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -352,7 +330,7 @@ services:
         <ul className="mb-8 space-y-2">
           <li>Run LogDeck only on trusted networks</li>
           <li>Enable authentication if exposing LogDeck to untrusted users</li>
-          <li>Consider mounting the socket as read-only (<code>:ro</code>) if you only need log viewing</li>
+          <li>If you only need log viewing (no container management), mount the socket as read-only (<code>:ro</code>)</li>
           <li>Use Docker&apos;s built-in authorization plugins for fine-grained access control</li>
           <li>Keep LogDeck behind a reverse proxy with TLS in production</li>
         </ul>
@@ -409,20 +387,19 @@ sudo usermod -aG docker $USER`}
         <h3 className="mb-4 mt-8 text-xl font-semibold">Traefik Example (Docker Labels)</h3>
         <div className="mb-8">
           <CodeBlock
-          code={`version: '3.8'
-
-services:
+          code={`services:
   logdeck:
-    image: logdeck/logdeck:latest
+    image: amoabakelvin/logdeck:latest
     container_name: logdeck
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /proc:/host/proc:ro
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.logdeck.rule=Host(\`logdeck.example.com\`)"
       - "traefik.http.routers.logdeck.entrypoints=websecure"
       - "traefik.http.routers.logdeck.tls.certresolver=letsencrypt"
-      - "traefik.http.services.logdeck.loadbalancer.server.port=8123"
+      - "traefik.http.services.logdeck.loadbalancer.server.port=8080"
     restart: unless-stopped`}
           language="yaml"
           />

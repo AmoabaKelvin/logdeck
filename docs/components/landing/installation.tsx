@@ -8,16 +8,15 @@ import { ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 
-const dockerComposeExample = `version: '3.8'
-
-services:
+const dockerComposeExample = `services:
   logdeck:
-    image: logdeck/logdeck:latest
+    image: amoabakelvin/logdeck:latest
     container_name: logdeck
     ports:
-      - "8123:8123"
+      - "8123:8080"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /proc:/host/proc:ro
     environment:
       # Optional: Enable authentication
       # JWT_SECRET: your-super-secret-key-min-32-chars
@@ -28,19 +27,21 @@ services:
 
 const dockerRunCommand = `docker run -d \\
   --name logdeck \\
-  -p 8123:8123 \\
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \\
-  logdeck/logdeck:latest`
+  -p 8123:8080 \\
+  -v /var/run/docker.sock:/var/run/docker.sock \\
+  -v /proc:/host/proc:ro \\
+  amoabakelvin/logdeck:latest`
 
 const dockerRunWithAuth = `docker run -d \\
   --name logdeck \\
-  -p 8123:8123 \\
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \\
+  -p 8123:8080 \\
+  -v /var/run/docker.sock:/var/run/docker.sock \\
+  -v /proc:/host/proc:ro \\
   -e JWT_SECRET=your-super-secret-key-min-32-chars \\
   -e ADMIN_USERNAME=admin \\
   -e ADMIN_PASSWORD_SALT=your-random-salt-change-this \\
   -e ADMIN_PASSWORD=your-sha256-hash \\
-  logdeck/logdeck:latest`
+  amoabakelvin/logdeck:latest`
 
 export function Installation() {
   return (

@@ -52,16 +52,15 @@ export default function GettingStartedPage() {
 
         <div className="mb-6">
           <CodeBlock
-          code={`version: '3.8'
-
-services:
+          code={`services:
   logdeck:
-    image: logdeck/logdeck:latest
+    image: amoabakelvin/logdeck:latest
     container_name: logdeck
     ports:
-      - "8123:8123"
+      - "8123:8080"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /proc:/host/proc:ro
     restart: unless-stopped`}
           language="yaml"
           />

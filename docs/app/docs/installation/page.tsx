@@ -49,18 +49,13 @@ export default function InstallationPage() {
 
         <div className="mb-8">
           <CodeBlock
-            code={`version: '3.8'
-
-services:
+            code={`services:
   logdeck:
-    image: logdeck/logdeck:latest
+    image: amoabakelvin/logdeck:latest
     container_name: logdeck
     ports:
-      - "8123:8123"
+      - "8123:8080"
     environment:
-      # Optional: Configure backend port
-      # BACKEND_PORT: 8080
-
       # Optional: Manage multiple Docker hosts
       # DOCKER_HOSTS: local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.example.com
 
@@ -70,8 +65,10 @@ services:
       # ADMIN_PASSWORD_SALT: your-random-salt-change-this
       # ADMIN_PASSWORD: your-sha256-hash
     volumes:
-      # Mount the Docker socket (read-only for security)
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Mount the Docker socket for container management
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount /proc for system stats (CPU, memory usage)
+      - /proc:/host/proc:ro
       # Mount SSH keys if you use ssh:// hosts
       # - ~/.ssh:/root/.ssh:ro
     restart: unless-stopped`}
@@ -120,10 +117,11 @@ services:
           <CodeBlock
             code={`docker run -d \\
   --name logdeck \\
-  -p 8123:8123 \\
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \\
+  -p 8123:8080 \\
+  -v /var/run/docker.sock:/var/run/docker.sock \\
+  -v /proc:/host/proc:ro \\
   --restart unless-stopped \\
-  logdeck/logdeck:latest`}
+  amoabakelvin/logdeck:latest`}
             language="bash"
           />
         </div>
@@ -133,14 +131,15 @@ services:
           <CodeBlock
             code={`docker run -d \\
   --name logdeck \\
-  -p 8123:8123 \\
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \\
+  -p 8123:8080 \\
+  -v /var/run/docker.sock:/var/run/docker.sock \\
+  -v /proc:/host/proc:ro \\
   -e JWT_SECRET=your-super-secret-key-min-32-chars \\
   -e ADMIN_USERNAME=admin \\
   -e ADMIN_PASSWORD_SALT=your-random-salt-change-this \\
   -e ADMIN_PASSWORD=your-sha256-hash \\
   --restart unless-stopped \\
-  logdeck/logdeck:latest`}
+  amoabakelvin/logdeck:latest`}
             language="bash"
           />
         </div>
@@ -180,14 +179,6 @@ export DOCKER_HOSTS="local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.ex
             <CardContent className="space-y-3">
               <div>
                 <code className="text-sm bg-muted px-2 py-1 rounded">
-                  BACKEND_PORT
-              </code>
-              <p className="text-sm text-muted-foreground mt-1">
-                Port for the backend server. Default: <code>8080</code>
-              </p>
-            </div>
-            <div>
-              <code className="text-sm bg-muted px-2 py-1 rounded">
                   DOCKER_HOSTS
                 </code>
                 <p className="text-sm text-muted-foreground mt-1">
@@ -274,10 +265,9 @@ export DOCKER_HOSTS="local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.ex
                 networks or enable authentication to protect access.
               </p>
               <p className="mt-2">
-                We mount it as read-only (<code>:ro</code>) by default, but
-                LogDeck needs write access for container management features
-                (start, stop, restart). If you only need log viewing, keep it
-                read-only and enable read-only mode in LogDeck.
+                LogDeck needs write access to the Docker socket for container management features
+                (start, stop, restart). If you only need log viewing, you can mount it
+                read-only (<code>:ro</code>) and enable read-only mode in LogDeck.
               </p>
             </CardContent>
           </Card>
@@ -306,7 +296,7 @@ docker-compose up -d`}
           <CodeBlock
             code={`docker stop logdeck
 docker rm logdeck
-docker pull logdeck/logdeck:latest
+docker pull amoabakelvin/logdeck:latest
 # Then run your docker run command again`}
             language="bash"
           />
@@ -346,7 +336,7 @@ docker pull logdeck/logdeck:latest
         </p>
         <div className="mb-8">
           <CodeBlock
-            code='- "8124:8123"  # Use port 8124 instead'
+            code='- "8124:8080"  # Use port 8124 instead'
             language="yaml"
           />
         </div>
