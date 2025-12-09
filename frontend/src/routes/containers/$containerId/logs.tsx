@@ -2,6 +2,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
+  ArrowDownIcon,
+  ArrowDownToLineIcon,
   ArrowLeftIcon,
   CheckIcon,
   ChevronDownIcon,
@@ -99,7 +101,13 @@ function ContainerLogsPage() {
   const [showTerminal, setShowTerminal] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
+  const autoScrollRef = useRef(autoScroll);
   const logLinesInputId = useId();
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    autoScrollRef.current = autoScroll;
+  }, [autoScroll]);
 
   // Decode the URL parameter (could be name or ID)
   const containerIdentifier = decodeURIComponent(encodedContainerId);
@@ -143,11 +151,11 @@ function ContainerLogsPage() {
   };
 
   const scrollToBottom = useCallback(() => {
-    if (autoScroll && parentRef.current) {
+    if (autoScrollRef.current && parentRef.current) {
       // For virtualized list, scroll the parent container to bottom
       parentRef.current.scrollTop = parentRef.current.scrollHeight;
     }
-  }, [autoScroll]);
+  }, []);
 
   const fetchLogs = useCallback(async () => {
     if (!actualContainerId || !container?.host) return;
@@ -730,12 +738,16 @@ function ContainerLogsPage() {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
-                      variant={autoScroll ? "default" : "outline"}
+                      variant={autoScroll ? "secondary" : "outline"}
                       size="sm"
                       onClick={() => setAutoScroll(!autoScroll)}
-                      className="h-9"
+                      className={`h-9 ${autoScroll ? "bg-primary/10 hover:bg-primary/20 border-primary/30" : ""}`}
                     >
-                      <ChevronDownIcon className="size-4" />
+                      {autoScroll ? (
+                        <ArrowDownToLineIcon className="size-4" />
+                      ) : (
+                        <ArrowDownIcon className="size-4" />
+                      )}
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>

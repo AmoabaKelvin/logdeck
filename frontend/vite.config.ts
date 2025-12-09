@@ -22,5 +22,12 @@ export default defineConfig({
   server: {
     host: true, // Listen on all addresses, needed for Docker
     port: 5173,
+    proxy: {
+      // Proxy API requests to the backend during development
+      "/api": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+      },
+    },
   },
 });
