@@ -1,14 +1,18 @@
-import { TanStackDevtools } from "@tanstack/react-devtools";
 import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
-import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
+import { lazy, Suspense } from "react";
 import { NuqsAdapter } from "nuqs/adapters/tanstack-router";
 
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/contexts/auth-context";
 
-import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
-
 import type { QueryClient } from "@tanstack/react-query";
+
+const DevTools = lazy(() =>
+  import("@/components/dev-tools").then((module) => ({
+    default: module.DevTools,
+  }))
+);
+
 interface MyRouterContext {
   queryClient: QueryClient;
 }
@@ -20,18 +24,11 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
         <Outlet />
       </NuqsAdapter>
       <Toaster />
-      <TanStackDevtools
-        config={{
-          position: "bottom-right",
-        }}
-        plugins={[
-          {
-            name: "Tanstack Router",
-            render: <TanStackRouterDevtoolsPanel />,
-          },
-          TanStackQueryDevtools,
-        ]}
-      />
+      {import.meta.env.DEV && (
+        <Suspense fallback={null}>
+          <DevTools />
+        </Suspense>
+      )}
     </AuthProvider>
   ),
 });
