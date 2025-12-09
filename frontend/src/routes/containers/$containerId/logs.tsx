@@ -730,14 +730,12 @@ function ContainerLogsPage() {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
-                      variant="outline"
+                      variant={autoScroll ? "default" : "outline"}
                       size="sm"
                       onClick={() => setAutoScroll(!autoScroll)}
                       className="h-9"
                     >
-                      <ChevronDownIcon
-                        className={`size-4 ${autoScroll ? "text-primary" : ""}`}
-                      />
+                      <ChevronDownIcon className="size-4" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>

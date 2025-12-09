@@ -123,7 +123,7 @@ export function Hero() {
             >
               <div className="w-full overflow-hidden">
                 <CodeBlock
-                  code="docker run -d -p 8123:8080 -v /var/run/docker.sock:/var/run/docker.sock -v /proc:/host/proc:ro amoabakelvin/logdeck"
+                  code="docker run -d -p 8123:8080 -v /var/run/docker.sock:/var/run/docker.sock amoabakelvin/logdeck"
                   language="bash"
                 />
               </div>
