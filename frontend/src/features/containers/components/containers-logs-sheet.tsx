@@ -18,7 +18,8 @@ import {
   SquareIcon,
   WrapTextIcon
 } from "lucide-react";
-import React, {
+import type React from "react";
+import {
   useCallback,
   useEffect,
   useId,
@@ -341,6 +342,7 @@ export function ContainersLogsSheet({
   }, [filteredLogs, searchText]);
 
   // Reset current match index when search changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally reset when searchText changes
   useEffect(() => {
     setCurrentMatchIndex(0);
   }, [searchText]);

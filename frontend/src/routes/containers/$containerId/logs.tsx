@@ -352,6 +352,7 @@ function ContainerLogsPage() {
   }, [filteredLogs, searchText]);
 
   // Reset current match index when search changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally reset when searchText changes
   useEffect(() => {
     setCurrentMatchIndex(0);
   }, [searchText]);
