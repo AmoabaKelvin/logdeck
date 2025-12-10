@@ -58,3 +58,4 @@ coverage/
 *.cover
 *.coverage
 .nyc_output/
+.envrc
