@@ -4,6 +4,8 @@ import {
   ArrowDownToLineIcon,
   CheckIcon,
   ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   CopyIcon,
   DownloadIcon,
   ExternalLinkIcon,
@@ -16,6 +18,7 @@ import {
   SquareIcon,
   WrapTextIcon
 } from "lucide-react";
+import type React from "react";
 import {
   useCallback,
   useEffect,
@@ -103,6 +106,7 @@ export function ContainersLogsSheet({
   const [autoScroll, setAutoScroll] = useState(true);
   const [wrapText, setWrapText] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const abortControllerRef = useRef<AbortController | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef(autoScroll);
@@ -311,26 +315,37 @@ export function ContainersLogsSheet({
     toast.success(`Logs downloaded as ${format.toUpperCase()}`);
   };
 
+  // Filter logs by level only (search no longer filters, just highlights)
   const filteredLogs = useMemo(() => {
     return logs.filter((entry) => {
-      // Filter by search text
-      if (searchText) {
-        const message = (entry.message || entry.raw || "").toLowerCase();
-        if (!message.includes(searchText.toLowerCase())) {
-          return false;
-        }
-      }
-
-      // Filter by log level
+      // Filter by log level only
       if (selectedLevels.size > 0 && entry.level) {
         if (!selectedLevels.has(entry.level)) {
           return false;
         }
       }
-
       return true;
     });
-  }, [logs, searchText, selectedLevels]);
+  }, [logs, selectedLevels]);
+
+  // Find all matching log indices for search navigation
+  const searchMatches = useMemo(() => {
+    if (!searchText) return [];
+    const matches: number[] = [];
+    filteredLogs.forEach((entry, index) => {
+      const message = (entry.message || entry.raw || "").toLowerCase();
+      if (message.includes(searchText.toLowerCase())) {
+        matches.push(index);
+      }
+    });
+    return matches;
+  }, [filteredLogs, searchText]);
+
+  // Reset current match index when search changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally reset when searchText changes
+  useEffect(() => {
+    setCurrentMatchIndex(0);
+  }, [searchText]);
 
   const availableLogLevels = useMemo(() => {
     const levels = new Set<LogLevel>();
@@ -342,13 +357,54 @@ export function ContainersLogsSheet({
     return Array.from(levels).sort();
   }, [logs]);
 
-  // Virtualization setup
+  // Virtualization setup (must be before navigation functions)
   const rowVirtualizer = useVirtualizer({
     count: filteredLogs.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => (wrapText ? 60 : 36),
     overscan: 5,
   });
+
+  // Navigate to previous match
+  const goToPreviousMatch = useCallback(() => {
+    if (searchMatches.length === 0) return;
+    const newIndex = currentMatchIndex > 0 ? currentMatchIndex - 1 : searchMatches.length - 1;
+    setCurrentMatchIndex(newIndex);
+    rowVirtualizer.scrollToIndex(searchMatches[newIndex], { align: "center" });
+  }, [searchMatches, currentMatchIndex, rowVirtualizer]);
+
+  // Navigate to next match
+  const goToNextMatch = useCallback(() => {
+    if (searchMatches.length === 0) return;
+    const newIndex = currentMatchIndex < searchMatches.length - 1 ? currentMatchIndex + 1 : 0;
+    setCurrentMatchIndex(newIndex);
+    rowVirtualizer.scrollToIndex(searchMatches[newIndex], { align: "center" });
+  }, [searchMatches, currentMatchIndex, rowVirtualizer]);
+
+  // Helper to highlight search text in message
+  const highlightSearchText = useCallback((text: string, isCurrentMatch: boolean): React.ReactNode => {
+    if (!searchText || !text) return text;
+
+    const lowerText = text.toLowerCase();
+    const lowerSearch = searchText.toLowerCase();
+    const index = lowerText.indexOf(lowerSearch);
+
+    if (index === -1) return text;
+
+    const before = text.slice(0, index);
+    const match = text.slice(index, index + searchText.length);
+    const after = text.slice(index + searchText.length);
+
+    return (
+      <>
+        {before}
+        <mark className={`px-0.5 rounded ${isCurrentMatch ? "bg-yellow-400 dark:bg-yellow-500" : "bg-yellow-200 dark:bg-yellow-700"}`}>
+          {match}
+        </mark>
+        {highlightSearchText(after, isCurrentMatch)}
+      </>
+    );
+  }, [searchText]);
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
@@ -583,6 +639,45 @@ export function ContainersLogsSheet({
                   />
                 </div>
 
+                {/* Search navigation controls */}
+                {searchText && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      {searchMatches.length > 0
+                        ? `${currentMatchIndex + 1} of ${searchMatches.length}`
+                        : "No matches"}
+                    </span>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={goToPreviousMatch}
+                          disabled={searchMatches.length === 0}
+                          className="h-9 w-9 p-0"
+                        >
+                          <ChevronLeftIcon className="size-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Previous match</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={goToNextMatch}
+                          disabled={searchMatches.length === 0}
+                          className="h-9 w-9 p-0"
+                        >
+                          <ChevronRightIcon className="size-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Next match</TooltipContent>
+                    </Tooltip>
+                  </div>
+                )}
+
                 <Popover open={showFilters} onOpenChange={setShowFilters}>
                   <PopoverTrigger asChild>
                     <Button variant="outline" size="sm" className="h-9">
@@ -776,6 +871,10 @@ export function ContainersLogsSheet({
                               })}`
                             : "—";
 
+                          // Check if this row is the current search match
+                          const isCurrentMatch = searchMatches.length > 0 && searchMatches[currentMatchIndex] === virtualRow.index;
+                          const hasMatch = searchMatches.includes(virtualRow.index);
+
                           return (
                             <div
                               key={virtualRow.key}
@@ -785,12 +884,13 @@ export function ContainersLogsSheet({
                                 position: "absolute",
                                 top: 0,
                                 left: 0,
-                                width: "100%",
+                                width: wrapText ? "100%" : "max-content",
+                                minWidth: "100%",
                                 transform: `translateY(${virtualRow.start}px)`,
                               }}
                               className={`group flex items-start gap-3 px-4 py-1.5 hover:bg-muted/50 ${
                                 wrapText ? "" : "whitespace-nowrap"
-                              } ${virtualRow.index % 2 === 0 ? "bg-muted/30" : ""}`}
+                              } ${isCurrentMatch ? "bg-yellow-100 dark:bg-yellow-900/30 border-y-2 border-yellow-400 dark:border-yellow-600" : virtualRow.index % 2 === 0 ? "bg-muted/30" : ""}`}
                             >
                               {showTimestamps && (
                                 <span className="text-muted-foreground shrink-0 text-[11px]">
@@ -806,7 +906,9 @@ export function ContainersLogsSheet({
                               <span
                                 className={`text-foreground flex-1 ${wrapText ? "break-words" : ""}`}
                               >
-                                {entry.message ?? ""}
+                                {hasMatch
+                                  ? highlightSearchText(entry.message ?? "", isCurrentMatch)
+                                  : entry.message ?? ""}
                               </span>
                               <Tooltip>
                                 <TooltipTrigger asChild>
