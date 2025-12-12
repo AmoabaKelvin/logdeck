@@ -461,9 +461,16 @@ export function ContainersLogsSheet({
                     </div>
                     <div className="grid grid-cols-3 gap-4">
                       <span className="text-muted-foreground">Image</span>
-                      <span className="col-span-2 font-medium">
-                        {container.image}
-                      </span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="col-span-2 font-medium truncate cursor-help">
+                            {container.image}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-md break-all">
+                          {container.image}
+                        </TooltipContent>
+                      </Tooltip>
                     </div>
                     <div className="grid grid-cols-3 gap-4">
                       <span className="text-muted-foreground">State</span>
