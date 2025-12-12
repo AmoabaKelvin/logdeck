@@ -1,57 +1,79 @@
 # LogDeck
 
-Logdeck is an open-source project that aims to be the most intuitive and visually appealing tool for monitoring Docker container logs as well as managing containers.
+LogDeck is an open-source, high-performance Docker container monitoring and management tool. Built for speed and ease of use, it provides real-time log streaming, multi-host support, and a beautiful interface for managing your containers.
 
 ![LogDeck Landing](./docs/landing.png)
 ![LogDeck Container View and Logs](./docs/logs.png)
 
 ## Features
 
+### Real-Time Log Streaming
+
+- Live log streaming (tail -f style) with play/pause controls
+- Historical log viewing with configurable line counts
+- Auto-scroll toggle during streaming
+- Toggleable timestamps and text wrapping
+- Log download in JSON or TXT format
+
+### Advanced Log Filtering & Search
+
+- Full-text search with highlighting
+- Search navigation (previous/next match with match counter)
+- Filter by log level (TRACE, DEBUG, INFO, WARN, ERROR, FATAL, PANIC)
+- Color-coded log level badges for quick visual scanning
+
 ### Multi-Host Docker Support
 
-LogDeck supports managing Docker containers across multiple Docker hosts simultaneously. Monitor and control containers on local, remote, and SSH-connected Docker daemons from a single unified interface.
+Manage containers across multiple Docker hosts from a single interface:
 
-Key capabilities:
-
-- Connect to multiple Docker hosts (local Unix socket, remote SSH, TCP)
+- Connect to local Unix sockets, remote SSH, or TCP endpoints
 - Filter and view containers by specific host or across all hosts
-- Real-time container state synchronization across all configured hosts
+- Real-time container state synchronization
 - Secure SSH-based connections with key authentication
-- Per-host container operations (start, stop, restart, remove)
-- Host-aware log streaming and environment variable management
+- Host-aware operations and log streaming
 
-For detailed configuration instructions and deployment examples, see the [Multi-Host Setup Guide](./multi-host.md).
+For detailed configuration, see the [Multi-Host Setup Guide](./multi-host.md).
 
-## Roadmap for v1.0.0
+### Container Lifecycle Management
 
-- [ ] Container discovery
+- Start, stop, restart, and remove containers
+- Confirmation dialogs for destructive actions
+- Read-only mode for monitoring-only deployments
+- Real-time state updates
 
-  - [ ] Automatically discover all running containers
-  - [ ] Host name, docker version
-  - [ ] Host system usage (CPU, memory)
-  - [ ] Show container name, image, status, uptime
-  - [ ] Real-time updates when containers start/stop
-  - [ ] Group containers by project, network, label, etc.
-  - [ ] View container details (env vars, volumes, ports, labels, etc.)
+### Container Discovery & Organization
 
-- [ ] Log viewing
+- Automatic discovery of all running containers
+- Group containers by Docker Compose project
+- Filter by state (running, exited, paused, restarting, dead)
+- Search by container name, ID, or image
+- Sort by creation date
+- Date range filtering
 
-  - [ ] Real-time log streaming (tail -f style)
-  - [ ] Historical logs with option for getting X number of lines
-  - [ ] Auto-scroll toggle for streaming logs
-  - [ ] Timestamps (toggleable)
-  - [ ] Color-coded log levels (ERROR, WARN, INFO, DEBUG)
-  - [ ] Download logs as file (downloading both the parsed logs as well as the raw logs)
-  - [ ] Pause/resume streaming
+### Interactive Terminal
 
-- [ ] Basic filtering
+- WebSocket-based container terminal access
+- Full terminal emulation with XTerm.js
+- 10,000 line scrollback history
+- Copy-to-clipboard support
 
-  - [ ] Search/filter logs by text
-  - [ ] Filter by log level
-  - [ ] Date range filtering
-  - [ ] Regex support (minimal support for now)
+### Environment Variables Management
 
-- [ ] Container Life Cycle Management
+- View and edit container environment variables
+- Bulk import from .env files
+- Support for quoted values and comments
 
-  - [ ] Start, stop, restart, remove containers (Later on this should be a feature flag that can be enabled/disabled, sometimes we might just want a read only view of the containers and their logs)
-  - [ ] View container stats (CPU, memory)
+### Modern UI/UX
+
+- Clean, intuitive dashboard with summary cards
+- Dark mode support
+- Responsive design (mobile, tablet, desktop)
+- URL state persistence for shareable views
+- Accessible UI components
+
+### Authentication & Security
+
+- Optional authentication (enable/disable as needed)
+- JWT token-based authentication
+- Role-based access control
+- Read-only mode support
