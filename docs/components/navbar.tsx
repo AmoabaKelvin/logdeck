@@ -4,6 +4,7 @@ import { Github } from "lucide-react";
 import Link from "next/link";
 import * as React from "react";
 
+import { MobileSidebar } from "@/components/docs/mobile-sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -69,6 +70,7 @@ export function Navbar() {
             </a>
           </Button>
           <ThemeToggle />
+          <MobileSidebar />
         </div>
       </div>
     </header>

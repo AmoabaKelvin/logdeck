@@ -61,7 +61,7 @@ export function MobileSidebar() {
           <span className="sr-only">Toggle menu</span>
         </Button>
       </SheetTrigger>
-      <SheetContent side="left" className="w-72 p-0">
+      <SheetContent side="right" className="w-72 p-0">
         <SheetHeader className="border-b px-6 py-4">
           <SheetTitle>Documentation</SheetTitle>
         </SheetHeader>
