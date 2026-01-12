@@ -108,7 +108,13 @@ function ContainerLogsPage() {
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const abortControllerRef = useRef<AbortController | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
+  const autoScrollRef = useRef(autoScroll);
   const logLinesInputId = useId();
+
+  // Keep ref in sync with state to avoid stale closures in setTimeout
+  useEffect(() => {
+    autoScrollRef.current = autoScroll;
+  }, [autoScroll]);
 
   // Decode the URL parameter (could be name or ID)
   const containerIdentifier = decodeURIComponent(encodedContainerId);
@@ -153,10 +159,10 @@ function ContainerLogsPage() {
   };
 
   const scrollToBottom = useCallback(() => {
-    if (autoScroll && parentRef.current) {
+    if (autoScrollRef.current && parentRef.current) {
       parentRef.current.scrollTop = parentRef.current.scrollHeight;
     }
-  }, [autoScroll]);
+  }, []);
 
   const fetchLogs = useCallback(async () => {
     if (!actualContainerId || !container?.host) return;
