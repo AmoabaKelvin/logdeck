@@ -74,6 +74,7 @@ import {
   toTitleCase
 } from "./container-utils";
 import { EnvironmentVariables } from "./environment-variables";
+import { SelectionActionBar } from "./selection-action-bar";
 
 import type { LogEntry, LogLevel } from "@/types/logs";
 import type { ContainerInfo } from "../types";
@@ -107,6 +108,8 @@ export function ContainersLogsSheet({
   const [wrapText, setWrapText] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
+  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
+  const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef(autoScroll);
@@ -269,6 +272,39 @@ export function ContainersLogsSheet({
       });
   };
 
+  const clearSelection = useCallback(() => {
+    setSelectedIndices(new Set());
+    setLastClickedIndex(null);
+  }, []);
+
+  const handleLogClick = useCallback(
+    (index: number, event: React.MouseEvent) => {
+      if (event.shiftKey && lastClickedIndex !== null) {
+        // Shift-click: range selection
+        const start = Math.min(lastClickedIndex, index);
+        const end = Math.max(lastClickedIndex, index);
+        const newSelected = new Set<number>();
+        for (let i = start; i <= end; i++) {
+          newSelected.add(i);
+        }
+        setSelectedIndices(newSelected);
+      } else {
+        // Regular click: toggle single selection and set anchor
+        setSelectedIndices((prev) => {
+          const newSet = new Set(prev);
+          if (newSet.has(index)) {
+            newSet.delete(index);
+          } else {
+            newSet.add(index);
+          }
+          return newSet;
+        });
+        setLastClickedIndex(index);
+      }
+    },
+    [lastClickedIndex]
+  );
+
   const handleDownloadLogs = (format: "json" | "txt") => {
     if (filteredLogs.length === 0) {
       toast.error("No logs to download");
@@ -328,6 +364,43 @@ export function ContainersLogsSheet({
     });
   }, [logs, selectedLevels]);
 
+  const handleCopySelected = useCallback(() => {
+    if (selectedIndices.size === 0) return;
+
+    const sortedIndices = Array.from(selectedIndices).sort((a, b) => a - b);
+    // Filter out any invalid indices as a safety measure
+    const validIndices = sortedIndices.filter(
+      (idx) => idx >= 0 && idx < filteredLogs.length
+    );
+    if (validIndices.length === 0) {
+      clearSelection();
+      return;
+    }
+
+    const selectedLogs = validIndices.map((idx) => filteredLogs[idx]);
+
+    const content = selectedLogs
+      .map((entry) => {
+        const timestamp = entry.timestamp
+          ? new Date(entry.timestamp).toISOString()
+          : "";
+        const level = entry.level || "UNKNOWN";
+        const message = entry.message || entry.raw || "";
+        return `[${timestamp}] [${level}] ${message}`;
+      })
+      .join("\n");
+
+    navigator.clipboard
+      .writeText(content)
+      .then(() => {
+        toast.success(`${validIndices.length} log entries copied to clipboard`);
+        clearSelection();
+      })
+      .catch(() => {
+        toast.error("Failed to copy to clipboard");
+      });
+  }, [selectedIndices, filteredLogs, clearSelection]);
+
   // Find all matching log indices for search navigation
   const searchMatches = useMemo(() => {
     if (!searchText) return [];
@@ -346,6 +419,12 @@ export function ContainersLogsSheet({
   useEffect(() => {
     setCurrentMatchIndex(0);
   }, [searchText]);
+
+  // Clear selection when filters, search, or logs change
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally clear selection on data changes
+  useEffect(() => {
+    clearSelection();
+  }, [searchText, selectedLevels, logs]);
 
   const availableLogLevels = useMemo(() => {
     const levels = new Set<LogLevel>();
@@ -831,7 +910,13 @@ export function ContainersLogsSheet({
                 </DropdownMenu>
               </div>
               <Card>
-                <CardContent className="p-0">
+                <CardContent className="p-0 relative">
+                  {/* Selection Action Bar - sticky at top of logs */}
+                  <SelectionActionBar
+                    selectedCount={selectedIndices.size}
+                    onCopy={handleCopySelected}
+                    onClear={clearSelection}
+                  />
                   <div
                     ref={parentRef}
                     className="h-[400px] w-full overflow-auto"
@@ -881,12 +966,14 @@ export function ContainersLogsSheet({
                           // Check if this row is the current search match
                           const isCurrentMatch = searchMatches.length > 0 && searchMatches[currentMatchIndex] === virtualRow.index;
                           const hasMatch = searchMatches.includes(virtualRow.index);
+                          const isSelected = selectedIndices.has(virtualRow.index);
 
                           return (
                             <div
                               key={virtualRow.key}
                               data-index={virtualRow.index}
                               ref={rowVirtualizer.measureElement}
+                              onClick={(e) => handleLogClick(virtualRow.index, e)}
                               style={{
                                 position: "absolute",
                                 top: 0,
@@ -894,10 +981,19 @@ export function ContainersLogsSheet({
                                 width: wrapText ? "100%" : "max-content",
                                 minWidth: "100%",
                                 transform: `translateY(${virtualRow.start}px)`,
+                                cursor: "pointer",
                               }}
-                              className={`group flex items-start gap-3 px-4 py-1.5 hover:bg-muted/50 ${
+                              className={`group flex items-start gap-3 px-4 py-1.5 transition-all duration-150 ease-out ${
                                 wrapText ? "" : "whitespace-nowrap"
-                              } ${isCurrentMatch ? "bg-yellow-100 dark:bg-yellow-900/30 border-y-2 border-yellow-400 dark:border-yellow-600" : virtualRow.index % 2 === 0 ? "bg-muted/30" : ""}`}
+                              } ${
+                                isSelected
+                                  ? "bg-primary/[0.08] dark:bg-primary/[0.15] border-l-[3px] border-primary shadow-[inset_0_0_0_1px_rgba(var(--primary),0.1)]"
+                                  : isCurrentMatch
+                                    ? "bg-yellow-100 dark:bg-yellow-900/30 border-y-2 border-yellow-400 dark:border-yellow-600"
+                                    : virtualRow.index % 2 === 0
+                                      ? "bg-muted/30 border-l-[3px] border-transparent hover:bg-muted/50"
+                                      : "border-l-[3px] border-transparent hover:bg-muted/50"
+                              }`}
                             >
                               {showTimestamps && (
                                 <span className="text-muted-foreground shrink-0 text-[11px]">
@@ -921,7 +1017,10 @@ export function ContainersLogsSheet({
                                 <TooltipTrigger asChild>
                                   <button
                                     type="button"
-                                    onClick={() => handleCopyLog(entry)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleCopyLog(entry);
+                                    }}
                                     className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-muted rounded"
                                   >
                                     <CopyIcon className="size-3 text-muted-foreground" />
