@@ -1,4 +1,4 @@
-import type { ContainerInfo } from "../types";
+import type { ContainerInfo, ContainerStats } from "../types";
 
 export type SortDirection = "asc" | "desc";
 export type GroupByOption = "none" | "compose";
@@ -121,4 +121,29 @@ export function getContainerUrlIdentifier(container: ContainerInfo): string {
   }
   // Fallback to short ID if no name
   return container.id.substring(0, 12);
+}
+
+export function formatBytes(bytes: number): string {
+  if (!bytes || bytes < 0) return "—";
+  if (bytes === 0) return "0 B";
+
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / Math.pow(1024, index);
+
+  return `${value.toFixed(index === 0 ? 0 : 1)}${units[index]}`;
+}
+
+export function formatCPUPercent(percent: number | undefined): string {
+  return percent != null ? `${percent.toFixed(1)}%` : "—";
+}
+
+export function formatMemoryStats(stats: ContainerStats | undefined): string {
+  if (!stats?.memory_percent || !stats?.memory_used) return "—";
+
+  const percent = stats.memory_percent.toFixed(1);
+  const usage = formatBytes(stats.memory_used);
+  const limit = stats.memory_limit ? `/${formatBytes(stats.memory_limit)}` : "";
+
+  return `${percent}% - ${usage}${limit}`;
 }

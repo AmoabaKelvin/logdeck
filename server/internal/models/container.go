@@ -42,3 +42,18 @@ func DefaultLogOptions() LogOptions {
 type EnvVariables struct {
 	Env map[string]string `json:"env"`
 }
+
+// ContainerStats represents CPU and memory usage for a container
+type ContainerStats struct {
+	ID            string  `json:"id"`
+	Host          string  `json:"host"`
+	CPUPercent    float64 `json:"cpu_percent"`
+	MemoryPercent float64 `json:"memory_percent"`
+	MemoryUsed    uint64  `json:"memory_used"`
+	MemoryLimit   uint64  `json:"memory_limit"`
+}
+
+// ContainerStatsResponse is the API response for container stats
+type ContainerStatsResponse struct {
+	Stats []ContainerStats `json:"stats"`
+}
