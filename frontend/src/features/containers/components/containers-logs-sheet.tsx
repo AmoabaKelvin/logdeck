@@ -969,11 +969,20 @@ export function ContainersLogsSheet({
                           const isSelected = selectedIndices.has(virtualRow.index);
 
                           return (
+                            // biome-ignore lint/a11y/useSemanticElements: div required for virtual scrolling absolute positioning
                             <div
                               key={virtualRow.key}
                               data-index={virtualRow.index}
                               ref={rowVirtualizer.measureElement}
+                              role="button"
+                              tabIndex={0}
                               onClick={(e) => handleLogClick(virtualRow.index, e)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  handleLogClick(virtualRow.index, e as unknown as React.MouseEvent);
+                                }
+                              }}
                               style={{
                                 position: "absolute",
                                 top: 0,

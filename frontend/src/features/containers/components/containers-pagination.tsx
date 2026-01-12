@@ -144,13 +144,9 @@ export function ContainersPagination({
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="text-sm text-muted-foreground">
-        {totalItems > 0 ? (
-          <>
-            Showing {startIndex}-{endIndex} of {totalItems}
-          </>
-        ) : (
-          <>0 containers</>
-        )}
+        {totalItems > 0
+          ? `Showing ${startIndex}-${endIndex} of ${totalItems}`
+          : "0 containers"}
       </div>
       <div className="flex items-center gap-6">
         <div className="flex items-center gap-2">
