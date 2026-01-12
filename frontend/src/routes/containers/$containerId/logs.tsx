@@ -395,10 +395,12 @@ function ContainerLogsPage() {
 
     return parts.map((part, i) =>
       part.toLowerCase() === searchText.toLowerCase() ? (
-        <mark key={i} className={`px-0.5 rounded ${isCurrentMatch ? "bg-yellow-400 dark:bg-yellow-500" : "bg-yellow-200 dark:bg-yellow-700"}`}>
+        <mark key={`${i}-${part}`} className={`px-0.5 rounded ${isCurrentMatch ? "bg-yellow-400 dark:bg-yellow-500" : "bg-yellow-200 dark:bg-yellow-700"}`}>
           {part}
         </mark>
-      ) : part
+      ) : (
+        <span key={`${i}-${part}`}>{part}</span>
+      )
     );
   }, [searchText]);
 
