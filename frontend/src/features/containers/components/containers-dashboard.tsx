@@ -22,6 +22,7 @@ import {
 } from "../api/container-actions";
 import { useContainersDashboardUrlState } from "../hooks/use-containers-dashboard-url-state";
 import { useContainersQuery } from "../hooks/use-containers-query";
+import { useContainerStats } from "../hooks/use-container-stats";
 import { useSystemStats } from "../hooks/use-system-stats";
 
 import {
@@ -50,6 +51,7 @@ export function ContainersDashboard() {
   const { data, error, isError, isFetching, isLoading, refetch } =
     useContainersQuery();
   const { data: systemStats } = useSystemStats();
+  const { statsMap } = useContainerStats();
 
   const containers = data?.containers ?? [];
   const isReadOnly = data?.readOnly ?? false;
@@ -406,6 +408,7 @@ export function ContainersDashboard() {
           pageItems={pageItems}
           pendingAction={pendingAction}
           isReadOnly={isReadOnly}
+          statsMap={statsMap}
           onStart={handleStartContainer}
           onStop={handleStopContainer}
           onRestart={handleRestartContainer}

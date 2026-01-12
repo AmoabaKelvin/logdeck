@@ -61,13 +61,16 @@ import {
 import { getContainers } from "@/features/containers/api/get-containers";
 import {
   formatContainerName,
+  formatCPUPercent,
   formatCreatedDate,
+  formatMemoryStats,
   formatUptime,
   getStateBadgeClass,
   toTitleCase
 } from "@/features/containers/components/container-utils";
 import { EnvironmentVariables } from "@/features/containers/components/environment-variables";
 import { Terminal } from "@/features/containers/components/terminal";
+import { useContainerStats } from "@/features/containers/hooks/use-container-stats";
 import { requireAuthIfEnabled } from "@/lib/auth-guard";
 
 import type {
@@ -104,13 +107,7 @@ function ContainerLogsPage() {
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const abortControllerRef = useRef<AbortController | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
-  const autoScrollRef = useRef(autoScroll);
   const logLinesInputId = useId();
-
-  // Keep ref in sync with state
-  useEffect(() => {
-    autoScrollRef.current = autoScroll;
-  }, [autoScroll]);
 
   // Decode the URL parameter (could be name or ID)
   const containerIdentifier = decodeURIComponent(encodedContainerId);
@@ -120,6 +117,7 @@ function ContainerLogsPage() {
     queryKey: ["containers"],
     queryFn: getContainers,
   });
+  const { statsMap } = useContainerStats();
 
   const containers = containersData?.containers ?? [];
 
@@ -154,11 +152,10 @@ function ContainerLogsPage() {
   };
 
   const scrollToBottom = useCallback(() => {
-    if (autoScrollRef.current && parentRef.current) {
-      // For virtualized list, scroll the parent container to bottom
+    if (autoScroll && parentRef.current) {
       parentRef.current.scrollTop = parentRef.current.scrollHeight;
     }
-  }, []);
+  }, [autoScroll]);
 
   const fetchLogs = useCallback(async () => {
     if (!actualContainerId || !container?.host) return;
@@ -391,28 +388,17 @@ function ContainerLogsPage() {
     rowVirtualizer.scrollToIndex(searchMatches[newIndex], { align: "center" });
   }, [searchMatches, currentMatchIndex, rowVirtualizer]);
 
-  // Helper to highlight search text in message
   const highlightSearchText = useCallback((text: string, isCurrentMatch: boolean): React.ReactNode => {
     if (!searchText || !text) return text;
 
-    const lowerText = text.toLowerCase();
-    const lowerSearch = searchText.toLowerCase();
-    const index = lowerText.indexOf(lowerSearch);
+    const parts = text.split(new RegExp(`(${searchText})`, "gi"));
 
-    if (index === -1) return text;
-
-    const before = text.slice(0, index);
-    const match = text.slice(index, index + searchText.length);
-    const after = text.slice(index + searchText.length);
-
-    return (
-      <>
-        {before}
-        <mark className={`px-0.5 rounded ${isCurrentMatch ? "bg-yellow-400 dark:bg-yellow-500" : "bg-yellow-200 dark:bg-yellow-700"}`}>
-          {match}
+    return parts.map((part, i) =>
+      part.toLowerCase() === searchText.toLowerCase() ? (
+        <mark key={i} className={`px-0.5 rounded ${isCurrentMatch ? "bg-yellow-400 dark:bg-yellow-500" : "bg-yellow-200 dark:bg-yellow-700"}`}>
+          {part}
         </mark>
-        {highlightSearchText(after, isCurrentMatch)}
-      </>
+      ) : part
     );
   }, [searchText]);
 
@@ -507,6 +493,31 @@ function ContainerLogsPage() {
                       <p className="font-medium">{container.status}</p>
                     </div>
                   </div>
+
+                  {/* Resource Usage Section - only for running containers */}
+                  {container.state.toLowerCase() === "running" && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                      <div className="md:col-span-3">
+                        <span className="text-muted-foreground block mb-1">
+                          Resource Usage
+                        </span>
+                        <div className="flex gap-6 font-mono text-sm">
+                          <div>
+                            <span className="text-muted-foreground">CPU: </span>
+                            <span className="font-medium">
+                              {formatCPUPercent(statsMap[container.id]?.cpu_percent)}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Memory: </span>
+                            <span className="font-medium">
+                              {formatMemoryStats(statsMap[container.id])}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                     <div>

@@ -23,3 +23,14 @@ export interface ContainersQueryParams {
   groupBy?: "none" | "compose"
   host?: string
 }
+
+export interface ContainerStats {
+  id: string
+  host: string
+  cpu_percent: number
+  memory_percent: number
+  memory_used: number
+  memory_limit: number
+}
+
+export type ContainerStatsMap = Record<string, ContainerStats>

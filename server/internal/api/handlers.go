@@ -25,6 +25,21 @@ func (ar *APIRouter) GetSystemStats(w http.ResponseWriter, r *http.Request) {
 	WriteJsonResponse(w, http.StatusOK, stats)
 }
 
+func (ar *APIRouter) GetContainerStats(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	stats, err := ar.docker.GetAllRunningContainerStats(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	WriteJsonResponse(w, http.StatusOK, models.ContainerStatsResponse{
+		Stats: stats,
+	})
+}
+
 func (ar *APIRouter) GetContainers(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

@@ -91,6 +91,7 @@ func (ar *APIRouter) Routes() *chi.Mux {
 
 func (ar *APIRouter) registerContainerRoutes(r chi.Router) {
 	r.Get("/containers", ar.GetContainers)
+	r.Get("/containers/stats", ar.GetContainerStats)
 	r.Route("/containers/{id}", func(r chi.Router) {
 		// Read-only routes (always available)
 		r.Get("/", ar.GetContainer)
