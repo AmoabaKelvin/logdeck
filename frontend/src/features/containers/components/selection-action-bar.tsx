@@ -41,8 +41,7 @@ export function SelectionActionBar({
     <div
       className={cn(
         "sticky top-0 z-20 flex items-center justify-between gap-4 px-4 py-2",
-        "bg-gradient-to-r from-primary/[0.08] via-primary/[0.05] to-transparent",
-        "border-b border-primary/20 backdrop-blur-sm",
+        "bg-primary/[0.06] border-b border-primary/20 backdrop-blur-sm",
         "transition-all duration-300 ease-out",
         isVisible
           ? "opacity-100 translate-y-0"
