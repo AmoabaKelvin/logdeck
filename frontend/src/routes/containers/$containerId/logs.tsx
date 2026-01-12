@@ -72,6 +72,7 @@ import { EnvironmentVariables } from "@/features/containers/components/environme
 import { Terminal } from "@/features/containers/components/terminal";
 import { useContainerStats } from "@/features/containers/hooks/use-container-stats";
 import { requireAuthIfEnabled } from "@/lib/auth-guard";
+import { escapeRegExp } from "@/lib/utils";
 
 import type {
   LogEntry,
@@ -391,7 +392,8 @@ function ContainerLogsPage() {
   const highlightSearchText = useCallback((text: string, isCurrentMatch: boolean): React.ReactNode => {
     if (!searchText || !text) return text;
 
-    const parts = text.split(new RegExp(`(${searchText})`, "gi"));
+    const escaped = escapeRegExp(searchText);
+    const parts = text.split(new RegExp(`(${escaped})`, "gi"));
 
     return parts.map((part, i) =>
       part.toLowerCase() === searchText.toLowerCase() ? (
