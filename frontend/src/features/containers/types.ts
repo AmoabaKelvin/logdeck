@@ -16,6 +16,11 @@ export interface ContainerInfo {
   host: string
 }
 
+export interface HostError {
+  host: string
+  message: string
+}
+
 export interface ContainersQueryParams {
   search?: string
   state?: string

@@ -54,6 +54,20 @@ export function ContainersDashboard() {
   const containers = data?.containers ?? [];
   const isReadOnly = data?.readOnly ?? false;
   const hosts = data?.hosts ?? [];
+  const hostErrors = data?.hostErrors ?? [];
+
+  const hostErrorKeys = hostErrors.map((he) => he.host).sort().join(",");
+  useEffect(() => {
+    if (hostErrors.length > 0) {
+      for (const he of hostErrors) {
+        toast.warning(`Could not reach host "${he.host}"`, {
+          id: `host-error-${he.host}`,
+          description: "Containers from this host could not be loaded.",
+          duration: 8000,
+        });
+      }
+    }
+  }, [hostErrorKeys, hostErrors]);
 
   const hostInfo = useMemo(
     () => ({
