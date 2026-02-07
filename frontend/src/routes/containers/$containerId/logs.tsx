@@ -461,12 +461,12 @@ function ContainerLogsPage() {
     setCurrentMatchIndex(0);
   }, [searchText]);
 
-  // Clear selection when filters, search, or logs change
+  // Clear selection when filters or search settings change
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally clear selection on data changes
   useEffect(() => {
     clearSelection();
     setExpandedJsonRows(new Set());
-  }, [searchText, excludeMatches, selectedLevels, logs]);
+  }, [searchText, excludeMatches, selectedLevels]);
 
   const availableLogLevels = useMemo(() => {
     const levels = new Set<LogLevel>();
