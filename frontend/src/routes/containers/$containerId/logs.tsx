@@ -461,9 +461,13 @@ function ContainerLogsPage() {
     setPinnedLogIndices((prev) => {
       const next = new Set(prev);
       if (allSelectedArePinned) {
-        selectedOriginalIndices.forEach((index) => next.delete(index));
+        selectedOriginalIndices.forEach((index) => {
+          next.delete(index);
+        });
       } else {
-        selectedOriginalIndices.forEach((index) => next.add(index));
+        selectedOriginalIndices.forEach((index) => {
+          next.add(index);
+        });
       }
       return next;
     });
