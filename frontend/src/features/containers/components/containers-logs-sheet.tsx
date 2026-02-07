@@ -567,9 +567,7 @@ export function ContainersLogsSheet({
     if (sortedPinnedIndices.length === 0) return;
 
     const newPinnedIndex =
-      offset > 0
-        ? (currentPinnedIndex + 1) % sortedPinnedIndices.length
-        : (currentPinnedIndex - 1 + sortedPinnedIndices.length) % sortedPinnedIndices.length;
+      (currentPinnedIndex + offset + sortedPinnedIndices.length) % sortedPinnedIndices.length;
 
     setCurrentPinnedIndex(newPinnedIndex);
     const targetOriginalIndex = sortedPinnedIndices[newPinnedIndex];
