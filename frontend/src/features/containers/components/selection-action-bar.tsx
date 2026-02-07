@@ -1,4 +1,4 @@
-import { CheckIcon, CopyIcon, XIcon } from "lucide-react";
+import { CheckIcon, CopyIcon, PinIcon, PinOffIcon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -7,12 +7,16 @@ import { cn } from "@/lib/utils";
 interface SelectionActionBarProps {
   selectedCount: number;
   onCopy: () => void;
+  onTogglePin: () => void;
+  pinActionLabel: "pin" | "unpin";
   onClear: () => void;
 }
 
 export function SelectionActionBar({
   selectedCount,
   onCopy,
+  onTogglePin,
+  pinActionLabel,
   onClear,
 }: SelectionActionBarProps) {
   const [copied, setCopied] = useState(false);
@@ -82,6 +86,24 @@ export function SelectionActionBar({
             <>
               <CopyIcon className="size-3.5" />
               Copy
+            </>
+          )}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onTogglePin}
+          className="h-7 px-3 text-xs font-medium gap-1.5"
+        >
+          {pinActionLabel === "unpin" ? (
+            <>
+              <PinOffIcon className="size-3.5" />
+              Unpin
+            </>
+          ) : (
+            <>
+              <PinIcon className="size-3.5" />
+              Pin
             </>
           )}
         </Button>

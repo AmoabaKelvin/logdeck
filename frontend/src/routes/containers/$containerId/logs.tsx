@@ -114,6 +114,8 @@ function ContainerLogsPage() {
   const [showTerminal, setShowTerminal] = useState(false);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
+  const [pinnedLogIndices, setPinnedLogIndices] = useState<Set<number>>(new Set());
+  const [currentPinnedIndex, setCurrentPinnedIndex] = useState(0);
   const [expandedJsonRows, setExpandedJsonRows] = useState<Set<number>>(new Set());
   const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -180,6 +182,8 @@ function ContainerLogsPage() {
 
     setIsLoadingLogs(true);
     try {
+      setPinnedLogIndices(new Set());
+      setCurrentPinnedIndex(0);
       const logEntries = await getContainerLogsParsed(actualContainerId, container.host, {
         tail: logLines,
       });
@@ -200,6 +204,8 @@ function ContainerLogsPage() {
 
     setIsStreaming(true);
     setIsLoadingLogs(true);
+    setPinnedLogIndices(new Set());
+    setCurrentPinnedIndex(0);
     setLogs([]);
 
     try {
@@ -406,6 +412,73 @@ function ContainerLogsPage() {
     });
   }, [logs, selectedLevels, excludeMatches, searchText]);
 
+  const filteredToOriginalIndex = useMemo(() => {
+    const indices: number[] = [];
+    let searchFrom = 0;
+
+    filteredLogs.forEach((entry) => {
+      for (let i = searchFrom; i < logs.length; i++) {
+        if (logs[i] === entry) {
+          indices.push(i);
+          searchFrom = i + 1;
+          return;
+        }
+      }
+      indices.push(-1);
+    });
+
+    return indices;
+  }, [filteredLogs, logs]);
+
+  const pinnedFilteredIndices = useMemo(() => {
+    const next = new Set<number>();
+    filteredToOriginalIndex.forEach((originalIndex, filteredIndex) => {
+      if (pinnedLogIndices.has(originalIndex)) {
+        next.add(filteredIndex);
+      }
+    });
+    return next;
+  }, [filteredToOriginalIndex, pinnedLogIndices]);
+
+  const selectedOriginalIndices = useMemo(() => {
+    return Array.from(selectedIndices)
+      .map((index) => filteredToOriginalIndex[index] ?? -1)
+      .filter((index) => index >= 0);
+  }, [selectedIndices, filteredToOriginalIndex]);
+
+  const allSelectedArePinned = useMemo(() => {
+    return selectedOriginalIndices.length > 0 &&
+      selectedOriginalIndices.every((index) => pinnedLogIndices.has(index));
+  }, [selectedOriginalIndices, pinnedLogIndices]);
+
+  const sortedPinnedIndices = useMemo(() => {
+    return Array.from(pinnedLogIndices).sort((a, b) => a - b);
+  }, [pinnedLogIndices]);
+
+  const handleTogglePinSelected = useCallback(() => {
+    if (selectedOriginalIndices.length === 0) return;
+
+    setPinnedLogIndices((prev) => {
+      const next = new Set(prev);
+      if (allSelectedArePinned) {
+        selectedOriginalIndices.forEach((index) => {
+          next.delete(index);
+        });
+      } else {
+        selectedOriginalIndices.forEach((index) => {
+          next.add(index);
+        });
+      }
+      return next;
+    });
+
+    toast.success(
+      allSelectedArePinned
+        ? `${selectedOriginalIndices.length} ${selectedOriginalIndices.length === 1 ? "line" : "lines"} unpinned`
+        : `${selectedOriginalIndices.length} ${selectedOriginalIndices.length === 1 ? "line" : "lines"} pinned`
+    );
+  }, [selectedOriginalIndices, allSelectedArePinned]);
+
   const handleCopySelected = useCallback(() => {
     if (selectedIndices.size === 0) return;
 
@@ -468,6 +541,14 @@ function ContainerLogsPage() {
     setExpandedJsonRows(new Set());
   }, [searchText, excludeMatches, selectedLevels]);
 
+  useEffect(() => {
+    if (sortedPinnedIndices.length === 0) {
+      setCurrentPinnedIndex(0);
+    } else if (currentPinnedIndex >= sortedPinnedIndices.length) {
+      setCurrentPinnedIndex(sortedPinnedIndices.length - 1);
+    }
+  }, [sortedPinnedIndices, currentPinnedIndex]);
+
   const availableLogLevels = useMemo(() => {
     const levels = new Set<LogLevel>();
     logs.forEach((entry) => {
@@ -501,6 +582,28 @@ function ContainerLogsPage() {
     setCurrentMatchIndex(newIndex);
     rowVirtualizer.scrollToIndex(searchMatches[newIndex], { align: "center" });
   }, [searchMatches, currentMatchIndex, rowVirtualizer]);
+
+  const goToPinnedByOffset = useCallback((offset: 1 | -1) => {
+    if (sortedPinnedIndices.length === 0) return;
+
+    const newPinnedIndex =
+      offset > 0
+        ? (currentPinnedIndex + 1) % sortedPinnedIndices.length
+        : (currentPinnedIndex - 1 + sortedPinnedIndices.length) % sortedPinnedIndices.length;
+
+    setCurrentPinnedIndex(newPinnedIndex);
+    const targetOriginalIndex = sortedPinnedIndices[newPinnedIndex];
+    const targetFilteredIndex = filteredToOriginalIndex.indexOf(targetOriginalIndex);
+
+    if (targetFilteredIndex === -1) {
+      toast.info("Pinned line is hidden by current filters");
+      return;
+    }
+
+    setSelectedIndices(new Set([targetFilteredIndex]));
+    setLastClickedIndex(targetFilteredIndex);
+    rowVirtualizer.scrollToIndex(targetFilteredIndex, { align: "center" });
+  }, [sortedPinnedIndices, currentPinnedIndex, filteredToOriginalIndex, rowVirtualizer]);
 
   const goToAdjacentLogLine = useCallback((direction: 1 | -1) => {
     if (filteredLogs.length === 0) return;
@@ -618,6 +721,16 @@ function ContainerLogsPage() {
         } else {
           goToNextMatch();
         }
+        return;
+      }
+
+      if (lowerKey === "p") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          goToPinnedByOffset(-1);
+        } else {
+          goToPinnedByOffset(1);
+        }
       }
     };
 
@@ -630,6 +743,7 @@ function ContainerLogsPage() {
     goToAdjacentLogLine,
     extendSelectionByLine,
     goToNextMatch,
+    goToPinnedByOffset,
     goToPreviousMatch,
   ]);
 
@@ -943,6 +1057,30 @@ function ContainerLogsPage() {
                     </div>
                   )}
 
+                  {sortedPinnedIndices.length > 0 && (
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      <span className="text-xs tabular-nums text-muted-foreground whitespace-nowrap px-1">
+                        {`${Math.min(currentPinnedIndex + 1, sortedPinnedIndices.length)} of ${sortedPinnedIndices.length} pinned`}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => goToPinnedByOffset(-1)}
+                        className="h-8 w-8 p-0"
+                      >
+                        <ChevronLeftIcon className="size-3.5" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => goToPinnedByOffset(1)}
+                        className="h-8 w-8 p-0"
+                      >
+                        <ChevronRightIcon className="size-3.5" />
+                      </Button>
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-2 shrink-0">
                     <Label
                       htmlFor={logLinesInputId}
@@ -993,7 +1131,8 @@ function ContainerLogsPage() {
                   Shortcuts: <kbd className="font-mono">/</kbd> search,{" "}
                   <kbd className="font-mono">j</kbd>/<kbd className="font-mono">k</kbd>{" "}
                   lines, <kbd className="font-mono">n</kbd>/<kbd className="font-mono">N</kbd>{" "}
-                  matches
+                  matches, <kbd className="font-mono">p</kbd>/<kbd className="font-mono">P</kbd>{" "}
+                  pins
                 </p>
                 {/* Row 2: Options bar */}
                 <div className="flex items-center gap-2">
@@ -1140,6 +1279,8 @@ function ContainerLogsPage() {
               <SelectionActionBar
                 selectedCount={selectedIndices.size}
                 onCopy={handleCopySelected}
+                onTogglePin={handleTogglePinSelected}
+                pinActionLabel={allSelectedArePinned ? "unpin" : "pin"}
                 onClear={clearSelection}
               />
               <div
@@ -1192,6 +1333,7 @@ function ContainerLogsPage() {
                       const isCurrentMatch = searchMatches.length > 0 && searchMatches[currentMatchIndex] === virtualRow.index;
                       const hasMatch = searchMatches.includes(virtualRow.index);
                       const isSelected = selectedIndices.has(virtualRow.index);
+                      const isPinned = pinnedFilteredIndices.has(virtualRow.index);
 
                       return (
                         // biome-ignore lint/a11y/useSemanticElements: div required for virtual scrolling absolute positioning
@@ -1220,8 +1362,12 @@ function ContainerLogsPage() {
                           className={`group flex items-start gap-3 px-4 py-1.5 transition-all duration-150 ease-out ${
                             wrapText ? "" : "whitespace-nowrap"
                           } ${
-                            isSelected
+                            isSelected && isPinned
+                              ? "bg-amber-200/80 dark:bg-amber-800/45 border-l-[3px] border-amber-500 shadow-[inset_0_0_0_1px_rgba(245,158,11,0.35)]"
+                              : isSelected
                               ? "bg-primary/[0.08] dark:bg-primary/[0.15] border-l-[3px] border-primary shadow-[inset_0_0_0_1px_rgba(var(--primary),0.1)]"
+                              : isPinned
+                                ? "bg-amber-100/80 dark:bg-amber-900/35 border-l-[3px] border-amber-500 hover:bg-amber-100 dark:hover:bg-amber-900/45"
                               : isCurrentMatch
                                 ? "bg-yellow-100 dark:bg-yellow-900/30 border-y-2 border-yellow-400 dark:border-yellow-600"
                                 : virtualRow.index % 2 === 0
