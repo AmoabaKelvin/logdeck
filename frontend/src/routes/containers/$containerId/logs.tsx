@@ -435,7 +435,6 @@ function ContainerLogsPage() {
       .writeText(content)
       .then(() => {
         toast.success(`${validIndices.length} log entries copied to clipboard`);
-        clearSelection();
       })
       .catch(() => {
         toast.error("Failed to copy to clipboard");
