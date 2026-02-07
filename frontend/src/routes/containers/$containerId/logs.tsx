@@ -76,12 +76,14 @@ import { SelectionActionBar } from "@/features/containers/components/selection-a
 import { Terminal } from "@/features/containers/components/terminal";
 import { useContainerStats } from "@/features/containers/hooks/use-container-stats";
 import { requireAuthIfEnabled } from "@/lib/auth-guard";
+import { isJsonString } from "@/lib/json-format";
 import { escapeRegExp } from "@/lib/utils";
 
 import type {
   LogEntry,
   LogLevel,
 } from "@/features/containers/api/get-container-logs-parsed";
+import { CollapsibleJson } from "@/features/containers/components/collapsible-json";
 export const Route = createFileRoute("/containers/$containerId/logs")({
   beforeLoad: async () => {
     await requireAuthIfEnabled();
@@ -112,6 +114,7 @@ function ContainerLogsPage() {
   const [showTerminal, setShowTerminal] = useState(false);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
+  const [expandedJsonRows, setExpandedJsonRows] = useState<Set<number>>(new Set());
   const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
@@ -308,6 +311,15 @@ function ContainerLogsPage() {
     setLastClickedIndex(null);
   }, []);
 
+  const toggleJsonExpanded = useCallback((index: number) => {
+    setExpandedJsonRows(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }, []);
+
   const handleLogClick = useCallback(
     (index: number, event: React.MouseEvent) => {
       if (event.shiftKey && lastClickedIndex !== null) {
@@ -453,6 +465,7 @@ function ContainerLogsPage() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally clear selection on data changes
   useEffect(() => {
     clearSelection();
+    setExpandedJsonRows(new Set());
   }, [searchText, excludeMatches, selectedLevels, logs]);
 
   const availableLogLevels = useMemo(() => {
@@ -1094,9 +1107,19 @@ function ContainerLogsPage() {
                           <span
                             className={`text-foreground flex-1 ${wrapText ? "break-words" : ""}`}
                           >
-                            {hasMatch
-                              ? highlightSearchText(entry.message ?? "", isCurrentMatch)
-                              : entry.message ?? ""}
+                            {isJsonString(entry.message ?? "") ? (
+                              <CollapsibleJson
+                                text={entry.message ?? ""}
+                                isExpanded={expandedJsonRows.has(virtualRow.index)}
+                                onToggle={() => toggleJsonExpanded(virtualRow.index)}
+                                isCurrentMatch={isCurrentMatch}
+                                highlightSearchText={hasMatch ? highlightSearchText : undefined}
+                              />
+                            ) : hasMatch ? (
+                              highlightSearchText(entry.message ?? "", isCurrentMatch)
+                            ) : (
+                              entry.message ?? ""
+                            )}
                           </span>
                           <Tooltip>
                             <TooltipTrigger asChild>
