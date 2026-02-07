@@ -119,6 +119,7 @@ export function ContainersLogsSheet({
   const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const autoScrollRef = useRef(autoScroll);
   const logLinesInputId = useId();
 
@@ -415,7 +416,6 @@ export function ContainersLogsSheet({
       .writeText(content)
       .then(() => {
         toast.success(`${validIndices.length} log entries copied to clipboard`);
-        clearSelection();
       })
       .catch(() => {
         toast.error("Failed to copy to clipboard");
@@ -481,6 +481,140 @@ export function ContainersLogsSheet({
     setCurrentMatchIndex(newIndex);
     rowVirtualizer.scrollToIndex(searchMatches[newIndex], { align: "center" });
   }, [searchMatches, currentMatchIndex, rowVirtualizer]);
+
+  const goToAdjacentLogLine = useCallback((direction: 1 | -1) => {
+    if (filteredLogs.length === 0) return;
+    const selected = Array.from(selectedIndices);
+    const fallbackIndex =
+      selected.length > 0
+        ? direction > 0
+          ? Math.max(...selected)
+          : Math.min(...selected)
+        : direction > 0
+          ? -1
+          : filteredLogs.length;
+    const baseIndex = lastClickedIndex ?? fallbackIndex;
+    const nextIndex = Math.min(
+      filteredLogs.length - 1,
+      Math.max(0, baseIndex + direction)
+    );
+    if (nextIndex === baseIndex) return;
+
+    setSelectedIndices(new Set([nextIndex]));
+    setLastClickedIndex(nextIndex);
+    rowVirtualizer.scrollToIndex(nextIndex, { align: "center" });
+  }, [filteredLogs.length, lastClickedIndex, rowVirtualizer, selectedIndices]);
+
+  const extendSelectionByLine = useCallback((direction: 1 | -1) => {
+    if (filteredLogs.length === 0) return;
+
+    const selected = Array.from(selectedIndices);
+    const minSelected = selected.length > 0 ? Math.min(...selected) : null;
+    const maxSelected = selected.length > 0 ? Math.max(...selected) : null;
+
+    let anchorIndex: number;
+    if (lastClickedIndex !== null) {
+      anchorIndex = lastClickedIndex;
+    } else {
+      if (selected.length > 0) {
+        anchorIndex = direction > 0 ? (minSelected as number) : (maxSelected as number);
+      } else {
+        anchorIndex = direction > 0 ? 0 : filteredLogs.length - 1;
+      }
+      setLastClickedIndex(anchorIndex);
+    }
+
+    const activeIndex =
+      selected.length > 0
+        ? direction > 0
+          ? (maxSelected as number)
+          : (minSelected as number)
+        : anchorIndex;
+    const targetIndex = Math.min(
+      filteredLogs.length - 1,
+      Math.max(0, activeIndex + direction)
+    );
+    if (targetIndex === activeIndex) return;
+
+    const rangeStart = Math.min(anchorIndex, targetIndex);
+    const rangeEnd = Math.max(anchorIndex, targetIndex);
+    const nextSelected = new Set<number>();
+    for (let i = rangeStart; i <= rangeEnd; i++) {
+      nextSelected.add(i);
+    }
+    setSelectedIndices(nextSelected);
+    rowVirtualizer.scrollToIndex(targetIndex, { align: "center" });
+  }, [filteredLogs.length, lastClickedIndex, rowVirtualizer, selectedIndices]);
+
+  const focusSearchInput = useCallback(() => {
+    searchInputRef.current?.focus();
+    searchInputRef.current?.select();
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleGlobalKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+      const lowerKey = event.key.toLowerCase();
+
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.closest("input, textarea, select, [contenteditable='true'], [role='textbox']"))
+      ) {
+        return;
+      }
+
+      if (event.key === "/") {
+        event.preventDefault();
+        focusSearchInput();
+        return;
+      }
+
+      if (lowerKey === "j" || event.key === "ArrowDown") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          extendSelectionByLine(1);
+        } else {
+          goToAdjacentLogLine(1);
+        }
+        return;
+      }
+
+      if (lowerKey === "k" || event.key === "ArrowUp") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          extendSelectionByLine(-1);
+        } else {
+          goToAdjacentLogLine(-1);
+        }
+        return;
+      }
+
+      if (lowerKey === "n") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          goToPreviousMatch();
+        } else {
+          goToNextMatch();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleGlobalKeyDown);
+    };
+  }, [
+    isOpen,
+    focusSearchInput,
+    goToAdjacentLogLine,
+    extendSelectionByLine,
+    goToNextMatch,
+    goToPreviousMatch,
+  ]);
 
   // Helper to highlight search text in message
   const highlightSearchText = useCallback((text: string, isCurrentMatch: boolean): React.ReactNode => {
@@ -694,13 +828,13 @@ export function ContainersLogsSheet({
                   <div className="relative flex-1 min-w-[140px]">
                     <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
                     <Input
+                      ref={searchInputRef}
                       placeholder="Search logs..."
                       value={searchText}
                       onChange={(e) => setSearchText(e.target.value)}
                       className="pl-8 h-8 text-xs"
                     />
                   </div>
-
                   {searchText && !excludeMatches && (
                     <div className="flex items-center gap-0.5 shrink-0">
                       <span className="text-xs tabular-nums text-muted-foreground whitespace-nowrap px-1">
@@ -775,7 +909,12 @@ export function ContainersLogsSheet({
                     <RefreshCcwIcon className="size-4" />
                   </Button>
                 </div>
-
+                <p className="text-[11px] text-muted-foreground">
+                  Shortcuts: <kbd className="font-mono">/</kbd> search,{" "}
+                  <kbd className="font-mono">j</kbd>/<kbd className="font-mono">k</kbd>{" "}
+                  lines, <kbd className="font-mono">n</kbd>/<kbd className="font-mono">N</kbd>{" "}
+                  matches
+                </p>
                 {/* Row 2: Options bar */}
                 <div className="flex flex-wrap items-center gap-2">
                   {searchText && (
