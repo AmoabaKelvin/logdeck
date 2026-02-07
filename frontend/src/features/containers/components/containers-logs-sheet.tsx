@@ -68,6 +68,7 @@ import {
   streamContainerLogsParsed
 } from "../api/get-container-logs-parsed";
 
+import { isJsonString } from "@/lib/json-format";
 import {
   formatContainerName,
   formatCreatedDate,
@@ -76,6 +77,7 @@ import {
   getStateBadgeClass,
   toTitleCase
 } from "./container-utils";
+import { CollapsibleJson } from "./collapsible-json";
 import { EnvironmentVariables } from "./environment-variables";
 import { SelectionActionBar } from "./selection-action-bar";
 
@@ -113,6 +115,7 @@ export function ContainersLogsSheet({
   const [showFilters, setShowFilters] = useState(false);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
+  const [expandedJsonRows, setExpandedJsonRows] = useState<Set<number>>(new Set());
   const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
@@ -281,6 +284,15 @@ export function ContainersLogsSheet({
     setLastClickedIndex(null);
   }, []);
 
+  const toggleJsonExpanded = useCallback((index: number) => {
+    setExpandedJsonRows(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }, []);
+
   const handleLogClick = useCallback(
     (index: number, event: React.MouseEvent) => {
       if (event.shiftKey && lastClickedIndex !== null) {
@@ -429,11 +441,12 @@ export function ContainersLogsSheet({
     setCurrentMatchIndex(0);
   }, [searchText]);
 
-  // Clear selection when filters, search, or logs change
+  // Clear selection when filters or search settings change
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally clear selection on data changes
   useEffect(() => {
     clearSelection();
-  }, [searchText, excludeMatches, selectedLevels, logs]);
+    setExpandedJsonRows(new Set());
+  }, [searchText, excludeMatches, selectedLevels]);
 
   const availableLogLevels = useMemo(() => {
     const levels = new Set<LogLevel>();
@@ -1011,9 +1024,19 @@ export function ContainersLogsSheet({
                               <span
                                 className={`text-foreground flex-1 ${wrapText ? "break-words" : ""}`}
                               >
-                                {hasMatch
-                                  ? highlightSearchText(entry.message ?? "", isCurrentMatch)
-                                  : entry.message ?? ""}
+                                {isJsonString(entry.message ?? "") ? (
+                                  <CollapsibleJson
+                                    text={entry.message ?? ""}
+                                    isExpanded={expandedJsonRows.has(virtualRow.index)}
+                                    onToggle={() => toggleJsonExpanded(virtualRow.index)}
+                                    isCurrentMatch={isCurrentMatch}
+                                    highlightSearchText={hasMatch ? highlightSearchText : undefined}
+                                  />
+                                ) : hasMatch ? (
+                                  highlightSearchText(entry.message ?? "", isCurrentMatch)
+                                ) : (
+                                  entry.message ?? ""
+                                )}
                               </span>
                               <Tooltip>
                                 <TooltipTrigger asChild>
