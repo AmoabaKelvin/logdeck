@@ -3,6 +3,7 @@ import {
   ArrowDownIcon,
   ArrowDownToLineIcon,
   CheckIcon,
+  PauseIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -67,6 +68,7 @@ import {
   getLogLevelBadgeColor,
   streamContainerLogsParsed
 } from "../api/get-container-logs-parsed";
+import { useContainerLogStream } from "../hooks/use-container-log-stream";
 
 import { isJsonString } from "@/lib/json-format";
 import {
@@ -101,9 +103,6 @@ export function ContainersLogsSheet({
   const [showLabels, setShowLabels] = useState(false);
   const [showEnvVariables, setShowEnvVariables] = useState(false);
   const [logLines, setLogLines] = useState(100);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [excludeMatches, setExcludeMatches] = useState(false);
   const [selectedLevels, setSelectedLevels] = useState<Set<LogLevel>>(
@@ -119,7 +118,6 @@ export function ContainersLogsSheet({
   const [currentPinnedIndex, setCurrentPinnedIndex] = useState(0);
   const [expandedJsonRows, setExpandedJsonRows] = useState<Set<number>>(new Set());
   const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const autoScrollRef = useRef(autoScroll);
@@ -130,98 +128,59 @@ export function ContainersLogsSheet({
     autoScrollRef.current = autoScroll;
   }, [autoScroll]);
 
-  const scrollToBottom = useCallback(() => {
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     if (autoScrollRef.current && parentRef.current) {
       // For virtualized list, scroll the parent container to bottom
+      if (behavior === "smooth") {
+        parentRef.current.scrollTo({
+          top: parentRef.current.scrollHeight,
+          behavior: "smooth",
+        });
+        return;
+      }
       parentRef.current.scrollTop = parentRef.current.scrollHeight;
     }
   }, []);
-
-  const fetchLogs = useCallback(async () => {
-    if (!container) return;
-
-    setIsLoadingLogs(true);
-    try {
+  const {
+    animatedRange,
+    bufferedCount,
+    clearLogs,
+    fetchLogs,
+    isLoadingLogs,
+    isStreamPaused,
+    isStreaming,
+    logs,
+    stopStreaming,
+    togglePauseStreaming,
+    toggleStreaming,
+  } = useContainerLogStream<LogEntry>({
+    containerId: container?.id,
+    host: container?.host,
+    tail: logLines,
+    getLogs: async (containerId, host, options) =>
+      (await getContainerLogsParsed(containerId, host, options)) as LogEntry[],
+    streamLogs: async function* (containerId, host, options, signal) {
+      for await (const entry of streamContainerLogsParsed(
+        containerId,
+        host,
+        options,
+        signal
+      )) {
+        yield entry as LogEntry;
+      }
+    },
+    scrollToBottom,
+    onResetState: () => {
       setPinnedLogIndices(new Set());
       setCurrentPinnedIndex(0);
-      const logEntries = await getContainerLogsParsed(container.id, container.host, {
-        tail: logLines,
-      });
-      setLogs(logEntries as LogEntry[]);
-      setTimeout(scrollToBottom, 100);
-    } catch (error) {
-      if (error instanceof Error) {
-        toast.error(`Failed to fetch logs: ${error.message}`);
-      }
-      setLogs([]);
-    } finally {
-      setIsLoadingLogs(false);
-    }
-  }, [container, logLines, scrollToBottom]);
-
-  const startStreaming = useCallback(async () => {
-    if (!container) return;
-
-    setIsStreaming(true);
-    setIsLoadingLogs(true);
-    setPinnedLogIndices(new Set());
-    setCurrentPinnedIndex(0);
-    setLogs([]);
-
-    try {
-      const abortController = new AbortController();
-      abortControllerRef.current = abortController;
-
-      const stream = streamContainerLogsParsed(
-        container.id,
-        container.host,
-        {
-          tail: logLines,
-        },
-        abortController.signal
-      );
-
-      setIsLoadingLogs(false);
-
-      for await (const entry of stream) {
-        if (abortController.signal.aborted) {
-          break;
-        }
-
-        setLogs((prev) => [...prev, entry as LogEntry]);
-        setTimeout(scrollToBottom, 100);
-      }
-    } catch (error) {
-      if (error instanceof Error) {
-        const message = error.message.toLowerCase();
-        const isAbort =
-          error.name === "AbortError" || message.includes("aborted");
-        if (!isAbort) {
-          toast.error(`Failed to start streaming: ${error.message}`);
-        }
-      }
-      setIsStreaming(false);
-    } finally {
-      setIsLoadingLogs(false);
-      abortControllerRef.current = null;
-    }
-  }, [container, logLines, scrollToBottom]);
-
-  const stopStreaming = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
-    setIsStreaming(false);
-  }, []);
-
-  const handleToggleStream = () => {
-    if (isStreaming) {
-      stopStreaming();
-    } else {
-      startStreaming();
-    }
-  };
+    },
+    onFetchError: (error) => {
+      toast.error(`Failed to fetch logs: ${error.message}`);
+    },
+    onStreamError: (error) => {
+      toast.error(`Failed to start streaming: ${error.message}`);
+    },
+  });
 
   const handleRefresh = () => {
     if (!isStreaming) {
@@ -234,20 +193,20 @@ export function ContainersLogsSheet({
       setShowLabels(false);
       setShowEnvVariables(false);
       stopStreaming();
-      setLogs([]);
+      clearLogs();
     }
-  }, [isOpen, stopStreaming]);
+  }, [clearLogs, isOpen, stopStreaming]);
 
   useEffect(() => {
     setShowLabels(false);
     setShowEnvVariables(false);
     stopStreaming();
-    setLogs([]);
+    clearLogs();
 
     if (container && isOpen) {
       fetchLogs();
     }
-  }, [container, isOpen, fetchLogs, stopStreaming]);
+  }, [clearLogs, container, isOpen, fetchLogs, stopStreaming]);
 
   useEffect(() => {
     if (container && isOpen && !isStreaming) {
@@ -290,6 +249,8 @@ export function ContainersLogsSheet({
     setSelectedIndices(new Set());
     setLastClickedIndex(null);
   }, []);
+  const activeToggleButtonClass =
+    "h-8 text-xs data-[active=true]:bg-muted data-[active=true]:text-foreground data-[active=true]:border-border data-[active=true]:ring-1 data-[active=true]:ring-primary/30";
 
   const toggleJsonExpanded = useCallback((index: number) => {
     setExpandedJsonRows(prev => {
@@ -374,41 +335,44 @@ export function ContainersLogsSheet({
     toast.success(`Logs downloaded as ${format.toUpperCase()}`);
   };
 
-  // Filter logs by level and optionally exclude search matches
-  const filteredLogs = useMemo(() => {
-    return logs.filter((entry) => {
+  // Filter logs by level and optionally exclude search matches.
+  const filteredLogItems = useMemo(() => {
+    const searchLower = searchText.toLowerCase();
+
+    const items = logs
+      .map((entry, originalIndex) => ({ entry, originalIndex }))
+      .filter(({ entry }) => {
       if (selectedLevels.size > 0 && entry.level) {
         if (!selectedLevels.has(entry.level)) {
           return false;
         }
       }
-      if (excludeMatches && searchText) {
-        const message = (entry.message || entry.raw || "").toLowerCase();
-        if (message.includes(searchText.toLowerCase())) {
-          return false;
+        if (excludeMatches && searchText) {
+          const message = (entry.message || entry.raw || "").toLowerCase();
+          if (message.includes(searchLower)) {
+            return false;
+          }
         }
-      }
-      return true;
-    });
-  }, [logs, selectedLevels, excludeMatches, searchText]);
+        return true;
+      });
 
-  const filteredToOriginalIndex = useMemo(() => {
-    const indices: number[] = [];
-    let searchFrom = 0;
+    return items;
+  }, [
+    logs,
+    selectedLevels,
+    excludeMatches,
+    searchText,
+  ]);
 
-    filteredLogs.forEach((entry) => {
-      for (let i = searchFrom; i < logs.length; i++) {
-        if (logs[i] === entry) {
-          indices.push(i);
-          searchFrom = i + 1;
-          return;
-        }
-      }
-      indices.push(-1);
-    });
+  const filteredLogs = useMemo(
+    () => filteredLogItems.map((item) => item.entry),
+    [filteredLogItems]
+  );
 
-    return indices;
-  }, [filteredLogs, logs]);
+  const filteredToOriginalIndex = useMemo(
+    () => filteredLogItems.map((item) => item.originalIndex),
+    [filteredLogItems]
+  );
 
   const pinnedFilteredIndices = useMemo(() => {
     const next = new Set<number>();
@@ -1017,11 +981,12 @@ export function ContainersLogsSheet({
                     />
                   </div>
                   <Button
-                    variant={isStreaming ? "default" : "outline"}
+                    variant="outline"
                     size="sm"
-                    onClick={handleToggleStream}
+                    data-active={isStreaming}
+                    onClick={toggleStreaming}
                     disabled={isLoadingLogs && !isStreaming}
-                    className="shrink-0"
+                    className={`shrink-0 ${activeToggleButtonClass}`}
                   >
                     {isStreaming ? (
                       <>
@@ -1032,6 +997,31 @@ export function ContainersLogsSheet({
                       <>
                         <PlayIcon className="mr-2 size-4" />
                         Stream
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    data-active={isStreamPaused}
+                    onClick={togglePauseStreaming}
+                    disabled={!isStreaming}
+                    className={`shrink-0 ${activeToggleButtonClass}`}
+                  >
+                    {isStreamPaused ? (
+                      <>
+                        <PlayIcon className="mr-2 size-4" />
+                        Resume
+                        {bufferedCount > 0 && (
+                          <span className="ml-1 text-[10px] tabular-nums">
+                            ({bufferedCount})
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <PauseIcon className="mr-2 size-4" />
+                        Pause
                       </>
                     )}
                   </Button>
@@ -1138,28 +1128,31 @@ export function ContainersLogsSheet({
                   </Popover>
 
                   <Button
-                    variant={showTimestamps ? "default" : "outline"}
+                    variant="outline"
                     size="sm"
+                    data-active={showTimestamps}
                     onClick={() => setShowTimestamps(!showTimestamps)}
-                    className="h-8 text-xs"
+                    className={activeToggleButtonClass}
                   >
                     Timestamps
                   </Button>
 
                   <Button
-                    variant={wrapText ? "default" : "outline"}
+                    variant="outline"
                     size="sm"
+                    data-active={wrapText}
                     onClick={() => setWrapText(!wrapText)}
-                    className="h-8 text-xs"
+                    className={activeToggleButtonClass}
                   >
                     Wrap
                   </Button>
 
                   <Button
-                    variant={autoScroll ? "default" : "outline"}
+                    variant="outline"
                     size="sm"
+                    data-active={autoScroll}
                     onClick={() => setAutoScroll(!autoScroll)}
-                    className="h-8 text-xs"
+                    className={activeToggleButtonClass}
                   >
                     {autoScroll ? (
                       <ArrowDownToLineIcon className="mr-1.5 size-3.5" />
@@ -1277,12 +1270,12 @@ export function ContainersLogsSheet({
                                 transform: `translateY(${virtualRow.start}px)`,
                                 cursor: "pointer",
                               }}
-                              className={`group flex items-start gap-3 px-4 py-1.5 transition-all duration-150 ease-out ${
-                                wrapText ? "" : "whitespace-nowrap"
-                              } ${
-                                isSelected && isPinned
-                                  ? "bg-amber-200/80 dark:bg-amber-800/45 border-l-[3px] border-amber-500 shadow-[inset_0_0_0_1px_rgba(245,158,11,0.35)]"
-                                  : isSelected
+                            className={`group flex items-start gap-3 px-4 py-1.5 transition-all duration-150 ease-out ${
+                              wrapText ? "" : "whitespace-nowrap"
+                            } ${
+                              isSelected && isPinned
+                                ? "bg-amber-200/80 dark:bg-amber-800/45 border-l-[3px] border-amber-500 shadow-[inset_0_0_0_1px_rgba(245,158,11,0.35)]"
+                                : isSelected
                                   ? "bg-primary/[0.08] dark:bg-primary/[0.15] border-l-[3px] border-primary shadow-[inset_0_0_0_1px_rgba(var(--primary),0.1)]"
                                   : isPinned
                                     ? "bg-amber-100/80 dark:bg-amber-900/35 border-l-[3px] border-amber-500 hover:bg-amber-100 dark:hover:bg-amber-900/45"
@@ -1291,6 +1284,12 @@ export function ContainersLogsSheet({
                                     : virtualRow.index % 2 === 0
                                       ? "bg-muted/30 border-l-[3px] border-transparent hover:bg-muted/50"
                                       : "border-l-[3px] border-transparent hover:bg-muted/50"
+                              } ${
+                                animatedRange &&
+                                virtualRow.index >= animatedRange.start &&
+                                virtualRow.index <= animatedRange.end
+                                  ? "log-stream-row-enter"
+                                  : ""
                               }`}
                             >
                               {showTimestamps && (

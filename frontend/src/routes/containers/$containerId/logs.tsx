@@ -6,6 +6,7 @@ import {
   ArrowDownToLineIcon,
   ArrowLeftIcon,
   CheckIcon,
+  PauseIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -74,6 +75,7 @@ import {
 import { EnvironmentVariables } from "@/features/containers/components/environment-variables";
 import { SelectionActionBar } from "@/features/containers/components/selection-action-bar";
 import { Terminal } from "@/features/containers/components/terminal";
+import { useContainerLogStream } from "@/features/containers/hooks/use-container-log-stream";
 import { useContainerStats } from "@/features/containers/hooks/use-container-stats";
 import { requireAuthIfEnabled } from "@/lib/auth-guard";
 import { isJsonString } from "@/lib/json-format";
@@ -97,9 +99,6 @@ function ContainerLogsPage() {
   const queryClient = useQueryClient();
 
   const [logLines, setLogLines] = useState(100);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [excludeMatches, setExcludeMatches] = useState(false);
   const [selectedLevels, setSelectedLevels] = useState<Set<LogLevel>>(
@@ -118,7 +117,6 @@ function ContainerLogsPage() {
   const [currentPinnedIndex, setCurrentPinnedIndex] = useState(0);
   const [expandedJsonRows, setExpandedJsonRows] = useState<Set<number>>(new Set());
   const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const autoScrollRef = useRef(autoScroll);
@@ -171,97 +169,49 @@ function ContainerLogsPage() {
     }
   };
 
-  const scrollToBottom = useCallback(() => {
-    if (autoScrollRef.current && parentRef.current) {
-      parentRef.current.scrollTop = parentRef.current.scrollHeight;
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    const containerEl = parentRef.current;
+    if (autoScrollRef.current && containerEl) {
+      if (behavior === "smooth") {
+        containerEl.scrollTo({
+          top: containerEl.scrollHeight,
+          behavior: "smooth",
+        });
+        return;
+      }
+      containerEl.scrollTop = containerEl.scrollHeight;
     }
   }, []);
-
-  const fetchLogs = useCallback(async () => {
-    if (!actualContainerId || !container?.host) return;
-
-    setIsLoadingLogs(true);
-    try {
+  const {
+    animatedRange,
+    bufferedCount,
+    fetchLogs,
+    isLoadingLogs,
+    isStreamPaused,
+    isStreaming,
+    logs,
+    startStreaming,
+    stopStreaming,
+    togglePauseStreaming,
+    toggleStreaming,
+  } = useContainerLogStream<LogEntry>({
+    containerId: actualContainerId,
+    host: container?.host,
+    tail: logLines,
+    getLogs: getContainerLogsParsed,
+    streamLogs: streamContainerLogsParsed,
+    scrollToBottom,
+    onResetState: () => {
       setPinnedLogIndices(new Set());
       setCurrentPinnedIndex(0);
-      const logEntries = await getContainerLogsParsed(actualContainerId, container.host, {
-        tail: logLines,
-      });
-      setLogs(logEntries);
-      setTimeout(scrollToBottom, 100);
-    } catch (error) {
-      if (error instanceof Error) {
-        toast.error(`Failed to fetch logs: ${error.message}`);
-      }
-      setLogs([]);
-    } finally {
-      setIsLoadingLogs(false);
-    }
-  }, [actualContainerId, container?.host, logLines, scrollToBottom]);
-
-  const startStreaming = useCallback(async () => {
-    if (!actualContainerId || !container?.host) return;
-
-    setIsStreaming(true);
-    setIsLoadingLogs(true);
-    setPinnedLogIndices(new Set());
-    setCurrentPinnedIndex(0);
-    setLogs([]);
-
-    try {
-      const abortController = new AbortController();
-      abortControllerRef.current = abortController;
-
-      const stream = streamContainerLogsParsed(
-        actualContainerId,
-        container.host,
-        {
-          tail: logLines,
-        },
-        abortController.signal
-      );
-
-      setIsLoadingLogs(false);
-
-      for await (const entry of stream) {
-        if (abortController.signal.aborted) {
-          break;
-        }
-
-        setLogs((prev) => [...prev, entry]);
-        setTimeout(scrollToBottom, 100);
-      }
-    } catch (error) {
-      if (error instanceof Error) {
-        const message = error.message.toLowerCase();
-        const isAbort =
-          error.name === "AbortError" || message.includes("aborted");
-        if (!isAbort) {
-          toast.error(`Failed to start streaming: ${error.message}`);
-        }
-      }
-      setIsStreaming(false);
-    } finally {
-      setIsLoadingLogs(false);
-      abortControllerRef.current = null;
-    }
-  }, [actualContainerId, container?.host, logLines, scrollToBottom]);
-
-  const stopStreaming = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
-    setIsStreaming(false);
-  }, []);
-
-  const handleToggleStream = () => {
-    if (isStreaming) {
-      stopStreaming();
-    } else {
-      startStreaming();
-    }
-  };
+    },
+    onFetchError: (error) => {
+      toast.error(`Failed to fetch logs: ${error.message}`);
+    },
+    onStreamError: (error) => {
+      toast.error(`Failed to start streaming: ${error.message}`);
+    },
+  });
 
   const handleRefresh = () => {
     if (!isStreaming) {
@@ -317,6 +267,8 @@ function ContainerLogsPage() {
     setSelectedIndices(new Set());
     setLastClickedIndex(null);
   }, []);
+  const activeToggleButtonClass =
+    "h-8 text-xs data-[active=true]:bg-muted data-[active=true]:text-foreground data-[active=true]:border-border data-[active=true]:ring-1 data-[active=true]:ring-primary/30";
 
   const toggleJsonExpanded = useCallback((index: number) => {
     setExpandedJsonRows(prev => {
@@ -394,41 +346,44 @@ function ContainerLogsPage() {
     toast.success(`Logs downloaded as ${format.toUpperCase()}`);
   };
 
-  // Filter logs by level and optionally exclude search matches
-  const filteredLogs = useMemo(() => {
-    return logs.filter((entry) => {
+  // Filter logs by level and optionally exclude search matches.
+  const filteredLogItems = useMemo(() => {
+    const searchLower = searchText.toLowerCase();
+
+    const items = logs
+      .map((entry, originalIndex) => ({ entry, originalIndex }))
+      .filter(({ entry }) => {
       if (selectedLevels.size > 0 && entry.level) {
         if (!selectedLevels.has(entry.level)) {
           return false;
         }
       }
-      if (excludeMatches && searchText) {
-        const message = (entry.message || entry.raw || "").toLowerCase();
-        if (message.includes(searchText.toLowerCase())) {
-          return false;
+        if (excludeMatches && searchText) {
+          const message = (entry.message || entry.raw || "").toLowerCase();
+          if (message.includes(searchLower)) {
+            return false;
+          }
         }
-      }
-      return true;
-    });
-  }, [logs, selectedLevels, excludeMatches, searchText]);
+        return true;
+      });
 
-  const filteredToOriginalIndex = useMemo(() => {
-    const indices: number[] = [];
-    let searchFrom = 0;
+    return items;
+  }, [
+    logs,
+    selectedLevels,
+    excludeMatches,
+    searchText,
+  ]);
 
-    filteredLogs.forEach((entry) => {
-      for (let i = searchFrom; i < logs.length; i++) {
-        if (logs[i] === entry) {
-          indices.push(i);
-          searchFrom = i + 1;
-          return;
-        }
-      }
-      indices.push(-1);
-    });
+  const filteredLogs = useMemo(
+    () => filteredLogItems.map((item) => item.entry),
+    [filteredLogItems]
+  );
 
-    return indices;
-  }, [filteredLogs, logs]);
+  const filteredToOriginalIndex = useMemo(
+    () => filteredLogItems.map((item) => item.originalIndex),
+    [filteredLogItems]
+  );
 
   const pinnedFilteredIndices = useMemo(() => {
     const next = new Set<number>();
@@ -1097,11 +1052,12 @@ function ContainerLogsPage() {
                     />
                   </div>
                   <Button
-                    variant={isStreaming ? "default" : "outline"}
+                    variant="outline"
                     size="sm"
-                    onClick={handleToggleStream}
+                    data-active={isStreaming}
+                    onClick={toggleStreaming}
                     disabled={isLoadingLogs && !isStreaming}
-                    className="shrink-0"
+                    className={`shrink-0 ${activeToggleButtonClass}`}
                   >
                     {isStreaming ? (
                       <>
@@ -1112,6 +1068,31 @@ function ContainerLogsPage() {
                       <>
                         <PlayIcon className="mr-2 size-4" />
                         Stream
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    data-active={isStreamPaused}
+                    onClick={togglePauseStreaming}
+                    disabled={!isStreaming}
+                    className={`shrink-0 ${activeToggleButtonClass}`}
+                  >
+                    {isStreamPaused ? (
+                      <>
+                        <PlayIcon className="mr-2 size-4" />
+                        Resume
+                        {bufferedCount > 0 && (
+                          <span className="ml-1 text-[10px] tabular-nums">
+                            ({bufferedCount})
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <PauseIcon className="mr-2 size-4" />
+                        Pause
                       </>
                     )}
                   </Button>
@@ -1133,7 +1114,7 @@ function ContainerLogsPage() {
                   pins
                 </p>
                 {/* Row 2: Options bar */}
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {searchText && (
                     <Select
                       value={excludeMatches ? "exclude" : "highlight"}
@@ -1218,28 +1199,31 @@ function ContainerLogsPage() {
                   </Popover>
 
                   <Button
-                    variant={showTimestamps ? "default" : "outline"}
+                    variant="outline"
                     size="sm"
+                    data-active={showTimestamps}
                     onClick={() => setShowTimestamps(!showTimestamps)}
-                    className="h-8 text-xs"
+                    className={activeToggleButtonClass}
                   >
                     Timestamps
                   </Button>
 
                   <Button
-                    variant={wrapText ? "default" : "outline"}
+                    variant="outline"
                     size="sm"
+                    data-active={wrapText}
                     onClick={() => setWrapText(!wrapText)}
-                    className="h-8 text-xs"
+                    className={activeToggleButtonClass}
                   >
                     Wrap
                   </Button>
 
                   <Button
-                    variant={autoScroll ? "default" : "outline"}
+                    variant="outline"
                     size="sm"
+                    data-active={autoScroll}
                     onClick={() => setAutoScroll(!autoScroll)}
-                    className="h-8 text-xs"
+                    className={activeToggleButtonClass}
                   >
                     {autoScroll ? (
                       <ArrowDownToLineIcon className="mr-1.5 size-3.5" />
@@ -1371,6 +1355,12 @@ function ContainerLogsPage() {
                                 : virtualRow.index % 2 === 0
                                   ? "bg-muted/30 border-l-[3px] border-transparent hover:bg-muted/50"
                                   : "border-l-[3px] border-transparent hover:bg-muted/50"
+                          } ${
+                            animatedRange &&
+                            virtualRow.index >= animatedRange.start &&
+                            virtualRow.index <= animatedRange.end
+                              ? "log-stream-row-enter"
+                              : ""
                           }`}
                         >
                           {showTimestamps && (
