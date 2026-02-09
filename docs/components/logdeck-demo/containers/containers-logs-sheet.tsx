@@ -342,11 +342,14 @@ export function ContainersLogsSheet({
     const items = logs
       .map((entry, originalIndex) => ({ entry, originalIndex }))
       .filter(({ entry }) => {
-      if (selectedLevels.size > 0 && entry.level) {
-        if (!selectedLevels.has(entry.level)) {
+        if (!entry.message?.trim()) {
           return false;
         }
-      }
+        if (selectedLevels.size > 0 && entry.level) {
+          if (!selectedLevels.has(entry.level)) {
+            return false;
+          }
+        }
         if (excludeMatches && searchText) {
           const message = (entry.message || entry.raw || "").toLowerCase();
           if (message.includes(searchLower)) {
@@ -1222,7 +1225,6 @@ export function ContainersLogsSheet({
                       >
                         {rowVirtualizer.getVirtualItems().map((virtualRow) => {
                           const entry = filteredLogs[virtualRow.index];
-                          if (!entry.message?.trim()) return null;
 
                           const timestamp = entry.timestamp
                             ? new Date(entry.timestamp)
