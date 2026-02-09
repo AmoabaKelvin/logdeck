@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { ArrowRight, Github, Star } from "lucide-react";
+import { Github, Star } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import HeroBadge from "@/components/hero-badge";
@@ -77,41 +77,42 @@ export function Hero() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4, duration: 0.5 }}
-              className="flex flex-col sm:flex-row gap-4 mt-4"
+              className="flex flex-col items-center gap-4 mt-4"
             >
-              <Button size="lg" className="gap-2 text-base" asChild>
-                <a href="#installation">
-                  Get Started
-                  <ArrowRight className="h-4 w-4" />
-                </a>
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="gap-2 text-base"
-                asChild
-              >
-                <a
-                  href="https://github.com/AmoabaKelvin/logdeck"
-                  target="_blank"
-                  rel="noopener noreferrer"
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Button size="lg" className="text-base h-12 px-8" asChild>
+                  <a href="/demo">Try Live Demo</a>
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="gap-2 text-base h-12 px-8"
+                  asChild
                 >
-                  <Github className="h-4 w-4" />
-                  {stars !== null ? (
-                    <>
-                      Star on GitHub
-                      <Badge
-                        variant="secondary"
-                        className="ml-1 font-mono text-xs"
-                      >
-                        {stars.toLocaleString()}
-                      </Badge>
-                    </>
-                  ) : (
-                    "View on GitHub"
-                  )}
-                </a>
-              </Button>
+                  <a href="#installation">Get Started</a>
+                </Button>
+              </div>
+              <a
+                href="https://github.com/AmoabaKelvin/logdeck"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Github className="h-4 w-4" />
+                {stars !== null ? (
+                  <>
+                    Star on GitHub
+                    <Badge
+                      variant="secondary"
+                      className="font-mono text-xs"
+                    >
+                      {stars.toLocaleString()}
+                    </Badge>
+                  </>
+                ) : (
+                  "View on GitHub"
+                )}
+              </a>
             </motion.div>
 
             {/* Quick install command */}
