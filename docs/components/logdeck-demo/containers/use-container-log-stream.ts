@@ -143,6 +143,11 @@ export function useContainerLogStream<TLogEntry>({
   const startStreaming = useCallback(async () => {
     if (!containerId || !host) return;
 
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+
     setIsStreaming(true);
     setIsLoadingLogs(true);
     resetPauseAndBuffer();
