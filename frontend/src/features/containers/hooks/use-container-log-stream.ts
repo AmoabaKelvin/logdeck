@@ -160,12 +160,16 @@ export function useContainerLogStream<TLogEntry>({
         { tail },
         abortController.signal
       );
-
-      setIsLoadingLogs(false);
+      let hasReceivedFirstEntry = false;
 
       for await (const entry of stream) {
         if (abortController.signal.aborted) {
           break;
+        }
+
+        if (!hasReceivedFirstEntry) {
+          hasReceivedFirstEntry = true;
+          setIsLoadingLogs(false);
         }
 
         if (isStreamPausedRef.current) {
@@ -194,7 +198,7 @@ export function useContainerLogStream<TLogEntry>({
       setIsStreaming(false);
       abortControllerRef.current = null;
     }
-  }, [containerId, host, resetPauseAndBuffer, tail]);
+  }, [containerId, host, resetPauseAndBuffer, tail, triggerRowAnimation]);
 
   const toggleStreaming = useCallback(() => {
     if (isStreaming) {
