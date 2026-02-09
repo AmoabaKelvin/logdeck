@@ -54,10 +54,19 @@ export function Navbar() {
             >
               Installation
             </Link>
+            <Link
+              href="/demo"
+              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Demo
+            </Link>
           </nav>
         </div>
 
         <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" asChild className="md:hidden">
+            <Link href="/demo">Demo</Link>
+          </Button>
           <Button variant="ghost" size="sm" asChild>
             <a
               href="https://github.com/AmoabaKelvin/logdeck"
