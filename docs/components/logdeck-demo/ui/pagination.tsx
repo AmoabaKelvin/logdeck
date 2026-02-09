@@ -1,4 +1,4 @@
-import * as React from "react"
+import type * as React from "react"
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -6,12 +6,11 @@ import {
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import { Button, buttonVariants } from "@/components/logdeck-demo/ui/button"
+import { type Button, buttonVariants } from "@/components/logdeck-demo/ui/button"
 
 function Pagination({ className, ...props }: React.ComponentProps<"nav">) {
   return (
     <nav
-      role="navigation"
       aria-label="pagination"
       data-slot="pagination"
       className={cn("mx-auto flex w-full justify-center", className)}
