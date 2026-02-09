@@ -256,6 +256,8 @@ export function highlightSearchTerm(
 ): string {
   if (!searchTerm) return message;
 
-  const regex = new RegExp(`(${searchTerm})`, "gi");
+  const bounded = searchTerm.length > 200 ? searchTerm.slice(0, 200) : searchTerm;
+  const escaped = bounded.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(`(${escaped})`, "gi");
   return message.replace(regex, "<mark>$1</mark>");
 }
