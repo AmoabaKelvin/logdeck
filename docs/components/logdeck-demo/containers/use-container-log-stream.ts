@@ -103,6 +103,10 @@ export function useContainerLogStream<TLogEntry>({
 
   useEffect(() => {
     return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
       if (animationTimeoutRef.current) {
         clearTimeout(animationTimeoutRef.current);
       }
