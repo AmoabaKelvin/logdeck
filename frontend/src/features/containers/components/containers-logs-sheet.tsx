@@ -250,7 +250,7 @@ export function ContainersLogsSheet({
     setLastClickedIndex(null);
   }, []);
   const activeToggleButtonClass =
-    "h-8 text-xs data-[active=true]:bg-muted data-[active=true]:text-foreground data-[active=true]:border-border data-[active=true]:ring-1 data-[active=true]:ring-primary/30";
+    "h-8 text-xs data-[active=true]:bg-muted data-[active=true]:text-foreground data-[active=true]:border-border data-[active=true]:ring-1 data-[active=true]:ring-primary/30 dark:data-[active=true]:bg-primary/15 dark:data-[active=true]:ring-primary/50 dark:data-[active=true]:border-primary/30";
 
   const toggleJsonExpanded = useCallback((index: number) => {
     setExpandedJsonRows(prev => {
