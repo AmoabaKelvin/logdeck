@@ -225,17 +225,13 @@ function ContainerLogsPage() {
 	};
 
 	useEffect(() => {
-		fetchLogs();
-		return () => {
-			stopStreaming();
-		};
-	}, [fetchLogs, stopStreaming]);
-
-	useEffect(() => {
 		if (!isStreaming) {
 			fetchLogs();
 		}
-	}, [isStreaming, fetchLogs]);
+		return () => {
+			stopStreaming();
+		};
+	}, [isStreaming, fetchLogs, stopStreaming]);
 
 	const handleLogLinesChange = (value: string) => {
 		const num = parseInt(value, 10);
@@ -318,7 +314,14 @@ function ContainerLogsPage() {
 			return;
 		}
 
-		const filename = `${container?.names?.[0] || "container"}-logs-${new Date().toISOString()}.${format}`;
+		const containerName = (container?.names?.[0] || "container")
+			.replace(/^\//, "")
+			.replace(/[/\\:*?"<>|]/g, "-");
+		const timestamp = new Date()
+			.toISOString()
+			.replace(/:/g, "-")
+			.replace(/\..+/, "");
+		const filename = `${containerName}-logs-${timestamp}.${format}`;
 		let content: string;
 		let mimeType: string;
 
@@ -983,8 +986,8 @@ function ContainerLogsPage() {
 											<TerminalIcon className="mr-2 size-4" />
 											{showTerminal ? "Hide" : "Show"} terminal
 										</Button>
-										{container && (
-											<div className={`mt-2 ${showTerminal ? "" : "hidden"}`}>
+										{container && showTerminal && (
+											<div className="mt-2">
 												<Terminal
 													containerId={actualContainerId}
 													host={container.host}

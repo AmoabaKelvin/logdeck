@@ -72,7 +72,13 @@ const DARK_THEME: ITheme = {
 };
 
 function getTerminalTheme(resolvedTheme: string | undefined): ITheme {
-	return resolvedTheme === "dark" ? DARK_THEME : LIGHT_THEME;
+	// resolvedTheme can be undefined before next-themes mounts; fall back to
+	// the DOM class that next-themes injects synchronously via a script tag.
+	const isDark =
+		resolvedTheme === "dark" ||
+		(resolvedTheme === undefined &&
+			document.documentElement.classList.contains("dark"));
+	return isDark ? DARK_THEME : LIGHT_THEME;
 }
 
 const createTerminal = (theme: ITheme) => {
