@@ -64,6 +64,10 @@ export default function InstallationPage() {
       # ADMIN_USERNAME: admin
       # ADMIN_PASSWORD_SALT: your-random-salt-change-this
       # ADMIN_PASSWORD: your-sha256-hash
+
+      # Optional: Coolify integration (persists env var changes across redeployments)
+      # COOLIFY_API_URL: https://your-coolify-instance.com
+      # COOLIFY_API_TOKEN: your-coolify-api-token
     volumes:
       # Mount the Docker socket for container management
       - /var/run/docker.sock:/var/run/docker.sock
@@ -231,6 +235,35 @@ export DOCKER_HOSTS="local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.ex
                 <p className="text-sm text-muted-foreground mt-1">
                   SHA256 hash of (password + salt). See configuration guide for
                   generation instructions.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">
+                Coolify Integration (Optional)
+              </CardTitle>
+              <CardDescription>
+                Both must be set together. Leave unset if not using Coolify.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <code className="text-sm bg-muted px-2 py-1 rounded">
+                  COOLIFY_API_URL
+                </code>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Base URL of your Coolify instance (e.g., <code>https://coolify.example.com</code>).
+                </p>
+              </div>
+              <div>
+                <code className="text-sm bg-muted px-2 py-1 rounded">
+                  COOLIFY_API_TOKEN
+                </code>
+                <p className="text-sm text-muted-foreground mt-1">
+                  API token from Coolify. Generate one under Settings &rarr; API Tokens.
                 </p>
               </div>
             </CardContent>
