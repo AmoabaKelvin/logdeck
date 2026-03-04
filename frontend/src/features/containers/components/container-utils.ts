@@ -123,6 +123,10 @@ export function getContainerUrlIdentifier(container: ContainerInfo): string {
   return container.id.substring(0, 12);
 }
 
+export function isCoolifyManaged(labels?: Record<string, string>): boolean {
+  return labels?.["coolify.managed"] === "true";
+}
+
 export function formatBytes(bytes: number): string {
   if (!bytes || bytes < 0) return "—";
   if (bytes === 0) return "0 B";

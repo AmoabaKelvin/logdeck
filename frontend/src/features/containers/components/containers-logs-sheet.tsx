@@ -77,6 +77,7 @@ import {
   formatUptime,
   getContainerUrlIdentifier,
   getStateBadgeClass,
+  isCoolifyManaged,
   toTitleCase
 } from "./container-utils";
 import { CollapsibleJson } from "./collapsible-json";
@@ -878,6 +879,7 @@ export function ContainersLogsSheet({
                             containerId={container.id}
                             containerHost={container.host}
                             isReadOnly={isReadOnly}
+                            isCoolifyManaged={isCoolifyManaged(container.labels)}
                             onContainerIdChange={onContainerRecreated}
                           />
                         </div>
