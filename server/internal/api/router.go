@@ -8,6 +8,7 @@ import (
 	"github.com/AmoabaKelvin/logdeck/internal/api/middleware"
 	"github.com/AmoabaKelvin/logdeck/internal/auth"
 	"github.com/AmoabaKelvin/logdeck/internal/config"
+	"github.com/AmoabaKelvin/logdeck/internal/coolify"
 	"github.com/AmoabaKelvin/logdeck/internal/docker"
 	"github.com/AmoabaKelvin/logdeck/internal/static"
 	"github.com/go-chi/chi/v5"
@@ -19,14 +20,16 @@ type APIRouter struct {
 	docker      *docker.MultiHostClient
 	authService *auth.Service
 	config      *config.Config
+	coolify     *coolify.Client
 }
 
-func NewRouter(docker *docker.MultiHostClient, authService *auth.Service, config *config.Config) *chi.Mux {
+func NewRouter(docker *docker.MultiHostClient, authService *auth.Service, config *config.Config, coolifyClient *coolify.Client) *chi.Mux {
 	r := &APIRouter{
 		router:      chi.NewRouter(),
 		docker:      docker,
 		authService: authService,
 		config:      config,
+		coolify:     coolifyClient,
 	}
 
 	return r.Routes()

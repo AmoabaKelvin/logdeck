@@ -8,6 +8,7 @@ import (
 	"github.com/AmoabaKelvin/logdeck/internal/api"
 	"github.com/AmoabaKelvin/logdeck/internal/auth"
 	"github.com/AmoabaKelvin/logdeck/internal/config"
+	"github.com/AmoabaKelvin/logdeck/internal/coolify"
 	"github.com/AmoabaKelvin/logdeck/internal/docker"
 	"github.com/AmoabaKelvin/logdeck/internal/system"
 )
@@ -42,7 +43,15 @@ func main() {
 		log.Println("Read-only mode is DISABLED - all operations are allowed")
 	}
 
-	apiRouter := api.NewRouter(multiHostClient, authService, config)
+	coolifyClient := coolify.NewClient(config.Coolify)
+	if coolifyClient != nil {
+		log.Println("Coolify integration is ENABLED")
+	} else {
+		log.Println("Coolify integration is DISABLED - no Coolify environment variables detected")
+		log.Println("   To enable Coolify integration, set: COOLIFY_API_URL, COOLIFY_API_TOKEN")
+	}
+
+	apiRouter := api.NewRouter(multiHostClient, authService, config, coolifyClient)
 
 	log.Println("Server starting on :8080")
 	if err := http.ListenAndServe(":8080", apiRouter); err != nil {

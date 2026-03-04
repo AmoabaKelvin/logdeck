@@ -11,9 +11,15 @@ type DockerHost struct {
 	Host string
 }
 
+type CoolifyConfig struct {
+	APIURL   string
+	APIToken string
+}
+
 type Config struct {
 	ReadOnly    bool
 	DockerHosts []DockerHost
+	Coolify     *CoolifyConfig
 }
 
 func NewConfig() *Config {
@@ -26,7 +32,27 @@ func NewConfig() *Config {
 		dockerHosts = []DockerHost{{Name: "local", Host: "unix:///var/run/docker.sock"}}
 	}
 
-	return &Config{ReadOnly: isReadOnlyMode, DockerHosts: dockerHosts}
+	coolify := parseCoolifyConfig()
+
+	return &Config{ReadOnly: isReadOnlyMode, DockerHosts: dockerHosts, Coolify: coolify}
+}
+
+func parseCoolifyConfig() *CoolifyConfig {
+	apiURL := strings.TrimSpace(os.Getenv("COOLIFY_API_URL"))
+	apiToken := strings.TrimSpace(os.Getenv("COOLIFY_API_TOKEN"))
+
+	if apiURL == "" && apiToken == "" {
+		return nil
+	}
+
+	if apiURL == "" || apiToken == "" {
+		log.Fatalf("Partial Coolify configuration detected. Both COOLIFY_API_URL and COOLIFY_API_TOKEN must be set together.")
+	}
+
+	// Remove trailing slash from API URL
+	apiURL = strings.TrimRight(apiURL, "/")
+
+	return &CoolifyConfig{APIURL: apiURL, APIToken: apiToken}
 }
 
 func parseDockerHosts() []DockerHost {
