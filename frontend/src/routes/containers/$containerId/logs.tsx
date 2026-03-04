@@ -75,6 +75,7 @@ import {
 	formatMemoryStats,
 	formatUptime,
 	getStateBadgeClass,
+	isCoolifyManaged,
 	toTitleCase,
 } from "@/features/containers/components/container-utils";
 import { EnvironmentVariables } from "@/features/containers/components/environment-variables";
@@ -964,6 +965,7 @@ function ContainerLogsPage() {
 												<EnvironmentVariables
 													containerId={actualContainerId}
 													containerHost={container.host}
+													isCoolifyManaged={isCoolifyManaged(container?.labels)}
 													onContainerIdChange={handleContainerRecreated}
 												/>
 											</div>

@@ -74,16 +74,20 @@ func (c *MultiHostClient) GetEnvVariables(hostName, id string) (map[string]strin
 	return envMap, nil
 }
 
-func (c *MultiHostClient) SetEnvVariables(hostName, id string, envVariables map[string]string) (string, error) {
+// SetEnvVariables recreates a container with updated environment variables.
+// Returns the new container ID and the original container's labels.
+func (c *MultiHostClient) SetEnvVariables(hostName, id string, envVariables map[string]string) (string, map[string]string, error) {
 	apiClient, err := c.GetClient(hostName)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	inspect, err := apiClient.ContainerInspect(context.Background(), id)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
+
+	labels := inspect.Config.Labels
 
 	envMap := make(map[string]string)
 	// First, load all existing env vars from the container config
@@ -109,17 +113,16 @@ func (c *MultiHostClient) SetEnvVariables(hostName, id string, envVariables map[
 		envs = append(envs, key+"="+value)
 	}
 
-	containerName := inspect.Name
-	containerName = strings.TrimPrefix(containerName, "/")
+	containerName := strings.TrimPrefix(inspect.Name, "/")
 
 	err = apiClient.ContainerStop(context.Background(), id, container.StopOptions{})
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	err = apiClient.ContainerRemove(context.Background(), id, container.RemoveOptions{})
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	newConfig := inspect.Config
@@ -136,13 +139,13 @@ func (c *MultiHostClient) SetEnvVariables(hostName, id string, envVariables map[
 		containerName,
 	)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	err = apiClient.ContainerStart(context.Background(), resp.ID, container.StartOptions{})
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
-	return resp.ID, nil
+	return resp.ID, labels, nil
 }

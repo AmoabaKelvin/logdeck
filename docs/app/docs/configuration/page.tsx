@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import { CodeBlock } from "@/components/landing/code-block"
 import { Separator } from "@/components/ui/separator"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { AlertTriangle, Info, Lock, Server } from "lucide-react"
+import { AlertTriangle, CloudCog, Info, Lock, Server } from "lucide-react"
 
 export const metadata: Metadata = {
   title: "Configuration",
@@ -172,6 +172,87 @@ DOCKER_HOSTS=local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.example.co
             </div>
           </CardContent>
         </Card>
+        <Card>
+          <CardHeader>
+            <div className="flex items-start gap-2">
+              <CloudCog className="h-5 w-5 text-primary mt-0.5" />
+              <div>
+                <CardTitle>Coolify Integration (Optional)</CardTitle>
+                <CardDescription>
+                  Persist environment variable changes across Coolify redeployments
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/20 p-4">
+              <div className="flex gap-2">
+                <Info className="h-5 w-5 text-blue-600 dark:text-blue-500 shrink-0 mt-0.5" />
+                <div className="text-sm text-blue-900 dark:text-blue-200">
+                  <p className="font-medium">Only needed for Coolify-managed servers</p>
+                  <p className="mt-1">
+                    If you deploy containers through Coolify, enabling this integration ensures that
+                    environment variable changes made in LogDeck are synced to Coolify and persist
+                    across redeployments. Without it, changes are lost when Coolify redeploys.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-baseline gap-2 mb-1">
+                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">COOLIFY_API_URL</code>
+                <span className="text-xs text-amber-600 dark:text-amber-500 font-medium">Required for Coolify</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                The base URL of your Coolify instance API.
+              </p>
+              <div className="mt-2">
+                <CodeBlock code='COOLIFY_API_URL=https://your-coolify-instance.com' language="bash" />
+              </div>
+            </div>
+
+            <Separator />
+
+            <div>
+              <div className="flex items-baseline gap-2 mb-1">
+                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">COOLIFY_API_TOKEN</code>
+                <span className="text-xs text-amber-600 dark:text-amber-500 font-medium">Required for Coolify</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                API token for authenticating with the Coolify API. Generate one from your Coolify dashboard
+                under <strong>Settings &rarr; API Tokens</strong>.
+              </p>
+              <div className="mt-2">
+                <CodeBlock code='COOLIFY_API_TOKEN=your-coolify-api-token' language="bash" />
+              </div>
+            </div>
+
+            <Separator />
+
+            <div>
+              <p className="text-sm font-medium mb-2">How it works</p>
+              <ul className="text-sm text-muted-foreground space-y-1.5">
+                <li className="flex items-start gap-2">
+                  <div className="h-1.5 w-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
+                  <span>LogDeck detects Coolify-managed containers automatically via Docker labels</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <div className="h-1.5 w-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
+                  <span>When you update environment variables, changes are synced to the Coolify API</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <div className="h-1.5 w-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
+                  <span>Sync is best-effort: if the Coolify API is unreachable, the container update still succeeds</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <div className="h-1.5 w-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
+                  <span>Coolify-managed containers are marked with a badge in the container list</span>
+                </li>
+              </ul>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <Separator className="my-12" />
@@ -295,6 +376,10 @@ console.log(hash);`}
       ADMIN_USERNAME: "admin"
       ADMIN_PASSWORD_SALT: "your-random-salt-change-this"
       ADMIN_PASSWORD: "your-sha256-hash"
+
+      # Coolify integration (optional - remove if not using Coolify)
+      # COOLIFY_API_URL: "https://your-coolify-instance.com"
+      # COOLIFY_API_TOKEN: "your-coolify-api-token"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080"]

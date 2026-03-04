@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -121,7 +120,6 @@ func (c *MultiHostClient) GetBulkContainerStats(ctx context.Context, containers 
 
 			stats, err := c.GetContainerStats(ctx, identifier.Host, identifier.ID)
 			if err != nil {
-				log.Printf("Failed to get stats for container %s on host %s: %v", identifier.ID[:12], identifier.Host, err)
 				return
 			}
 

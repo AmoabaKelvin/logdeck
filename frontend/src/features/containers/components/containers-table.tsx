@@ -27,6 +27,7 @@ import {
   formatMemoryStats,
   formatUptime,
   getStateBadgeClass,
+  isCoolifyManaged,
   toTitleCase,
 } from "./container-utils";
 
@@ -132,7 +133,14 @@ export function ContainersTable({
     return (
       <TableRow key={container.id} className="hover:bg-muted/50">
         <TableCell className="h-16 px-4 font-medium">
-          {formatContainerName(container.names)}
+          <div className="flex items-center gap-2">
+            {formatContainerName(container.names)}
+            {isCoolifyManaged(container.labels) && (
+              <Badge className="bg-purple-500/10 text-purple-700 dark:text-purple-400 border-0 text-[10px] px-1.5 h-4">
+                Coolify
+              </Badge>
+            )}
+          </div>
         </TableCell>
         <TableCell className="h-16 px-4 text-sm text-muted-foreground">
           {container.image}

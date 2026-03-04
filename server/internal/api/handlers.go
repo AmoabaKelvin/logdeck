@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"regexp"
 	"strconv"
 	"time"
 
+	"github.com/AmoabaKelvin/logdeck/internal/coolify"
 	"github.com/AmoabaKelvin/logdeck/internal/models"
 	"github.com/AmoabaKelvin/logdeck/internal/system"
 	"github.com/go-chi/chi/v5"
@@ -66,10 +68,11 @@ func (ar *APIRouter) GetContainers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJsonResponse(w, http.StatusOK, map[string]any{
-		"containers": allContainers,
-		"hosts":      ar.docker.GetHosts(),
-		"readOnly":   ar.config.ReadOnly,
-		"hostErrors": hostErrorMessages,
+		"containers":        allContainers,
+		"hosts":             ar.docker.GetHosts(),
+		"readOnly":          ar.config.ReadOnly,
+		"hostErrors":        hostErrorMessages,
+		"coolifyConfigured": ar.coolify != nil,
 	})
 }
 
@@ -290,6 +293,8 @@ func (ar *APIRouter) GetEnvVariables(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+var envKeyRegex = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_\-\.]*$`)
+
 func (ar *APIRouter) UpdateEnvVariables(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	host := r.URL.Query().Get("host")
@@ -305,8 +310,6 @@ func (ar *APIRouter) UpdateEnvVariables(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Validate environment variable keys
-	envKeyRegex := regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 	for key := range envVariables.Env {
 		if !envKeyRegex.MatchString(key) {
 			http.Error(w, fmt.Sprintf("invalid environment variable key: %s", key), http.StatusBadRequest)
@@ -314,14 +317,33 @@ func (ar *APIRouter) UpdateEnvVariables(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	newContainerID, err := ar.docker.SetEnvVariables(host, id, envVariables.Env)
+	newContainerID, labels, err := ar.docker.SetEnvVariables(host, id, envVariables.Env)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	WriteJsonResponse(w, http.StatusOK, map[string]any{
+	response := map[string]any{
 		"message":          "Environment variables updated",
 		"new_container_id": newContainerID,
-	})
+	}
+
+	// Best-effort sync to Coolify API
+	if ar.coolify != nil {
+		coolifyResource := coolify.ExtractResourceInfo(labels)
+		if coolifyResource != nil {
+			syncCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+			defer cancel()
+
+			if syncErr := ar.coolify.SyncEnvVars(syncCtx, coolifyResource, envVariables.Env); syncErr != nil {
+				log.Printf("Warning: failed to sync env vars to Coolify: %v", syncErr)
+				response["coolify_synced"] = false
+				response["coolify_error"] = syncErr.Error()
+			} else {
+				response["coolify_synced"] = true
+			}
+		}
+	}
+
+	WriteJsonResponse(w, http.StatusOK, response)
 }

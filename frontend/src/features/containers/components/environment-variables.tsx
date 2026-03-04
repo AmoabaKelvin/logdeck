@@ -31,6 +31,7 @@ interface EnvironmentVariablesProps {
   containerId: string;
   containerHost: string;
   isReadOnly?: boolean;
+  isCoolifyManaged?: boolean;
   onContainerIdChange?: (newContainerId: string) => void;
 }
 
@@ -76,6 +77,7 @@ export function EnvironmentVariables({
   containerId,
   containerHost,
   isReadOnly = false,
+  isCoolifyManaged = false,
   onContainerIdChange,
 }: EnvironmentVariablesProps) {
   const queryClient = useQueryClient();
@@ -108,29 +110,42 @@ export function EnvironmentVariables({
   const updateMutation = useMutation({
     mutationFn: (env: Record<string, string>) =>
       updateContainerEnvVariables(containerId, containerHost, env),
-    onSuccess: (newContainerId) => {
+    onSuccess: (result) => {
       // Invalidate queries for BOTH old and new container IDs
       queryClient.invalidateQueries({
         queryKey: ["container-env", containerId],
       });
       queryClient.invalidateQueries({
-        queryKey: ["container-env", newContainerId],
+        queryKey: ["container-env", result.newContainerId],
       });
       queryClient.invalidateQueries({
         queryKey: ["containers"],
       });
 
       // Notify parent of new container ID
-      onContainerIdChange?.(newContainerId);
+      onContainerIdChange?.(result.newContainerId);
 
       setIsEditing(false);
       setEditedEnv({});
       setDeletedKeys(new Set());
       setModifiedKeys(new Set());
-      toast.success("Environment variables updated successfully", {
-        description:
-          "The container has been recreated with the new environment variables.",
-      });
+
+      if (result.coolifySynced === true) {
+        toast.success("Environment variables updated", {
+          description:
+            "Container recreated and changes synced to Coolify.",
+        });
+      } else if (result.coolifySynced === false) {
+        toast.warning("Updated, but Coolify sync failed", {
+          description:
+            result.coolifyError || "Container recreated, but Coolify was not updated. Changes may be lost on redeployment.",
+        });
+      } else {
+        toast.success("Environment variables updated", {
+          description:
+            "Container recreated with the new environment variables.",
+        });
+      }
     },
     onError: (error: Error) => {
       toast.error("Failed to update environment variables", {
@@ -651,8 +666,10 @@ export function EnvironmentVariables({
             <AlertDialogTitle>Update environment variables?</AlertDialogTitle>
             <AlertDialogDescription>
               Changing environment variables requires recreating the container.
-              This will cause a brief downtime. Are you sure you want to
-              continue?
+              This will cause a brief downtime.
+              {isCoolifyManaged
+                ? " Changes will also be synced to Coolify so they persist across redeployments. Are you sure you want to continue?"
+                : " Are you sure you want to continue?"}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

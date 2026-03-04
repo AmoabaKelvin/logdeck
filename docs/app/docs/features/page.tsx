@@ -92,8 +92,9 @@ const features = [
       "View and update container environment variables through the UI.",
     items: [
       "Display all environment variables",
-      "Update variables without container recreation",
-      "Useful for configuration changes",
+      "Add, edit, and delete variables with live container recreation",
+      "Coolify integration: sync changes to Coolify so they persist across redeployments",
+      "Coolify-managed containers are automatically detected and labeled in the UI",
       "Works with Docker Compose setups",
     ],
   },
