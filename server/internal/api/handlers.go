@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/coolify"
@@ -269,10 +268,6 @@ func parseLogOptions(r *http.Request) models.LogOptions {
 
 	if stderr := query.Get("stderr"); stderr != "" {
 		options.ShowStderr, _ = strconv.ParseBool(stderr)
-	}
-
-	if level := query.Get("level"); level != "" {
-		options.Level = strings.ToUpper(level)
 	}
 
 	return options
