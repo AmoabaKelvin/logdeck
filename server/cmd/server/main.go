@@ -43,12 +43,12 @@ func main() {
 		log.Println("Read-only mode is DISABLED - all operations are allowed")
 	}
 
-	coolifyClient := coolify.NewClient(config.Coolify)
+	coolifyClient := coolify.NewMultiClient(config.CoolifyHosts)
 	if coolifyClient != nil {
-		log.Println("Coolify integration is ENABLED")
+		log.Printf("Coolify integration is ENABLED (%d host configs)", len(config.CoolifyHosts))
 	} else {
-		log.Println("Coolify integration is DISABLED - no Coolify environment variables detected")
-		log.Println("   To enable Coolify integration, set: COOLIFY_API_URL, COOLIFY_API_TOKEN")
+		log.Println("Coolify integration is DISABLED - COOLIFY_CONFIGS is not set")
+		log.Println("   To enable, set: COOLIFY_CONFIGS=hostName|apiURL|apiToken,...")
 	}
 
 	apiRouter := api.NewRouter(multiHostClient, authService, config, coolifyClient)

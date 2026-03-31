@@ -20,10 +20,10 @@ type APIRouter struct {
 	docker      *docker.MultiHostClient
 	authService *auth.Service
 	config      *config.Config
-	coolify     *coolify.Client
+	coolify     *coolify.MultiClient
 }
 
-func NewRouter(docker *docker.MultiHostClient, authService *auth.Service, config *config.Config, coolifyClient *coolify.Client) *chi.Mux {
+func NewRouter(docker *docker.MultiHostClient, authService *auth.Service, config *config.Config, coolifyClient *coolify.MultiClient) *chi.Mux {
 	r := &APIRouter{
 		router:      chi.NewRouter(),
 		docker:      docker,

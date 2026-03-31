@@ -32,18 +32,41 @@ type Client struct {
 	httpClient *http.Client
 }
 
-func NewClient(cfg *config.CoolifyConfig) *Client {
-	if cfg == nil {
+func newClient(apiURL, apiToken string) *Client {
+	return &Client{
+		apiURL:     apiURL,
+		apiToken:   apiToken,
+		httpClient: &http.Client{Timeout: 10 * time.Second},
+	}
+}
+
+// MultiClient routes Coolify API calls to the correct per-host client.
+type MultiClient struct {
+	clients map[string]*Client
+}
+
+// NewMultiClient creates a MultiClient from per-host configs.
+// Returns nil if no configs are provided.
+func NewMultiClient(hostConfigs []config.CoolifyHostConfig) *MultiClient {
+	if len(hostConfigs) == 0 {
 		return nil
 	}
 
-	return &Client{
-		apiURL:   cfg.APIURL,
-		apiToken: cfg.APIToken,
-		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
-		},
+	clients := make(map[string]*Client, len(hostConfigs))
+	for _, hc := range hostConfigs {
+		clients[hc.HostName] = newClient(hc.APIURL, hc.APIToken)
 	}
+
+	return &MultiClient{clients: clients}
+}
+
+// GetClient returns the Coolify client for the given Docker host name.
+// Returns nil if no config exists for that host.
+func (mc *MultiClient) GetClient(hostName string) *Client {
+	if mc == nil {
+		return nil
+	}
+	return mc.clients[hostName]
 }
 
 // ExtractResourceInfo checks container labels for Coolify management info.

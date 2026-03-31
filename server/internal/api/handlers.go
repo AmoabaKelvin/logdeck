@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/coolify"
@@ -270,6 +271,10 @@ func parseLogOptions(r *http.Request) models.LogOptions {
 		options.ShowStderr, _ = strconv.ParseBool(stderr)
 	}
 
+	if level := query.Get("level"); level != "" {
+		options.Level = strings.ToUpper(level)
+	}
+
 	return options
 }
 
@@ -330,13 +335,14 @@ func (ar *APIRouter) UpdateEnvVariables(w http.ResponseWriter, r *http.Request) 
 
 	// Best-effort sync to Coolify API
 	if ar.coolify != nil {
+		coolifyClient := ar.coolify.GetClient(host)
 		coolifyResource := coolify.ExtractResourceInfo(labels)
-		if coolifyResource != nil {
+		if coolifyClient != nil && coolifyResource != nil {
 			syncCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 			defer cancel()
 
-			if syncErr := ar.coolify.SyncEnvVars(syncCtx, coolifyResource, envVariables.Env); syncErr != nil {
-				log.Printf("Warning: failed to sync env vars to Coolify: %v", syncErr)
+			if syncErr := coolifyClient.SyncEnvVars(syncCtx, coolifyResource, envVariables.Env); syncErr != nil {
+				log.Printf("Warning: failed to sync env vars to Coolify for host %s: %v", host, syncErr)
 				response["coolify_synced"] = false
 				response["coolify_error"] = syncErr.Error()
 			} else {
