@@ -54,6 +54,7 @@ type Manager struct {
 	merged      *Config          // final merged config
 	sources     ConfigSources    // per-category source tracking
 	onChange    []func(*Config)  // callbacks when config changes
+	generation  uint64           // incremented on each merge to detect stale callbacks
 }
 
 // ConfigSources tracks the source of each config category.
@@ -343,13 +344,24 @@ func (m *Manager) merge() (*Config, ConfigSources) {
 // remerge re-merges config then unlocks the mutex before firing callbacks.
 // Callers must hold the write lock. The lock is released by this function;
 // callers must NOT use defer m.mu.Unlock().
+// Uses a generation counter to drop stale callbacks when a newer update
+// has already been applied.
 func (m *Manager) remerge() {
+	m.generation++
+	gen := m.generation
 	m.merged, m.sources = m.merge()
 	cfg := m.merged
 	cbs := make([]func(*Config), len(m.onChange))
 	copy(cbs, m.onChange)
 	m.mu.Unlock()
 	for _, fn := range cbs {
+		// Check if a newer update has superseded this one.
+		m.mu.RLock()
+		stale := m.generation != gen
+		m.mu.RUnlock()
+		if stale {
+			return
+		}
 		fn(cfg)
 	}
 }
