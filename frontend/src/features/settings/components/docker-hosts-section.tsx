@@ -126,7 +126,7 @@ export function DockerHostsSection({ config }: DockerHostsSectionProps) {
       toast.error(`Host name "${trimmedName}" already exists`);
       return;
     }
-    setFileHosts([...fileHosts, { name: newHost.name.trim(), host: newHost.host.trim() }]);
+    setFileHosts([...fileHosts, { name: trimmedName, host: newHost.host.trim() }]);
     setNewHost({ name: "", host: "" });
     setIsAdding(false);
     setTestResults({});
@@ -245,6 +245,7 @@ export function DockerHostsSection({ config }: DockerHostsSectionProps) {
                 <Button
                   variant="ghost"
                   size="sm"
+                  disabled={editingIndex !== null}
                   onClick={() => handleStartEdit(fileIndex)}
                 >
                   Edit
@@ -252,6 +253,7 @@ export function DockerHostsSection({ config }: DockerHostsSectionProps) {
                 <Button
                   variant="ghost"
                   size="sm"
+                  disabled={editingIndex !== null}
                   onClick={() => handleRemove(fileIndex)}
                   className="text-destructive hover:text-destructive"
                 >

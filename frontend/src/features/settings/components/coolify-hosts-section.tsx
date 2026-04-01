@@ -125,7 +125,7 @@ export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
       toast.error(`Host name "${trimmedName}" already exists`);
       return;
     }
-    setFileHosts([...fileHosts, { ...newHost }]);
+    setFileHosts([...fileHosts, { hostName: trimmedName, apiURL: newHost.apiURL.trim(), apiToken: newHost.apiToken.trim() }]);
     setNewHost(EMPTY_HOST);
     setIsAdding(false);
     setTestResults({});
@@ -231,10 +231,11 @@ export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
             </Button>
             {!isEnvRow && fileIndex !== undefined && (
               <>
-                <Button variant="ghost" size="sm" onClick={() => handleStartEdit(fileIndex)}>Edit</Button>
+                <Button variant="ghost" size="sm" disabled={editingIndex !== null} onClick={() => handleStartEdit(fileIndex)}>Edit</Button>
                 <Button
                   variant="ghost"
                   size="sm"
+                  disabled={editingIndex !== null}
                   onClick={() => handleRemove(fileIndex)}
                   className="text-destructive hover:text-destructive"
                 >
