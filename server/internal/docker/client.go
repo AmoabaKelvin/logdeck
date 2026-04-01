@@ -127,3 +127,10 @@ func (c *MultiHostClient) GetClient(hostName string) (*client.Client, error) {
 func (c *MultiHostClient) GetHosts() []config.DockerHost {
 	return c.hosts
 }
+
+// Close closes all underlying Docker API clients.
+func (c *MultiHostClient) Close() {
+	for _, cl := range c.clients {
+		cl.Close()
+	}
+}

@@ -8,28 +8,23 @@ import (
 	"github.com/AmoabaKelvin/logdeck/internal/api/middleware"
 	"github.com/AmoabaKelvin/logdeck/internal/auth"
 	"github.com/AmoabaKelvin/logdeck/internal/config"
-	"github.com/AmoabaKelvin/logdeck/internal/coolify"
-	"github.com/AmoabaKelvin/logdeck/internal/docker"
+	"github.com/AmoabaKelvin/logdeck/internal/services"
 	"github.com/AmoabaKelvin/logdeck/internal/static"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
 )
 
 type APIRouter struct {
-	router      *chi.Mux
-	docker      *docker.MultiHostClient
-	authService *auth.Service
-	config      *config.Config
-	coolify     *coolify.MultiClient
+	router   *chi.Mux
+	registry *services.Registry
+	manager  *config.Manager
 }
 
-func NewRouter(docker *docker.MultiHostClient, authService *auth.Service, config *config.Config, coolifyClient *coolify.MultiClient) *chi.Mux {
+func NewRouter(registry *services.Registry, manager *config.Manager) *chi.Mux {
 	r := &APIRouter{
-		router:      chi.NewRouter(),
-		docker:      docker,
-		authService: authService,
-		config:      config,
-		coolify:     coolifyClient,
+		router:   chi.NewRouter(),
+		registry: registry,
+		manager:  manager,
 	}
 
 	return r.Routes()
@@ -57,29 +52,25 @@ func (ar *APIRouter) Routes() *chi.Mux {
 
 	// API routes
 	ar.router.Route("/api/v1", func(r chi.Router) {
-		// System stats - publicly available for now
+		// System stats - publicly available
 		r.Get("/system/stats", ar.GetSystemStats)
 
-		if ar.authService != nil {
-			authHandlers := NewAuthHandlers(ar.authService)
-			r.Post("/auth/login", authHandlers.Login)
+		// Auth endpoints (always registered, dynamic behavior)
+		r.Post("/auth/login", ar.handleLogin)
 
-			r.Group(func(protected chi.Router) {
-				protected.Use(auth.Middleware(ar.authService))
+		// Settings endpoints (follow same auth pattern as other routes)
+		ar.registerSettingsRoutes(r)
 
-				protected.Get("/auth/me", authHandlers.GetMe)
-				// protected.Get("/system/stats", ar.GetSystemStats) // Moved to public
-				ar.registerContainerRoutes(protected)
-			})
-			return
-		}
+		// All other routes go through dynamic auth middleware
+		r.Group(func(protected chi.Router) {
+			protected.Use(auth.DynamicMiddleware(ar.registry.Auth))
 
-		// r.Get("/system/stats", ar.GetSystemStats) // Already registered above
-		ar.registerContainerRoutes(r)
+			protected.Get("/auth/me", ar.handleGetMe)
+			ar.registerContainerRoutes(protected)
+		})
 	})
 
 	// Serve embedded frontend static files
-	// This handles all non-API routes and serves the React SPA
 	staticFS, err := static.GetFileSystem()
 	if err != nil {
 		log.Printf("Warning: Could not load embedded frontend files: %v", err)
@@ -103,7 +94,9 @@ func (ar *APIRouter) registerContainerRoutes(r chi.Router) {
 
 		// Mutating routes (blocked in read-only mode)
 		r.Group(func(mutating chi.Router) {
-			mutating.Use(middleware.ReadOnly(ar.config))
+			mutating.Use(middleware.ReadOnly(func() bool {
+				return ar.registry.Config().ReadOnly
+			}))
 			mutating.Post("/start", ar.StartContainer)
 			mutating.Post("/stop", ar.StopContainer)
 			mutating.Post("/restart", ar.RestartContainer)
@@ -111,5 +104,75 @@ func (ar *APIRouter) registerContainerRoutes(r chi.Router) {
 			mutating.Put("/env", ar.UpdateEnvVariables)
 			mutating.Get("/exec", ar.HandleTerminal)
 		})
+	})
+}
+
+func (ar *APIRouter) registerSettingsRoutes(r chi.Router) {
+	r.Route("/settings", func(r chi.Router) {
+		// Settings follow the same auth pattern — protected when auth is enabled
+		r.Use(auth.DynamicMiddleware(ar.registry.Auth))
+
+		r.Get("/", ar.GetSettings)
+		r.Put("/docker-hosts", ar.UpdateDockerHosts)
+		r.Put("/coolify-hosts", ar.UpdateCoolifyHosts)
+		r.Put("/read-only", ar.UpdateReadOnly)
+		r.Put("/auth", ar.UpdateAuth)
+		r.Post("/test/docker-host", ar.TestDockerHost)
+		r.Post("/test/coolify-host", ar.TestCoolifyHost)
+	})
+}
+
+// handleLogin delegates to the dynamic auth service.
+func (ar *APIRouter) handleLogin(w http.ResponseWriter, r *http.Request) {
+	svc := ar.registry.Auth()
+	if svc == nil {
+		http.Error(w, "Authentication is not enabled", http.StatusNotFound)
+		return
+	}
+
+	var loginReq struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&loginReq); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if loginReq.Username == "" || loginReq.Password == "" {
+		http.Error(w, "Username and password are required", http.StatusBadRequest)
+		return
+	}
+
+	if err := svc.ValidateCredentials(loginReq.Username, loginReq.Password); err != nil {
+		http.Error(w, "Invalid username or password", http.StatusUnauthorized)
+		return
+	}
+
+	token, err := svc.GenerateToken(loginReq.Username)
+	if err != nil {
+		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
+		return
+	}
+
+	WriteJsonResponse(w, http.StatusOK, map[string]any{
+		"token": token,
+		"user": map[string]string{
+			"username": loginReq.Username,
+			"role":     "admin",
+		},
+	})
+}
+
+// handleGetMe returns the current authenticated user's information.
+func (ar *APIRouter) handleGetMe(w http.ResponseWriter, r *http.Request) {
+	userValue := r.Context().Value(auth.UserContextKey)
+	if userValue == nil {
+		http.Error(w, "User not found in context", http.StatusUnauthorized)
+		return
+	}
+
+	WriteJsonResponse(w, http.StatusOK, map[string]any{
+		"user": userValue,
 	})
 }

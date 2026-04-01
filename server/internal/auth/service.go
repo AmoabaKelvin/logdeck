@@ -1,12 +1,14 @@
 package auth
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"os"
 	"time"
 
+	"github.com/AmoabaKelvin/logdeck/internal/config"
 	"github.com/AmoabaKelvin/logdeck/internal/models"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -141,4 +143,37 @@ func HashPassword(password string) (string, error) {
 		return "", err
 	}
 	return string(hash), nil
+}
+
+// NewServiceFromFileConfig creates an auth service from file-based config.
+// Returns nil if auth is not enabled.
+func NewServiceFromFileConfig(cfg *config.FileAuthConfig) *Service {
+	if cfg == nil || !cfg.Enabled {
+		return nil
+	}
+	if cfg.JWTSecret == "" || cfg.AdminUsername == "" || cfg.AdminPasswordHash == "" {
+		return nil
+	}
+	return &Service{
+		jwtSecret:         []byte(cfg.JWTSecret),
+		adminUsername:     cfg.AdminUsername,
+		adminPasswordHash: cfg.AdminPasswordHash,
+		sha256Salt:        cfg.AdminPasswordSalt,
+		tokenExpiration:   7 * 24 * time.Hour,
+	}
+}
+
+// HashPasswordSHA256 computes SHA256(password + salt) and returns the hex-encoded hash.
+func HashPasswordSHA256(password, salt string) string {
+	h := sha256.Sum256([]byte(password + salt))
+	return hex.EncodeToString(h[:])
+}
+
+// GenerateRandomHex generates a cryptographically random hex string of the given byte length.
+func GenerateRandomHex(byteLen int) (string, error) {
+	b := make([]byte, byteLen)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
