@@ -17,3 +17,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - /root/.ssh:/root/.ssh:ro
       - /proc:/host/proc:ro
+      - logdeck-data:/data
+
+volumes:
+  logdeck-data:

@@ -31,7 +31,7 @@ func (ar *APIRouter) GetContainerStats(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	stats, err := ar.docker.GetAllRunningContainerStats(ctx)
+	stats, err := ar.registry.Docker().GetAllRunningContainerStats(ctx)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -45,7 +45,7 @@ func (ar *APIRouter) GetContainerStats(w http.ResponseWriter, r *http.Request) {
 func (ar *APIRouter) GetContainers(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	containersMap, hostErrors, err := ar.docker.ListContainersAllHosts(ctx)
+	containersMap, hostErrors, err := ar.registry.Docker().ListContainersAllHosts(ctx)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -69,10 +69,10 @@ func (ar *APIRouter) GetContainers(w http.ResponseWriter, r *http.Request) {
 
 	WriteJsonResponse(w, http.StatusOK, map[string]any{
 		"containers":        allContainers,
-		"hosts":             ar.docker.GetHosts(),
-		"readOnly":          ar.config.ReadOnly,
+		"hosts":             ar.registry.Docker().GetHosts(),
+		"readOnly":          ar.registry.Config().ReadOnly,
 		"hostErrors":        hostErrorMessages,
-		"coolifyConfigured": ar.coolify != nil,
+		"coolifyConfigured": ar.registry.Coolify() != nil,
 	})
 }
 
@@ -85,7 +85,7 @@ func (ar *APIRouter) GetContainer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	container, err := ar.docker.GetContainer(host, id)
+	container, err := ar.registry.Docker().GetContainer(host, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -104,7 +104,7 @@ func (ar *APIRouter) StartContainer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := ar.docker.StartContainer(host, id)
+	err := ar.registry.Docker().StartContainer(host, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -123,7 +123,7 @@ func (ar *APIRouter) StopContainer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := ar.docker.StopContainer(host, id)
+	err := ar.registry.Docker().StopContainer(host, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -142,7 +142,7 @@ func (ar *APIRouter) RestartContainer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := ar.docker.RestartContainer(host, id)
+	err := ar.registry.Docker().RestartContainer(host, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -161,7 +161,7 @@ func (ar *APIRouter) RemoveContainer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := ar.docker.RemoveContainer(host, id)
+	err := ar.registry.Docker().RemoveContainer(host, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -188,7 +188,7 @@ func (ar *APIRouter) GetContainerLogsParsed(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	logs, err := ar.docker.GetContainerLogsParsed(host, id, options)
+	logs, err := ar.registry.Docker().GetContainerLogsParsed(host, id, options)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -201,7 +201,7 @@ func (ar *APIRouter) GetContainerLogsParsed(w http.ResponseWriter, r *http.Reque
 }
 
 func (ar *APIRouter) streamParsedLogs(w http.ResponseWriter, host, id string, options models.LogOptions) {
-	stream, err := ar.docker.StreamContainerLogsParsed(host, id, options)
+	stream, err := ar.registry.Docker().StreamContainerLogsParsed(host, id, options)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -282,7 +282,7 @@ func (ar *APIRouter) GetEnvVariables(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	envVariables, err := ar.docker.GetEnvVariables(host, id)
+	envVariables, err := ar.registry.Docker().GetEnvVariables(host, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -317,7 +317,7 @@ func (ar *APIRouter) UpdateEnvVariables(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	newContainerID, labels, err := ar.docker.SetEnvVariables(host, id, envVariables.Env)
+	newContainerID, labels, err := ar.registry.Docker().SetEnvVariables(host, id, envVariables.Env)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -329,8 +329,9 @@ func (ar *APIRouter) UpdateEnvVariables(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Best-effort sync to Coolify API
-	if ar.coolify != nil {
-		coolifyClient := ar.coolify.GetClient(host)
+	coolifyMulti := ar.registry.Coolify()
+	if coolifyMulti != nil {
+		coolifyClient := coolifyMulti.GetClient(host)
 		coolifyResource := coolify.ExtractResourceInfo(labels)
 		if coolifyClient != nil && coolifyResource != nil {
 			syncCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)

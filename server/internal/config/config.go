@@ -7,14 +7,14 @@ import (
 )
 
 type DockerHost struct {
-	Name string
-	Host string
+	Name string `json:"name"`
+	Host string `json:"host"`
 }
 
 type CoolifyHostConfig struct {
-	HostName string
-	APIURL   string
-	APIToken string
+	HostName string `json:"hostName"`
+	APIURL   string `json:"apiURL"`
+	APIToken string `json:"apiToken"`
 }
 
 type Config struct {

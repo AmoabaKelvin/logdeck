@@ -69,6 +69,24 @@ func (mc *MultiClient) GetClient(hostName string) *Client {
 	return mc.clients[hostName]
 }
 
+// TestConnection checks if the Coolify API is reachable by calling /api/v1/version.
+func (c *Client) TestConnection(ctx context.Context) error {
+	if c == nil {
+		return fmt.Errorf("coolify client is nil")
+	}
+	url := fmt.Sprintf("%s/api/v1/version", c.apiURL)
+	_, err := c.doRequest(ctx, "GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("coolify API unreachable: %w", err)
+	}
+	return nil
+}
+
+// NewSingleClient creates a single Coolify client for testing connections.
+func NewSingleClient(apiURL, apiToken string) *Client {
+	return newClient(apiURL, apiToken)
+}
+
 // ExtractResourceInfo checks container labels for Coolify management info.
 // Returns nil if the container is not managed by Coolify.
 //
