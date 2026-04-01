@@ -94,6 +94,15 @@ export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
       toast.error("Host name, API URL, and API token are all required");
       return;
     }
+    const trimmedName = editingHost.hostName.trim();
+    if (envHosts.some((h) => h.hostName === trimmedName)) {
+      toast.error(`Host name "${trimmedName}" is defined via environment variable`);
+      return;
+    }
+    if (fileHosts.some((h, i) => i !== editingIndex && h.hostName === trimmedName)) {
+      toast.error(`Host name "${trimmedName}" already exists`);
+      return;
+    }
     const next = [...fileHosts];
     next[editingIndex] = { ...editingHost };
     setFileHosts(next);

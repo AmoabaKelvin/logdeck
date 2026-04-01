@@ -329,8 +329,9 @@ func (ar *APIRouter) UpdateEnvVariables(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Best-effort sync to Coolify API
-	if ar.registry.Coolify() != nil {
-		coolifyClient := ar.registry.Coolify().GetClient(host)
+	coolifyMulti := ar.registry.Coolify()
+	if coolifyMulti != nil {
+		coolifyClient := coolifyMulti.GetClient(host)
 		coolifyResource := coolify.ExtractResourceInfo(labels)
 		if coolifyClient != nil && coolifyResource != nil {
 			syncCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)

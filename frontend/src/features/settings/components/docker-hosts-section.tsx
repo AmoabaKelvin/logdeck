@@ -95,6 +95,15 @@ export function DockerHostsSection({ config }: DockerHostsSectionProps) {
       toast.error("Name and host are required");
       return;
     }
+    const trimmedName = editingHost.name.trim();
+    if (envHosts.some((h) => h.name === trimmedName)) {
+      toast.error(`Host name "${trimmedName}" is defined via environment variable`);
+      return;
+    }
+    if (fileHosts.some((h, i) => i !== editingIndex && h.name === trimmedName)) {
+      toast.error(`Host name "${trimmedName}" already exists`);
+      return;
+    }
     const next = [...fileHosts];
     next[editingIndex] = { ...editingHost };
     setFileHosts(next);

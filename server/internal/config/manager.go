@@ -242,9 +242,10 @@ func (m *Manager) UpdateAuth(mutate func(current *FileAuthConfig) (*FileAuthConf
 	}
 
 	oldAuth := m.fileConfig.Auth
-	current := oldAuth
-	if current == nil {
-		current = &FileAuthConfig{}
+	// Clone to prevent mutate from modifying the live config in-place.
+	current := &FileAuthConfig{}
+	if oldAuth != nil {
+		*current = *oldAuth
 	}
 
 	updated, err := mutate(current)

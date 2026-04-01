@@ -262,7 +262,7 @@ export function ContainersToolbar({
 							className="h-9 shrink-0"
 							asChild
 						>
-							<Link to="/settings">
+							<Link to="/settings" aria-label="Settings">
 								<SettingsIcon className="size-4" />
 							</Link>
 						</Button>

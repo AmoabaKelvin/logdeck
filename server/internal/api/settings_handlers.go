@@ -97,7 +97,8 @@ func (ar *APIRouter) UpdateDockerHosts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(req.Hosts) == 0 {
+	// Reject empty list only if there are no env-defined hosts to fall back on.
+	if len(req.Hosts) == 0 && len(ar.manager.EnvDockerHostNames()) == 0 {
 		http.Error(w, "at least one Docker host is required", http.StatusBadRequest)
 		return
 	}
@@ -121,7 +122,7 @@ func (ar *APIRouter) UpdateDockerHosts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := ar.manager.UpdateDockerHosts(req.Hosts); err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
+		http.Error(w, err.Error(), settingsErrorStatus(err))
 		return
 	}
 
@@ -188,7 +189,7 @@ func (ar *APIRouter) UpdateCoolifyHosts(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := ar.manager.UpdateCoolifyHosts(hosts); err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
+		http.Error(w, err.Error(), settingsErrorStatus(err))
 		return
 	}
 
@@ -206,7 +207,7 @@ func (ar *APIRouter) UpdateReadOnly(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := ar.manager.UpdateReadOnly(req.Value); err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
+		http.Error(w, err.Error(), settingsErrorStatus(err))
 		return
 	}
 
@@ -262,7 +263,7 @@ func (ar *APIRouter) UpdateAuth(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
+		http.Error(w, err.Error(), settingsErrorStatus(err))
 		return
 	}
 
@@ -385,6 +386,15 @@ func (ar *APIRouter) TestCoolifyHost(w http.ResponseWriter, r *http.Request) {
 		"success": true,
 		"message": "Connection successful",
 	})
+}
+
+// settingsErrorStatus maps manager errors to appropriate HTTP status codes.
+// Env-override errors are 409 Conflict, everything else is 500.
+func settingsErrorStatus(err error) int {
+	if strings.Contains(err.Error(), "environment variable") {
+		return http.StatusConflict
+	}
+	return http.StatusInternalServerError
 }
 
 func isValidHostScheme(host string) bool {
