@@ -25,7 +25,7 @@ import {
   useTestCoolifyHost,
   useUpdateCoolifyHosts,
 } from "../hooks/use-settings";
-import type { CoolifyHost, CoolifyHostsConfig } from "../types";
+import type { CoolifyHostsConfig } from "../types";
 import { EnvBadge } from "./env-badge";
 
 interface CoolifyHostsSectionProps {

@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/table";
 
 import { useTestDockerHost, useUpdateDockerHosts } from "../hooks/use-settings";
-import type { DockerHost, DockerHostsConfig } from "../types";
+import type { DockerHostsConfig } from "../types";
 import { EnvBadge } from "./env-badge";
 
 interface DockerHostsSectionProps {
