@@ -1,9 +1,10 @@
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
 	CalendarIcon,
 	ChevronDownIcon,
 	LogOutIcon,
 	RefreshCcwIcon,
+	SettingsIcon,
 	XIcon,
 } from "lucide-react";
 import type { DateRange } from "react-day-picker";
@@ -252,6 +253,22 @@ export function ContainersToolbar({
 						className={`size-4 ${isFetching ? "animate-spin" : ""}`}
 					/>
 				</Button>
+
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Button
+							variant="ghost"
+							size="sm"
+							className="h-9 shrink-0"
+							asChild
+						>
+							<Link to="/settings">
+								<SettingsIcon className="size-4" />
+							</Link>
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent>Settings</TooltipContent>
+				</Tooltip>
 
 				<ThemeToggle />
 
