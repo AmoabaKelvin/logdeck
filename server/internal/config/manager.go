@@ -366,21 +366,21 @@ func (m *Manager) remerge() {
 	}
 }
 
-// loadFile reads the config file from disk. Returns empty FileConfig if file doesn't exist.
+// loadFile reads the config file from disk. Returns empty FileConfig if file
+// doesn't exist. Fatals on read errors or invalid JSON to prevent silently
+// dropping file-based settings (including auth).
 func (m *Manager) loadFile() FileConfig {
 	data, err := os.ReadFile(m.filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return FileConfig{}
 		}
-		log.Printf("Warning: failed to read config file %s: %v", m.filePath, err)
-		return FileConfig{}
+		log.Fatalf("Failed to read config file %s: %v", m.filePath, err)
 	}
 
 	var fc FileConfig
 	if err := json.Unmarshal(data, &fc); err != nil {
-		log.Printf("Warning: failed to parse config file %s: %v", m.filePath, err)
-		return FileConfig{}
+		log.Fatalf("Failed to parse config file %s: %v\nIf the file is corrupted, delete it and restart.", m.filePath, err)
 	}
 	return fc
 }
