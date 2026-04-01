@@ -66,8 +66,8 @@ export default function InstallationPage() {
       # ADMIN_PASSWORD: your-sha256-hash
 
       # Optional: Coolify integration (persists env var changes across redeployments)
-      # COOLIFY_API_URL: https://your-coolify-instance.com
-      # COOLIFY_API_TOKEN: your-coolify-api-token
+      # Host names must match DOCKER_HOSTS
+      # COOLIFY_CONFIGS: local|https://your-coolify-instance.com|your-api-token
     volumes:
       # Mount the Docker socket for container management
       - /var/run/docker.sock:/var/run/docker.sock
@@ -246,24 +246,20 @@ export DOCKER_HOSTS="local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.ex
                 Coolify Integration (Optional)
               </CardTitle>
               <CardDescription>
-                Both must be set together. Leave unset if not using Coolify.
+                Leave unset if not using Coolify.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div>
                 <code className="text-sm bg-muted px-2 py-1 rounded">
-                  COOLIFY_API_URL
+                  COOLIFY_CONFIGS
                 </code>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Base URL of your Coolify instance (e.g., <code>https://coolify.example.com</code>).
+                  Per-host Coolify configuration. Format: <code>hostName|apiURL|apiToken,...</code>
                 </p>
-              </div>
-              <div>
-                <code className="text-sm bg-muted px-2 py-1 rounded">
-                  COOLIFY_API_TOKEN
-                </code>
                 <p className="text-sm text-muted-foreground mt-1">
-                  API token from Coolify. Generate one under Settings &rarr; API Tokens.
+                  Host names must match those in <code>DOCKER_HOSTS</code>. Generate API tokens from
+                  your Coolify dashboard under Settings &rarr; API Tokens.
                 </p>
               </div>
             </CardContent>

@@ -201,30 +201,21 @@ DOCKER_HOSTS=local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.example.co
 
             <div>
               <div className="flex items-baseline gap-2 mb-1">
-                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">COOLIFY_API_URL</code>
+                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">COOLIFY_CONFIGS</code>
                 <span className="text-xs text-amber-600 dark:text-amber-500 font-medium">Required for Coolify</span>
               </div>
               <p className="text-sm text-muted-foreground">
-                The base URL of your Coolify instance API.
-              </p>
-              <div className="mt-2">
-                <CodeBlock code='COOLIFY_API_URL=https://your-coolify-instance.com' language="bash" />
-              </div>
-            </div>
-
-            <Separator />
-
-            <div>
-              <div className="flex items-baseline gap-2 mb-1">
-                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">COOLIFY_API_TOKEN</code>
-                <span className="text-xs text-amber-600 dark:text-amber-500 font-medium">Required for Coolify</span>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                API token for authenticating with the Coolify API. Generate one from your Coolify dashboard
+                Per-host Coolify configuration. Each entry maps a Docker host name (from <code>DOCKER_HOSTS</code>)
+                to a Coolify instance URL and API token. Generate API tokens from your Coolify dashboard
                 under <strong>Settings &rarr; API Tokens</strong>.
               </p>
               <div className="mt-2">
-                <CodeBlock code='COOLIFY_API_TOKEN=your-coolify-api-token' language="bash" />
+                <CodeBlock code={`# Format: hostName|apiURL|apiToken,hostName|apiURL|apiToken
+# Single host
+COOLIFY_CONFIGS=local|https://your-coolify-instance.com|your-api-token
+
+# Multiple hosts with different Coolify instances
+COOLIFY_CONFIGS=prod|https://coolify-prod.example.com|token-abc,staging|https://coolify-staging.example.com|token-xyz`} language="bash" />
               </div>
             </div>
 
@@ -377,9 +368,8 @@ console.log(hash);`}
       ADMIN_PASSWORD_SALT: "your-random-salt-change-this"
       ADMIN_PASSWORD: "your-sha256-hash"
 
-      # Coolify integration (optional - remove if not using Coolify)
-      # COOLIFY_API_URL: "https://your-coolify-instance.com"
-      # COOLIFY_API_TOKEN: "your-coolify-api-token"
+      # Coolify integration (optional - host names must match DOCKER_HOSTS)
+      # COOLIFY_CONFIGS: "local|https://your-coolify-instance.com|your-api-token"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080"]
