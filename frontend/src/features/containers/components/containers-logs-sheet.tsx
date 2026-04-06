@@ -360,12 +360,16 @@ export function ContainersLogsSheet({
         }
       }
         if (excludeMatches && searchText) {
-          const message = entry.message || entry.raw || "";
-          if (useRegex && searchParsed.regex) {
-            searchParsed.regex.lastIndex = 0;
-            if (searchParsed.regex.test(message)) return false;
+          if (useRegex && !searchParsed.regex) {
+            // Invalid regex — skip filtering
           } else {
-            if (message.toLowerCase().includes(searchLower)) return false;
+            const message = entry.message || entry.raw || "";
+            if (useRegex && searchParsed.regex) {
+              searchParsed.regex.lastIndex = 0;
+              if (searchParsed.regex.test(message)) return false;
+            } else {
+              if (message.toLowerCase().includes(searchLower)) return false;
+            }
           }
         }
         return true;
