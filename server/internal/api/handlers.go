@@ -183,6 +183,14 @@ func (ar *APIRouter) GetContainerLogsParsed(w http.ResponseWriter, r *http.Reque
 	// Parse query parameters for log options
 	options := parseLogOptions(r)
 
+	// Validate search regex if provided
+	if options.Search != "" {
+		if _, err := regexp.Compile(options.Search); err != nil {
+			http.Error(w, fmt.Sprintf("invalid search pattern: %v", err), http.StatusBadRequest)
+			return
+		}
+	}
+
 	if options.Follow {
 		ar.streamParsedLogs(w, host, id, options)
 		return
@@ -268,6 +276,10 @@ func parseLogOptions(r *http.Request) models.LogOptions {
 
 	if stderr := query.Get("stderr"); stderr != "" {
 		options.ShowStderr, _ = strconv.ParseBool(stderr)
+	}
+
+	if search := query.Get("search"); search != "" {
+		options.Search = search
 	}
 
 	return options

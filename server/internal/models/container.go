@@ -24,6 +24,8 @@ type LogOptions struct {
 	Details    bool   `json:"details"`
 	ShowStdout bool   `json:"show_stdout"`
 	ShowStderr bool   `json:"show_stderr"`
+	Level      string `json:"level,omitempty"`
+	Search     string `json:"search,omitempty"`
 }
 
 // DefaultLogOptions returns sensible defaults for log fetching

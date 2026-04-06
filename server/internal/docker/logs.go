@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -12,8 +13,9 @@ import (
 	"github.com/docker/docker/pkg/stdcopy"
 )
 
-// parseDockerLogs parses the Docker log stream into structured entries
-func parseDockerLogs(reader io.Reader) ([]models.LogEntry, error) {
+// parseDockerLogs parses the Docker log stream into structured entries,
+// optionally filtering by level and/or search regex.
+func parseDockerLogs(reader io.Reader, levelFilter string, searchRegex *regexp.Regexp) ([]models.LogEntry, error) {
 	var entries []models.LogEntry
 
 	stdout := &logWriter{stream: "stdout", entries: &entries}
@@ -27,7 +29,21 @@ func parseDockerLogs(reader io.Reader) ([]models.LogEntry, error) {
 	stdout.Flush()
 	stderr.Flush()
 
-	return entries, nil
+	if levelFilter == "" && searchRegex == nil {
+		return entries, nil
+	}
+
+	filtered := make([]models.LogEntry, 0, len(entries))
+	for _, e := range entries {
+		if levelFilter != "" && !strings.EqualFold(string(e.Level), levelFilter) {
+			continue
+		}
+		if searchRegex != nil && !searchRegex.MatchString(e.Message) && !searchRegex.MatchString(e.Raw) {
+			continue
+		}
+		filtered = append(filtered, e)
+	}
+	return filtered, nil
 }
 
 // logWriter implements io.Writer and parses log lines
@@ -79,11 +95,13 @@ func (w *logWriter) Flush() {
 }
 
 type streamingLogWriter struct {
-	stream     string
-	buffer     []byte
-	encoder    *json.Encoder
-	encoderMu  *sync.Mutex
-	pipeWriter *io.PipeWriter
+	stream      string
+	buffer      []byte
+	encoder     *json.Encoder
+	encoderMu   *sync.Mutex
+	pipeWriter  *io.PipeWriter
+	levelFilter string
+	searchRegex *regexp.Regexp
 }
 
 func (w *streamingLogWriter) Write(p []byte) (n int, err error) {
@@ -130,6 +148,14 @@ func (w *streamingLogWriter) Flush() {
 func (w *streamingLogWriter) emit(line string) error {
 	entry := models.ParseLogLine(line, w.stream)
 
+	if w.levelFilter != "" && !strings.EqualFold(string(entry.Level), w.levelFilter) {
+		return nil
+	}
+
+	if w.searchRegex != nil && !w.searchRegex.MatchString(entry.Message) && !w.searchRegex.MatchString(entry.Raw) {
+		return nil
+	}
+
 	w.encoderMu.Lock()
 	err := w.encoder.Encode(entry)
 	w.encoderMu.Unlock()
@@ -167,7 +193,12 @@ func (c *MultiHostClient) GetContainerLogsParsed(hostName, id string, options mo
 	}
 	defer logs.Close()
 
-	return parseDockerLogs(logs)
+	var searchRegex *regexp.Regexp
+	if options.Search != "" {
+		searchRegex, _ = regexp.Compile(options.Search) // already validated by handler
+	}
+
+	return parseDockerLogs(logs, options.Level, searchRegex)
 }
 
 func (c *MultiHostClient) StreamContainerLogsParsed(hostName, id string, options models.LogOptions) (io.ReadCloser, error) {
@@ -183,6 +214,11 @@ func (c *MultiHostClient) StreamContainerLogsParsed(hostName, id string, options
 
 	pipeReader, pipeWriter := io.Pipe()
 
+	var searchRegex *regexp.Regexp
+	if options.Search != "" {
+		searchRegex, _ = regexp.Compile(options.Search) // already validated by handler
+	}
+
 	go func() {
 		defer logs.Close()
 		defer pipeWriter.Close()
@@ -191,16 +227,20 @@ func (c *MultiHostClient) StreamContainerLogsParsed(hostName, id string, options
 		var mu sync.Mutex
 
 		stdout := &streamingLogWriter{
-			stream:     "stdout",
-			encoder:    encoder,
-			encoderMu:  &mu,
-			pipeWriter: pipeWriter,
+			stream:      "stdout",
+			encoder:     encoder,
+			encoderMu:   &mu,
+			pipeWriter:  pipeWriter,
+			levelFilter: options.Level,
+			searchRegex: searchRegex,
 		}
 		stderr := &streamingLogWriter{
-			stream:     "stderr",
-			encoder:    encoder,
-			encoderMu:  &mu,
-			pipeWriter: pipeWriter,
+			stream:      "stderr",
+			encoder:     encoder,
+			encoderMu:   &mu,
+			pipeWriter:  pipeWriter,
+			levelFilter: options.Level,
+			searchRegex: searchRegex,
 		}
 
 		_, err = stdcopy.StdCopy(stdout, stderr, logs)
