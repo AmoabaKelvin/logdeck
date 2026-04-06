@@ -512,7 +512,7 @@ export function ContainersLogsSheet({
   useEffect(() => {
     clearSelection();
     setExpandedJsonRows(new Set());
-  }, [searchText, excludeMatches, selectedLevels]);
+  }, [searchText, excludeMatches, selectedLevels, useRegex]);
 
   useEffect(() => {
     if (sortedPinnedIndices.length === 0) {
@@ -962,6 +962,8 @@ export function ContainersLogsSheet({
                     <button
                       type="button"
                       onClick={() => setUseRegex(!useRegex)}
+                      aria-label={useRegex ? "Switch to plain text search" : "Switch to regex search"}
+                      aria-pressed={useRegex}
                       title={useRegex ? "Switch to plain text" : "Switch to regex"}
                       className={`absolute right-1.5 top-1/2 -translate-y-1/2 px-1 py-0.5 rounded text-[10px] font-mono leading-none transition-colors ${
                         useRegex
@@ -1029,6 +1031,7 @@ export function ContainersLogsSheet({
                           data-active={isStreaming}
                           onClick={toggleStreaming}
                           disabled={isLoadingLogs && !isStreaming}
+                          aria-label={isStreaming ? "Stop streaming" : "Start streaming"}
                           className={`h-8 w-8 p-0 ${activeToggleButtonClass}`}
                         >
                           {isStreaming ? <SquareIcon className="size-3.5" /> : <PlayIcon className="size-3.5" />}
@@ -1044,6 +1047,7 @@ export function ContainersLogsSheet({
                             size="sm"
                             data-active={isStreamPaused}
                             onClick={togglePauseStreaming}
+                            aria-label={isStreamPaused ? "Resume streaming" : "Pause streaming"}
                             className={`h-8 w-8 p-0 ${activeToggleButtonClass}`}
                           >
                             {isStreamPaused ? <PlayIcon className="size-3.5" /> : <PauseIcon className="size-3.5" />}
@@ -1056,7 +1060,7 @@ export function ContainersLogsSheet({
                     )}
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isStreaming || isLoadingLogs} className="h-8 w-8 p-0">
+                        <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isStreaming || isLoadingLogs} aria-label="Refresh logs" className="h-8 w-8 p-0">
                           <RefreshCcwIcon className="size-3.5" />
                         </Button>
                       </TooltipTrigger>
@@ -1069,6 +1073,8 @@ export function ContainersLogsSheet({
                           size="sm"
                           data-active={autoScroll}
                           onClick={() => setAutoScroll(!autoScroll)}
+                          aria-label={`Auto-scroll ${autoScroll ? "on" : "off"}`}
+                          aria-pressed={autoScroll}
                           className={`h-8 w-8 p-0 ${activeToggleButtonClass}`}
                         >
                           {autoScroll ? <ArrowDownToLineIcon className="size-3.5" /> : <ArrowDownIcon className="size-3.5" />}
@@ -1080,7 +1086,7 @@ export function ContainersLogsSheet({
                     {/* Overflow menu: view options + download */}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <Button variant="ghost" size="sm" aria-label="More options" className="h-8 w-8 p-0">
                           <EllipsisVerticalIcon className="size-3.5" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -1207,7 +1213,8 @@ export function ContainersLogsSheet({
                       >
                         {rowVirtualizer.getVirtualItems().map((virtualRow) => {
                           const entry = filteredLogs[virtualRow.index];
-                          if (!entry.message?.trim()) return null;
+                          const displayText = entry.message || entry.raw || "";
+                          if (!displayText.trim()) return null;
 
                           const timestamp = entry.timestamp
                             ? new Date(entry.timestamp)
@@ -1291,18 +1298,18 @@ export function ContainersLogsSheet({
                               <span
                                 className={`text-foreground flex-1 ${wrapText ? "break-words" : ""}`}
                               >
-                                {isJsonString(entry.message ?? "") ? (
+                                {isJsonString(displayText) ? (
                                   <CollapsibleJson
-                                    text={entry.message ?? ""}
+                                    text={displayText}
                                     isExpanded={expandedJsonRows.has(virtualRow.index)}
                                     onToggle={() => toggleJsonExpanded(virtualRow.index)}
                                     isCurrentMatch={isCurrentMatch}
                                     highlightSearchText={hasMatch ? highlightSearchText : undefined}
                                   />
                                 ) : hasMatch ? (
-                                  highlightSearchText(entry.message ?? "", isCurrentMatch)
+                                  highlightSearchText(displayText, isCurrentMatch)
                                 ) : (
-                                  entry.message ?? ""
+                                  displayText
                                 )}
                               </span>
                               <Tooltip>

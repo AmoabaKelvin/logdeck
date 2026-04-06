@@ -533,7 +533,7 @@ function ContainerLogsPage() {
 	useEffect(() => {
 		clearSelection();
 		setExpandedJsonRows(new Set());
-	}, [searchText, excludeMatches, selectedLevels]);
+	}, [searchText, excludeMatches, selectedLevels, useRegex]);
 
 	useEffect(() => {
 		if (sortedPinnedIndices.length === 0) {
@@ -1424,7 +1424,8 @@ function ContainerLogsPage() {
 									>
 										{rowVirtualizer.getVirtualItems().map((virtualRow) => {
 											const entry = filteredLogs[virtualRow.index];
-											if (!entry.message?.trim()) return null;
+											const displayText = entry.message || entry.raw || "";
+											if (!displayText.trim()) return null;
 
 											const timestamp = entry.timestamp
 												? new Date(entry.timestamp)
@@ -1531,11 +1532,11 @@ function ContainerLogsPage() {
 															/>
 														) : hasMatch ? (
 															highlightSearchText(
-																entry.message ?? "",
+																displayText,
 																isCurrentMatch,
 															)
 														) : (
-															(entry.message ?? "")
+															displayText
 														)}
 													</span>
 													<Tooltip>
