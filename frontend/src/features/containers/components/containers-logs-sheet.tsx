@@ -21,7 +21,6 @@ import type React from "react";
 import {
   useCallback,
   useEffect,
-  useId,
   useMemo,
   useRef,
   useState
@@ -39,7 +38,6 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Popover,
   PopoverContent,
@@ -122,7 +120,6 @@ export function ContainersLogsSheet({
   const parentRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const autoScrollRef = useRef(autoScroll);
-  const logLinesInputId = useId();
 
   const searchParsed = useMemo(() => {
     if (!searchText || !useRegex) return EMPTY_SEARCH;
@@ -1101,7 +1098,7 @@ export function ContainersLogsSheet({
                           {wrapText && <CheckIcon className="size-3.5" />}
                         </DropdownMenuItem>
                         <DropdownMenuItem asChild>
-                          <label className="flex items-center gap-2 cursor-pointer">
+                          <div className="flex items-center gap-2">
                             <span className="flex-1">Lines</span>
                             <Input
                               type="text"
@@ -1113,7 +1110,7 @@ export function ContainersLogsSheet({
                               className="h-6 w-16 text-xs text-center"
                               onClick={(e) => e.stopPropagation()}
                             />
-                          </label>
+                          </div>
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={() => handleDownloadLogs("json")}>
