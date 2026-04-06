@@ -9,7 +9,9 @@ import {
   ChevronRightIcon,
   CopyIcon,
   DownloadIcon,
+  EllipsisVerticalIcon,
   ExternalLinkIcon,
+  HelpCircleIcon,
   PlayIcon,
   RefreshCcwIcon,
   SearchIcon,
@@ -33,6 +35,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -42,13 +45,6 @@ import {
   PopoverContent,
   PopoverTrigger
 } from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
 import {
   Sheet,
   SheetContent,
@@ -71,6 +67,7 @@ import {
 import { useContainerLogStream } from "../hooks/use-container-log-stream";
 
 import { isJsonString } from "@/lib/json-format";
+import { escapeRegExp } from "@/lib/utils";
 import {
   formatContainerName,
   formatCreatedDate,
@@ -94,6 +91,8 @@ interface ContainersLogsSheetProps {
   onContainerRecreated?: (newContainerId: string) => void;
 }
 
+const EMPTY_SEARCH = { regex: null as RegExp | null, error: null as string | null };
+
 export function ContainersLogsSheet({
   container,
   isOpen,
@@ -105,6 +104,7 @@ export function ContainersLogsSheet({
   const [showEnvVariables, setShowEnvVariables] = useState(false);
   const [logLines, setLogLines] = useState(100);
   const [searchText, setSearchText] = useState("");
+  const [useRegex, setUseRegex] = useState(false);
   const [excludeMatches, setExcludeMatches] = useState(false);
   const [selectedLevels, setSelectedLevels] = useState<Set<LogLevel>>(
     new Set()
@@ -123,6 +123,20 @@ export function ContainersLogsSheet({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const autoScrollRef = useRef(autoScroll);
   const logLinesInputId = useId();
+
+  const searchParsed = useMemo(() => {
+    if (!searchText || !useRegex) return EMPTY_SEARCH;
+    try {
+      return { regex: new RegExp(searchText, "gi"), error: null as string | null };
+    } catch {
+      return { regex: null, error: "Invalid regex" };
+    }
+  }, [searchText, useRegex]);
+
+  const plainTextSplitRegex = useMemo(() => {
+    if (!searchText || useRegex) return null;
+    return new RegExp(`(${escapeRegExp(searchText)})`, "gi");
+  }, [searchText, useRegex]);
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -349,9 +363,12 @@ export function ContainersLogsSheet({
         }
       }
         if (excludeMatches && searchText) {
-          const message = (entry.message || entry.raw || "").toLowerCase();
-          if (message.includes(searchLower)) {
-            return false;
+          const message = entry.message || entry.raw || "";
+          if (useRegex && searchParsed.regex) {
+            searchParsed.regex.lastIndex = 0;
+            if (searchParsed.regex.test(message)) return false;
+          } else {
+            if (message.toLowerCase().includes(searchLower)) return false;
           }
         }
         return true;
@@ -363,6 +380,8 @@ export function ContainersLogsSheet({
     selectedLevels,
     excludeMatches,
     searchText,
+    useRegex,
+    searchParsed,
   ]);
 
   const filteredLogs = useMemo(
@@ -463,21 +482,29 @@ export function ContainersLogsSheet({
   // Find all matching log indices for search navigation
   const searchMatches = useMemo(() => {
     if (!searchText) return [];
+    if (useRegex && searchParsed.error) return [];
     const matches: number[] = [];
     filteredLogs.forEach((entry, index) => {
-      const message = (entry.message || entry.raw || "").toLowerCase();
-      if (message.includes(searchText.toLowerCase())) {
-        matches.push(index);
+      const message = entry.message || entry.raw || "";
+      if (useRegex && searchParsed.regex) {
+        searchParsed.regex.lastIndex = 0;
+        if (searchParsed.regex.test(message)) {
+          matches.push(index);
+        }
+      } else {
+        if (message.toLowerCase().includes(searchText.toLowerCase())) {
+          matches.push(index);
+        }
       }
     });
     return matches;
-  }, [filteredLogs, searchText]);
+  }, [filteredLogs, searchText, useRegex, searchParsed]);
 
   // Reset current match index when search changes
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally reset when searchText changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally reset when searchText or useRegex changes
   useEffect(() => {
     setCurrentMatchIndex(0);
-  }, [searchText]);
+  }, [searchText, useRegex]);
 
   // Clear selection when filters or search settings change
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally clear selection on data changes
@@ -694,29 +721,56 @@ export function ContainersLogsSheet({
   ]);
 
   // Helper to highlight search text in message
-  const highlightSearchText = useCallback((text: string, isCurrentMatch: boolean): React.ReactNode => {
-    if (!searchText || !text) return text;
+  const highlightSearchText = useCallback(
+    (text: string, isCurrentMatch: boolean): React.ReactNode => {
+      if (!searchText || !text) return text;
 
-    const lowerText = text.toLowerCase();
-    const lowerSearch = searchText.toLowerCase();
-    const index = lowerText.indexOf(lowerSearch);
+      if (useRegex && searchParsed.regex) {
+        // Use matchAll for safe regex highlighting (handles zero-length matches)
+        searchParsed.regex.lastIndex = 0;
+        const parts: React.ReactNode[] = [];
+        let lastIndex = 0;
+        let key = 0;
+        for (const match of text.matchAll(searchParsed.regex)) {
+          if (match.index === undefined) continue;
+          // Guard against zero-length matches to avoid infinite loops
+          if (match[0].length === 0) continue;
+          if (match.index > lastIndex) {
+            parts.push(<span key={key++}>{text.slice(lastIndex, match.index)}</span>);
+          }
+          parts.push(
+            <mark
+              key={key++}
+              className={`px-0.5 rounded ${isCurrentMatch ? "bg-yellow-400 dark:bg-yellow-500" : "bg-yellow-200 dark:bg-yellow-700"}`}
+            >
+              {match[0]}
+            </mark>
+          );
+          lastIndex = match.index + match[0].length;
+        }
+        if (lastIndex < text.length) {
+          parts.push(<span key={key++}>{text.slice(lastIndex)}</span>);
+        }
+        return parts.length > 0 ? parts : text;
+      }
 
-    if (index === -1) return text;
-
-    const before = text.slice(0, index);
-    const match = text.slice(index, index + searchText.length);
-    const after = text.slice(index + searchText.length);
-
-    return (
-      <>
-        {before}
-        <mark className={`px-0.5 rounded ${isCurrentMatch ? "bg-yellow-400 dark:bg-yellow-500" : "bg-yellow-200 dark:bg-yellow-700"}`}>
-          {match}
-        </mark>
-        {highlightSearchText(after, isCurrentMatch)}
-      </>
-    );
-  }, [searchText]);
+      if (!plainTextSplitRegex) return text;
+      const splitParts = text.split(plainTextSplitRegex);
+      return splitParts.map((part, i) =>
+        part.toLowerCase() === searchText.toLowerCase() ? (
+          <mark
+            key={`${i}-${part}`}
+            className={`px-0.5 rounded ${isCurrentMatch ? "bg-yellow-400 dark:bg-yellow-500" : "bg-yellow-200 dark:bg-yellow-700"}`}
+          >
+            {part}
+          </mark>
+        ) : (
+          <span key={`${i}-${part}`}>{part}</span>
+        ),
+      );
+    },
+    [searchText, useRegex, searchParsed, plainTextSplitRegex],
+  );
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
@@ -891,300 +945,228 @@ export function ContainersLogsSheet({
             </Card>
 
             <div className="space-y-3">
-              <div className="space-y-3">
-                {/* Row 1: Search + Lines + Stream/Refresh */}
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-medium shrink-0">
-                    Logs
-                    {filteredLogs.length !== logs.length && (
-                      <span className="ml-2 text-xs text-muted-foreground font-normal">
-                        ({filteredLogs.length} of {logs.length})
-                      </span>
-                    )}
-                  </h3>
-
-                  <div className="relative flex-1 min-w-[140px]">
+              <div className="space-y-2">
+                {/* Row 1: Search + Stream controls */}
+                <div className="flex items-center gap-1.5">
+                  {/* Search input with inset regex toggle */}
+                  <div className="relative flex-1 min-w-[120px]">
                     <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
                     <Input
                       ref={searchInputRef}
-                      placeholder="Search logs..."
+                      placeholder={useRegex ? "Regex search..." : "Search logs..."}
                       value={searchText}
                       onChange={(e) => setSearchText(e.target.value)}
-                      className="pl-8 h-8 text-xs"
+                      className={`pl-8 pr-9 h-8 text-xs ${useRegex && searchParsed.error ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                     />
-                  </div>
-                  {searchText && !excludeMatches && (
-                    <div className="flex items-center gap-0.5 shrink-0">
-                      <span className="text-xs tabular-nums text-muted-foreground whitespace-nowrap px-1">
-                        {searchMatches.length > 0
-                          ? `${currentMatchIndex + 1} of ${searchMatches.length}`
-                          : "No matches"}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={goToPreviousMatch}
-                        disabled={searchMatches.length === 0}
-                        className="h-8 w-8 p-0"
-                      >
-                        <ChevronLeftIcon className="size-3.5" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={goToNextMatch}
-                        disabled={searchMatches.length === 0}
-                        className="h-8 w-8 p-0"
-                      >
-                        <ChevronRightIcon className="size-3.5" />
-                      </Button>
-                    </div>
-                  )}
-
-                  {sortedPinnedIndices.length > 0 && (
-                    <div className="flex items-center gap-0.5 shrink-0">
-                      <span className="text-xs tabular-nums text-muted-foreground whitespace-nowrap px-1">
-                        {`${Math.min(currentPinnedIndex + 1, sortedPinnedIndices.length)} of ${sortedPinnedIndices.length} pinned`}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => goToPinnedByOffset(-1)}
-                        className="h-8 w-8 p-0"
-                      >
-                        <ChevronLeftIcon className="size-3.5" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => goToPinnedByOffset(1)}
-                        className="h-8 w-8 p-0"
-                      >
-                        <ChevronRightIcon className="size-3.5" />
-                      </Button>
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Label
-                      htmlFor={logLinesInputId}
-                      className="text-xs text-muted-foreground"
+                    <button
+                      type="button"
+                      onClick={() => setUseRegex(!useRegex)}
+                      title={useRegex ? "Switch to plain text" : "Switch to regex"}
+                      className={`absolute right-1.5 top-1/2 -translate-y-1/2 px-1 py-0.5 rounded text-[10px] font-mono leading-none transition-colors ${
+                        useRegex
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                      }`}
                     >
-                      Lines
-                    </Label>
-                    <Input
-                      id={logLinesInputId}
-                      type="number"
-                      min="1"
-                      value={logLines}
-                      onChange={(e) => handleLogLinesChange(e.target.value)}
-                      disabled={isStreaming}
-                      className="h-8 w-20 text-xs"
-                    />
+                      .*
+                    </button>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    data-active={isStreaming}
-                    onClick={toggleStreaming}
-                    disabled={isLoadingLogs && !isStreaming}
-                    className={`shrink-0 ${activeToggleButtonClass}`}
-                  >
-                    {isStreaming ? (
-                      <>
-                        <SquareIcon className="mr-2 size-4" />
-                        Stop
-                      </>
-                    ) : (
-                      <>
-                        <PlayIcon className="mr-2 size-4" />
-                        Stream
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    data-active={isStreamPaused}
-                    onClick={togglePauseStreaming}
-                    disabled={!isStreaming}
-                    className={`shrink-0 ${activeToggleButtonClass}`}
-                  >
-                    {isStreamPaused ? (
-                      <>
-                        <PlayIcon className="mr-2 size-4" />
-                        Resume
-                        {bufferedCount > 0 && (
-                          <span className="ml-1 text-[10px] tabular-nums">
-                            ({bufferedCount})
-                          </span>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <PauseIcon className="mr-2 size-4" />
-                        Pause
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleRefresh}
-                    disabled={isStreaming || isLoadingLogs}
-                    className="shrink-0"
-                  >
-                    <RefreshCcwIcon className="size-4" />
-                  </Button>
-                </div>
-                <p className="text-[11px] text-muted-foreground">
-                  Shortcuts: <kbd className="font-mono">/</kbd> search,{" "}
-                  <kbd className="font-mono">j</kbd>/<kbd className="font-mono">k</kbd>{" "}
-                  lines, <kbd className="font-mono">n</kbd>/<kbd className="font-mono">N</kbd>{" "}
-                  matches, <kbd className="font-mono">p</kbd>/<kbd className="font-mono">P</kbd>{" "}
-                  pins
-                </p>
-                {/* Row 2: Options bar */}
-                <div className="flex flex-wrap items-center gap-2">
-                  {searchText && (
-                    <Select
-                      value={excludeMatches ? "exclude" : "highlight"}
-                      onValueChange={(v) => setExcludeMatches(v === "exclude")}
-                    >
-                      <SelectTrigger size="sm" className="w-[160px] text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="highlight">Highlight matches</SelectItem>
-                        <SelectItem value="exclude">Exclude matches</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
 
-                  <Popover open={showFilters} onOpenChange={setShowFilters}>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-8 text-xs">
-                        Log level
-                        {selectedLevels.size > 0 && (
-                          <Badge
-                            variant="secondary"
-                            className="ml-1.5 px-1 py-0 h-4 text-[10px] leading-none"
-                          >
-                            {selectedLevels.size}
-                          </Badge>
-                        )}
-                        <ChevronDownIcon className="ml-1 size-3.5 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent align="start" className="w-56">
-                      <div className="space-y-3">
-                        <div>
-                          <h4 className="text-sm font-medium mb-2">Log Levels</h4>
-                          <div className="space-y-2">
-                            {availableLogLevels.length === 0 ? (
-                              <p className="text-xs text-muted-foreground">
-                                No log levels available
-                              </p>
-                            ) : (
-                              availableLogLevels.map((level) => (
-                                <label
-                                  key={level}
-                                  className="flex items-center gap-2 cursor-pointer"
-                                >
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleLogLevel(level)}
-                                    className={`size-4 rounded border flex items-center justify-center ${
-                                      selectedLevels.has(level)
-                                        ? "bg-primary border-primary"
-                                        : "border-input"
-                                    }`}
-                                  >
-                                    {selectedLevels.has(level) && (
-                                      <CheckIcon className="size-3 text-primary-foreground" />
-                                    )}
-                                  </button>
-                                  <Badge
-                                    variant="outline"
-                                    className={`text-xs ${getLogLevelBadgeColor(level)}`}
-                                  >
-                                    {level}
-                                  </Badge>
-                                </label>
-                              ))
-                            )}
+                  {/* Controls: log level, stream, auto-scroll, overflow */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Popover open={showFilters} onOpenChange={setShowFilters}>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-8 text-xs">
+                          Log level
+                          {selectedLevels.size > 0 && (
+                            <Badge variant="secondary" className="ml-1 px-1 py-0 h-3.5 text-[10px] leading-none">
+                              {selectedLevels.size}
+                            </Badge>
+                          )}
+                          <ChevronDownIcon className="ml-1 size-3 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-56">
+                        <div className="space-y-3">
+                          <div>
+                            <h4 className="text-sm font-medium mb-2">Log Levels</h4>
+                            <div className="space-y-2">
+                              {availableLogLevels.length === 0 ? (
+                                <p className="text-xs text-muted-foreground">No log levels available</p>
+                              ) : (
+                                availableLogLevels.map((level) => (
+                                  <label key={level} className="flex items-center gap-2 cursor-pointer">
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleLogLevel(level)}
+                                      className={`size-4 rounded border flex items-center justify-center ${
+                                        selectedLevels.has(level) ? "bg-primary border-primary" : "border-input"
+                                      }`}
+                                    >
+                                      {selectedLevels.has(level) && <CheckIcon className="size-3 text-primary-foreground" />}
+                                    </button>
+                                    <Badge variant="outline" className={`text-xs ${getLogLevelBadgeColor(level)}`}>{level}</Badge>
+                                  </label>
+                                ))
+                              )}
+                            </div>
                           </div>
+                          {selectedLevels.size > 0 && (
+                            <Button variant="outline" size="sm" onClick={() => setSelectedLevels(new Set())} className="w-full">
+                              Clear Filters
+                            </Button>
+                          )}
                         </div>
-                        {selectedLevels.size > 0 && (
+                      </PopoverContent>
+                    </Popover>
+
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          data-active={isStreaming}
+                          onClick={toggleStreaming}
+                          disabled={isLoadingLogs && !isStreaming}
+                          className={`h-8 w-8 p-0 ${activeToggleButtonClass}`}
+                        >
+                          {isStreaming ? <SquareIcon className="size-3.5" /> : <PlayIcon className="size-3.5" />}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>{isStreaming ? "Stop streaming" : "Start streaming"}</TooltipContent>
+                    </Tooltip>
+                    {isStreaming && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => setSelectedLevels(new Set())}
-                            className="w-full"
+                            data-active={isStreamPaused}
+                            onClick={togglePauseStreaming}
+                            className={`h-8 w-8 p-0 ${activeToggleButtonClass}`}
                           >
-                            Clear Filters
+                            {isStreamPaused ? <PlayIcon className="size-3.5" /> : <PauseIcon className="size-3.5" />}
                           </Button>
-                        )}
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    data-active={showTimestamps}
-                    onClick={() => setShowTimestamps(!showTimestamps)}
-                    className={activeToggleButtonClass}
-                  >
-                    Timestamps
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    data-active={wrapText}
-                    onClick={() => setWrapText(!wrapText)}
-                    className={activeToggleButtonClass}
-                  >
-                    Wrap
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    data-active={autoScroll}
-                    onClick={() => setAutoScroll(!autoScroll)}
-                    className={activeToggleButtonClass}
-                  >
-                    {autoScroll ? (
-                      <ArrowDownToLineIcon className="mr-1.5 size-3.5" />
-                    ) : (
-                      <ArrowDownIcon className="mr-1.5 size-3.5" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {isStreamPaused ? `Resume${bufferedCount > 0 ? ` (${bufferedCount} buffered)` : ""}` : "Pause streaming"}
+                        </TooltipContent>
+                      </Tooltip>
                     )}
-                    Auto-scroll
-                  </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isStreaming || isLoadingLogs} className="h-8 w-8 p-0">
+                          <RefreshCcwIcon className="size-3.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Refresh logs</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          data-active={autoScroll}
+                          onClick={() => setAutoScroll(!autoScroll)}
+                          className={`h-8 w-8 p-0 ${activeToggleButtonClass}`}
+                        >
+                          {autoScroll ? <ArrowDownToLineIcon className="size-3.5" /> : <ArrowDownIcon className="size-3.5" />}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Auto-scroll {autoScroll ? "on" : "off"}</TooltipContent>
+                    </Tooltip>
 
-                  <div className="flex-1" />
-
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-8 text-xs">
-                        <DownloadIcon className="mr-1.5 size-3.5" />
-                        Download
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onClick={() => handleDownloadLogs("json")}
-                      >
-                        Download as JSON
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleDownloadLogs("txt")}>
-                        Download as TXT
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                    {/* Overflow menu: view options + download */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                          <EllipsisVerticalIcon className="size-3.5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48">
+                        {searchText && (
+                          <>
+                            <DropdownMenuItem onClick={() => setExcludeMatches(!excludeMatches)}>
+                              <span className="flex-1">{excludeMatches ? "Highlight matches" : "Exclude matches"}</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                          </>
+                        )}
+                        <DropdownMenuItem onClick={() => setShowTimestamps(!showTimestamps)}>
+                          <span className="flex-1">Timestamps</span>
+                          {showTimestamps && <CheckIcon className="size-3.5" />}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setWrapText(!wrapText)}>
+                          <span className="flex-1">Wrap lines</span>
+                          {wrapText && <CheckIcon className="size-3.5" />}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <span className="flex-1">Lines</span>
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              value={logLines}
+                              onChange={(e) => handleLogLinesChange(e.target.value)}
+                              disabled={isStreaming}
+                              className="h-6 w-16 text-xs text-center"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </label>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => handleDownloadLogs("json")}>
+                          <DownloadIcon className="size-3.5 mr-2" />
+                          Download as JSON
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleDownloadLogs("txt")}>
+                          <DownloadIcon className="size-3.5 mr-2" />
+                          Download as TXT
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem disabled className="text-[11px] text-muted-foreground">
+                          <HelpCircleIcon className="size-3 mr-2" />
+                          / search, j/k lines, n/N matches
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
+
+                {/* Conditional row: search match navigation + pinned navigation */}
+                {(searchText && !excludeMatches && searchMatches.length > 0) || sortedPinnedIndices.length > 0 ? (
+                  <div className="flex items-center gap-3">
+                    {searchText && !excludeMatches && (
+                      <div className="flex items-center gap-0.5">
+                        <span className="text-xs tabular-nums text-muted-foreground whitespace-nowrap px-0.5">
+                          {searchMatches.length > 0
+                            ? `${currentMatchIndex + 1}/${searchMatches.length} matches`
+                            : "No matches"}
+                        </span>
+                        <Button variant="ghost" size="sm" onClick={goToPreviousMatch} disabled={searchMatches.length === 0} className="h-7 w-7 p-0">
+                          <ChevronLeftIcon className="size-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={goToNextMatch} disabled={searchMatches.length === 0} className="h-7 w-7 p-0">
+                          <ChevronRightIcon className="size-3.5" />
+                        </Button>
+                      </div>
+                    )}
+                    {sortedPinnedIndices.length > 0 && (
+                      <div className="flex items-center gap-0.5">
+                        <span className="text-xs tabular-nums text-muted-foreground whitespace-nowrap px-0.5">
+                          {`${Math.min(currentPinnedIndex + 1, sortedPinnedIndices.length)}/${sortedPinnedIndices.length} pinned`}
+                        </span>
+                        <Button variant="ghost" size="sm" onClick={() => goToPinnedByOffset(-1)} className="h-7 w-7 p-0">
+                          <ChevronLeftIcon className="size-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => goToPinnedByOffset(1)} className="h-7 w-7 p-0">
+                          <ChevronRightIcon className="size-3.5" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
               </div>
               <Card>
                 <CardContent className="p-0 relative">

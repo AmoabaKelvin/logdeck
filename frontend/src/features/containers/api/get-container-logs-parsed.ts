@@ -35,6 +35,7 @@ export interface ContainerLogsOptions {
   stdout?: boolean;
   stderr?: boolean;
   follow?: boolean;
+  search?: string;
 }
 
 const DEFAULT_OPTIONS: Required<
@@ -75,6 +76,9 @@ function buildLogsUrl(id: string, host: string, options?: ContainerLogsOptions) 
   }
   if (merged.follow !== undefined) {
     query.set("follow", String(merged.follow));
+  }
+  if (merged.search) {
+    query.set("search", merged.search);
   }
 
   const path = `${BASE_URL}/${encodeURIComponent(id)}/logs/parsed`;
