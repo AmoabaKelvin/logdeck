@@ -93,6 +93,8 @@ export const Route = createFileRoute("/containers/$containerId/logs")({
 	component: ContainerLogsPage,
 });
 
+const EMPTY_SEARCH = { regex: null as RegExp | null, error: null as string | null };
+
 function ContainerLogsPage() {
 	const { containerId: encodedContainerId } = Route.useParams();
 	const navigate = useNavigate();
@@ -100,6 +102,7 @@ function ContainerLogsPage() {
 
 	const [logLines, setLogLines] = useState(100);
 	const [searchText, setSearchText] = useState("");
+	const [useRegex, setUseRegex] = useState(false);
 	const [excludeMatches, setExcludeMatches] = useState(false);
 	const [selectedLevels, setSelectedLevels] = useState<Set<LogLevel>>(
 		new Set(),
@@ -127,6 +130,21 @@ function ContainerLogsPage() {
 	const searchInputRef = useRef<HTMLInputElement>(null);
 	const autoScrollRef = useRef(autoScroll);
 	const logLinesInputId = useId();
+
+	const searchParsed = useMemo(() => {
+		if (!searchText || !useRegex) return EMPTY_SEARCH;
+		try {
+			return { regex: new RegExp(searchText, "gi"), error: null as string | null };
+		} catch {
+			return { regex: null, error: "Invalid regex" };
+		}
+	}, [searchText, useRegex]);
+
+	// Pre-compiled regex for plain-text highlighting (avoids per-row compilation)
+	const plainTextSplitRegex = useMemo(() => {
+		if (!searchText || useRegex) return null;
+		return new RegExp(`(${escapeRegExp(searchText)})`, "gi");
+	}, [searchText, useRegex]);
 
 	// Keep ref in sync with state to avoid stale closures in setTimeout
 	useEffect(() => {
@@ -368,16 +386,23 @@ function ContainerLogsPage() {
 					}
 				}
 				if (excludeMatches && searchText) {
-					const message = (entry.message || entry.raw || "").toLowerCase();
-					if (message.includes(searchLower)) {
-						return false;
+					if (useRegex && !searchParsed.regex) {
+						// Invalid regex — skip filtering
+					} else {
+						const message = entry.message || entry.raw || "";
+						if (useRegex && searchParsed.regex) {
+							searchParsed.regex.lastIndex = 0;
+							if (searchParsed.regex.test(message)) return false;
+						} else {
+							if (message.toLowerCase().includes(searchLower)) return false;
+						}
 					}
 				}
 				return true;
 			});
 
 		return items;
-	}, [logs, selectedLevels, excludeMatches, searchText]);
+	}, [logs, selectedLevels, excludeMatches, searchText, useRegex, searchParsed]);
 
 	const filteredLogs = useMemo(
 		() => filteredLogItems.map((item) => item.entry),
@@ -479,28 +504,36 @@ function ContainerLogsPage() {
 	// Find all matching log indices for search navigation
 	const searchMatches = useMemo(() => {
 		if (!searchText) return [];
+		if (useRegex && searchParsed.error) return [];
 		const matches: number[] = [];
 		filteredLogs.forEach((entry, index) => {
-			const message = (entry.message || entry.raw || "").toLowerCase();
-			if (message.includes(searchText.toLowerCase())) {
-				matches.push(index);
+			const message = entry.message || entry.raw || "";
+			if (useRegex && searchParsed.regex) {
+				searchParsed.regex.lastIndex = 0;
+				if (searchParsed.regex.test(message)) {
+					matches.push(index);
+				}
+			} else {
+				if (message.toLowerCase().includes(searchText.toLowerCase())) {
+					matches.push(index);
+				}
 			}
 		});
 		return matches;
-	}, [filteredLogs, searchText]);
+	}, [filteredLogs, searchText, useRegex, searchParsed]);
 
 	// Reset current match index when search changes
-	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally reset when searchText changes
+	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally reset when searchText or useRegex changes
 	useEffect(() => {
 		setCurrentMatchIndex(0);
-	}, [searchText]);
+	}, [searchText, useRegex]);
 
 	// Clear selection when filters or search settings change
 	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally clear selection on data changes
 	useEffect(() => {
 		clearSelection();
 		setExpandedJsonRows(new Set());
-	}, [searchText, excludeMatches, selectedLevels]);
+	}, [searchText, excludeMatches, selectedLevels, useRegex]);
 
 	useEffect(() => {
 		if (sortedPinnedIndices.length === 0) {
@@ -737,10 +770,37 @@ function ContainerLogsPage() {
 		(text: string, isCurrentMatch: boolean): React.ReactNode => {
 			if (!searchText || !text) return text;
 
-			const escaped = escapeRegExp(searchText);
-			const parts = text.split(new RegExp(`(${escaped})`, "gi"));
+			if (useRegex && searchParsed.regex) {
+				searchParsed.regex.lastIndex = 0;
+				const parts: React.ReactNode[] = [];
+				let lastIndex = 0;
+				let key = 0;
+				for (const match of text.matchAll(searchParsed.regex)) {
+					if (match.index === undefined) continue;
+					// Guard against zero-length matches to avoid infinite loops
+					if (match[0].length === 0) continue;
+					if (match.index > lastIndex) {
+						parts.push(<span key={key++}>{text.slice(lastIndex, match.index)}</span>);
+					}
+					parts.push(
+						<mark
+							key={key++}
+							className={`px-0.5 rounded ${isCurrentMatch ? "bg-yellow-400 dark:bg-yellow-500" : "bg-yellow-200 dark:bg-yellow-700"}`}
+						>
+							{match[0]}
+						</mark>
+					);
+					lastIndex = match.index + match[0].length;
+				}
+				if (lastIndex < text.length) {
+					parts.push(<span key={key++}>{text.slice(lastIndex)}</span>);
+				}
+				return parts.length > 0 ? parts : text;
+			}
 
-			return parts.map((part, i) =>
+			if (!plainTextSplitRegex) return text;
+			const splitParts = text.split(plainTextSplitRegex);
+			return splitParts.map((part, i) =>
 				part.toLowerCase() === searchText.toLowerCase() ? (
 					<mark
 						key={`${i}-${part}`}
@@ -753,7 +813,7 @@ function ContainerLogsPage() {
 				),
 			);
 		},
-		[searchText],
+		[searchText, useRegex, searchParsed, plainTextSplitRegex],
 	);
 
 	return (
@@ -1024,9 +1084,18 @@ function ContainerLogsPage() {
 											placeholder="Search logs..."
 											value={searchText}
 											onChange={(e) => setSearchText(e.target.value)}
-											className="pl-8 h-8 text-xs"
+											className={`pl-8 h-8 text-xs ${useRegex && searchParsed.error ? "border-red-500 focus-visible:ring-red-500" : ""}`}
 										/>
 									</div>
+									<Button
+										variant={useRegex ? "secondary" : "ghost"}
+										size="sm"
+										onClick={() => setUseRegex(!useRegex)}
+										className="h-8 w-8 p-0 font-mono text-xs shrink-0"
+										title={useRegex ? "Switch to plain text search" : "Switch to regex search"}
+									>
+										.*
+									</Button>
 									{searchText && !excludeMatches && (
 										<div className="flex items-center gap-0.5 shrink-0">
 											<span className="text-xs tabular-nums text-muted-foreground whitespace-nowrap px-1">
@@ -1088,8 +1157,9 @@ function ContainerLogsPage() {
 										</Label>
 										<Input
 											id={logLinesInputId}
-											type="number"
-											min="1"
+											type="text"
+											inputMode="numeric"
+											pattern="[0-9]*"
 											value={logLines}
 											onChange={(e) => handleLogLinesChange(e.target.value)}
 											disabled={isStreaming}
@@ -1354,7 +1424,8 @@ function ContainerLogsPage() {
 									>
 										{rowVirtualizer.getVirtualItems().map((virtualRow) => {
 											const entry = filteredLogs[virtualRow.index];
-											if (!entry.message?.trim()) return null;
+											const displayText = entry.message || entry.raw || "";
+											if (!displayText.trim()) return null;
 
 											const timestamp = entry.timestamp
 												? new Date(entry.timestamp)
@@ -1461,11 +1532,11 @@ function ContainerLogsPage() {
 															/>
 														) : hasMatch ? (
 															highlightSearchText(
-																entry.message ?? "",
+																displayText,
 																isCurrentMatch,
 															)
 														) : (
-															(entry.message ?? "")
+															displayText
 														)}
 													</span>
 													<Tooltip>

@@ -6,6 +6,7 @@ interface UseContainerLogStreamOptions<TLogEntry> {
   containerId?: string;
   host?: string;
   tail: number;
+  search?: string;
   getLogs: (
     containerId: string,
     host: string,
@@ -27,6 +28,7 @@ export function useContainerLogStream<TLogEntry>({
   containerId,
   host,
   tail,
+  search,
   getLogs,
   streamLogs,
   scrollToBottom,
@@ -116,7 +118,7 @@ export function useContainerLogStream<TLogEntry>({
     resetPauseAndBuffer();
     onResetStateRef.current?.();
     try {
-      const logEntries = await getLogsRef.current(containerId, host, { tail });
+      const logEntries = await getLogsRef.current(containerId, host, { tail, search });
       setLogs(logEntries);
       logsLengthRef.current = logEntries.length;
       setTimeout(() => scrollToBottomRef.current(), 100);
@@ -129,7 +131,7 @@ export function useContainerLogStream<TLogEntry>({
     } finally {
       setIsLoadingLogs(false);
     }
-  }, [containerId, host, resetPauseAndBuffer, tail]);
+  }, [containerId, host, resetPauseAndBuffer, tail, search]);
 
   const stopStreaming = useCallback(() => {
     if (abortControllerRef.current) {
@@ -157,7 +159,7 @@ export function useContainerLogStream<TLogEntry>({
       const stream = streamLogsRef.current(
         containerId,
         host,
-        { tail },
+        { tail, search },
         abortController.signal
       );
       let hasReceivedFirstEntry = false;
@@ -198,7 +200,7 @@ export function useContainerLogStream<TLogEntry>({
       setIsStreaming(false);
       abortControllerRef.current = null;
     }
-  }, [containerId, host, resetPauseAndBuffer, tail, triggerRowAnimation]);
+  }, [containerId, host, resetPauseAndBuffer, tail, search, triggerRowAnimation]);
 
   const toggleStreaming = useCallback(() => {
     if (isStreaming) {
