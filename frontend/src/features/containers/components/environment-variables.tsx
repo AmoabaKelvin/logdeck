@@ -202,7 +202,8 @@ export function EnvironmentVariables({
     }
 
     const key = rawValue.substring(0, equalIndex).trim();
-    let value = rawValue.substring(equalIndex + 1);
+    const rawTail = rawValue.substring(equalIndex + 1);
+    let value = rawTail;
     if (
       (value.startsWith('"') && value.endsWith('"')) ||
       (value.startsWith("'") && value.endsWith("'"))
@@ -213,7 +214,9 @@ export function EnvironmentVariables({
     setNewKey(key);
     // Only overwrite an existing value when the pasted segment after `=` is
     // non-empty; otherwise we'd wipe text the user already typed in Value.
-    if (value.length > 0) {
+    // Check rawTail (pre-strip) so explicit empty quotes like KEY="" still
+    // clear the value field.
+    if (rawTail.length > 0) {
       setNewValue(value);
     }
     // Move focus to the value field so the user can keep editing if needed.
