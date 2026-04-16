@@ -94,6 +94,7 @@ export function EnvironmentVariables({
     {}
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const newValueInputRef = useRef<HTMLInputElement>(null);
   const newKeyId = useId();
   const newValueId = useId();
 
@@ -191,6 +192,38 @@ export function EnvironmentVariables({
 
   const handleValueChange = (key: string, value: string) => {
     setEditedEnv((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleNewKeyChange = (rawValue: string) => {
+    const equalIndex = rawValue.indexOf("=");
+    if (equalIndex === -1) {
+      setNewKey(rawValue);
+      return;
+    }
+
+    const key = rawValue.substring(0, equalIndex).trim();
+    let value = rawValue.substring(equalIndex + 1);
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+
+    setNewKey(key);
+    // Only overwrite an existing value when the pasted segment after `=` is
+    // non-empty; otherwise we'd wipe text the user already typed in Value.
+    if (value.length > 0) {
+      setNewValue(value);
+    }
+    // Move focus to the value field so the user can keep editing if needed.
+    requestAnimationFrame(() => {
+      const input = newValueInputRef.current;
+      if (!input) return;
+      input.focus();
+      const caret = input.value.length;
+      input.setSelectionRange(caret, caret);
+    });
   };
 
   const handleAddNew = () => {
@@ -388,8 +421,8 @@ export function EnvironmentVariables({
                   <Input
                     id={newKeyId}
                     value={newKey}
-                    onChange={(e) => setNewKey(e.target.value)}
-                    placeholder="VARIABLE_NAME"
+                    onChange={(e) => handleNewKeyChange(e.target.value)}
+                    placeholder="VARIABLE_NAME or KEY=value"
                     className="font-mono text-xs h-8"
                   />
                 </div>
@@ -399,6 +432,7 @@ export function EnvironmentVariables({
                   </Label>
                   <Input
                     id={newValueId}
+                    ref={newValueInputRef}
                     value={newValue}
                     onChange={(e) => setNewValue(e.target.value)}
                     placeholder="value"
