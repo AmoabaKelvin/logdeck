@@ -5,6 +5,7 @@ import (
 	"maps"
 	"strings"
 
+	"github.com/AmoabaKelvin/logdeck/internal/coolify"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 )
@@ -64,10 +65,15 @@ func (c *MultiHostClient) GetEnvVariables(hostName, id string) (map[string]strin
 		return nil, err
 	}
 
+	isCoolifyManaged := inspect.Config.Labels[coolify.LabelManaged] == "true"
+
 	envMap := make(map[string]string)
 	for _, env := range inspect.Config.Env {
 		parts := strings.SplitN(env, "=", 2)
 		if len(parts) == 2 {
+			if isCoolifyManaged && coolify.IsCoolifyDefaultEnvVar(parts[0]) {
+				continue
+			}
 			envMap[parts[0]] = parts[1]
 		}
 	}
@@ -88,13 +94,21 @@ func (c *MultiHostClient) SetEnvVariables(hostName, id string, envVariables map[
 	}
 
 	labels := inspect.Config.Labels
+	isCoolifyManaged := labels[coolify.LabelManaged] == "true"
 
+	// Split existing env vars into user-defined and Coolify-injected defaults.
+	// Coolify defaults are kept aside so the user cannot accidentally delete or
+	// overwrite them — they get merged back unconditionally before recreation.
 	envMap := make(map[string]string)
-	// First, load all existing env vars from the container config
+	coolifyDefaults := make(map[string]string)
 	for _, env := range inspect.Config.Env {
 		parts := strings.SplitN(env, "=", 2)
 		if len(parts) == 2 {
-			envMap[parts[0]] = parts[1]
+			if isCoolifyManaged && coolify.IsCoolifyDefaultEnvVar(parts[0]) {
+				coolifyDefaults[parts[0]] = parts[1]
+			} else {
+				envMap[parts[0]] = parts[1]
+			}
 		}
 	}
 
@@ -105,8 +119,9 @@ func (c *MultiHostClient) SetEnvVariables(hostName, id string, envVariables map[
 		}
 	}
 
-	// Copy updated/new variables from envVariables into envMap
+	// Apply user-supplied values, then merge Coolify defaults back in
 	maps.Copy(envMap, envVariables)
+	maps.Copy(envMap, coolifyDefaults)
 
 	envs := make([]string, 0, len(envMap))
 	for key, value := range envMap {
