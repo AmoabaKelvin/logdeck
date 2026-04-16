@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/config"
@@ -19,11 +20,21 @@ const (
 	ResourceTypeApplication ResourceType = "application"
 	ResourceTypeService     ResourceType = "service"
 	ResourceTypeDatabase    ResourceType = "database"
+
+	// LabelManaged is the Docker label Coolify sets on containers it manages.
+	LabelManaged = "coolify.managed"
 )
 
 type ResourceInfo struct {
 	Type ResourceType
 	UUID string
+}
+
+// IsCoolifyDefaultEnvVar reports whether key is a Coolify-injected environment
+// variable that users should not see or modify. These are set automatically by
+// Coolify at deploy time (see https://coolify.io/docs/knowledge-base/environment-variables).
+func IsCoolifyDefaultEnvVar(key string) bool {
+	return strings.HasPrefix(key, "COOLIFY_") || key == "SOURCE_COMMIT"
 }
 
 type Client struct {
@@ -95,7 +106,7 @@ func NewSingleClient(apiURL, apiToken string) *Client {
 //   - coolify.type={application,service,database}
 //   - com.docker.compose.project={uuid}  (the API-compatible UUID)
 func ExtractResourceInfo(labels map[string]string) *ResourceInfo {
-	if labels["coolify.managed"] != "true" {
+	if labels[LabelManaged] != "true" {
 		return nil
 	}
 
@@ -149,8 +160,11 @@ func (c *Client) SyncEnvVars(ctx context.Context, resource *ResourceInfo, envVar
 		return fmt.Errorf("coolify: failed to fetch existing env vars: %w", err)
 	}
 
-	// 2. Delete env vars that no longer exist
+	// 2. Delete env vars that no longer exist (skip Coolify-injected defaults)
 	for _, ev := range existing {
+		if IsCoolifyDefaultEnvVar(ev.Key) {
+			continue
+		}
 		if _, exists := envVars[ev.Key]; !exists {
 			if delErr := c.deleteEnvVar(ctx, resource, ev.UUID); delErr != nil {
 				log.Printf("Warning: failed to delete Coolify env var %s (%s): %v", ev.Key, ev.UUID, delErr)
@@ -158,9 +172,12 @@ func (c *Client) SyncEnvVars(ctx context.Context, resource *ResourceInfo, envVar
 		}
 	}
 
-	// 3. Bulk upsert the current env vars
+	// 3. Bulk upsert the current env vars, excluding Coolify-injected defaults
 	entries := make([]envVarEntry, 0, len(envVars))
 	for key, value := range envVars {
+		if IsCoolifyDefaultEnvVar(key) {
+			continue
+		}
 		entries = append(entries, envVarEntry{Key: key, Value: value, IsPreview: false})
 	}
 
