@@ -8,11 +8,13 @@ import (
 
 // LogEntry represents a parsed log line with metadata
 type LogEntry struct {
-	Timestamp time.Time `json:"timestamp"`
-	Level     LogLevel  `json:"level"`
-	Message   string    `json:"message"`
-	Stream    string    `json:"stream"` // "stdout" or "stderr"
-	Raw       string    `json:"raw"`    // Original log line
+	Timestamp         time.Time         `json:"timestamp"`
+	Level             LogLevel          `json:"level"`
+	Message           string            `json:"message"`
+	Stream            string            `json:"stream"` // "stdout" or "stderr"
+	Raw               string            `json:"raw"`    // Original log line
+	Fields            map[string]string `json:"fields,omitempty"`
+	ContinuationCount int               `json:"continuationCount,omitempty"`
 }
 
 // LogLevel represents the severity of a log entry
@@ -59,6 +61,7 @@ var timestampFormats = []string{
 
 var tzOffsetNoColon = regexp.MustCompile(`([+-]\d{2})(\d{2})$`)
 var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+var structuredFieldRegex = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_.-]*)\s*[:=]\s*(.+)$`)
 
 // DetectLogLevel analyzes a log message to determine its severity level
 func DetectLogLevel(message string) LogLevel {
@@ -138,6 +141,106 @@ func ParseLogLine(logLine string, stream string) LogEntry {
 		Stream:    stream,
 		Raw:       logLine,
 	}
+}
+
+// GroupRelatedLogEntries folds structured continuation lines into the previous
+// logical log event. Docker adds its own timestamp to every physical line, so
+// multi-line app logs can otherwise appear as separate UNKNOWN rows.
+func GroupRelatedLogEntries(entries []LogEntry) []LogEntry {
+	grouped := make([]LogEntry, 0, len(entries))
+
+	for _, entry := range entries {
+		if len(grouped) > 0 && IsContinuationLogEntry(entry, grouped[len(grouped)-1]) {
+			appendContinuationLine(&grouped[len(grouped)-1], entry)
+			continue
+		}
+
+		grouped = append(grouped, entry)
+	}
+
+	return grouped
+}
+
+func IsContinuationLogEntry(entry LogEntry, previous LogEntry) bool {
+	if entry.Level != LogLevelUnknown {
+		return false
+	}
+
+	message := strings.TrimSpace(entry.Message)
+	if message == "" || strings.TrimSpace(previous.Message) == "" {
+		return false
+	}
+
+	if structuredFieldRegex.MatchString(message) {
+		return true
+	}
+
+	return isStackTraceContinuation(message) && isProblemLevel(previous.Level)
+}
+
+func appendContinuationLine(entry *LogEntry, continuation LogEntry) {
+	message := strings.TrimSpace(continuation.Message)
+	if message != "" {
+		if entry.Message == "" {
+			entry.Message = message
+		} else {
+			entry.Message += "\n" + message
+		}
+	}
+
+	if continuation.Raw != "" {
+		if entry.Raw == "" {
+			entry.Raw = continuation.Raw
+		} else {
+			entry.Raw += "\n" + continuation.Raw
+		}
+	}
+
+	if key, value, ok := parseStructuredField(message); ok {
+		if entry.Fields == nil {
+			entry.Fields = make(map[string]string)
+		}
+		entry.Fields[key] = value
+	}
+
+	entry.ContinuationCount++
+}
+
+func parseStructuredField(message string) (string, string, bool) {
+	matches := structuredFieldRegex.FindStringSubmatch(strings.TrimSpace(message))
+	if len(matches) != 3 {
+		return "", "", false
+	}
+
+	return matches[1], strings.TrimSpace(matches[2]), true
+}
+
+func isProblemLevel(level LogLevel) bool {
+	switch level {
+	case LogLevelWarn, LogLevelWarning, LogLevelError, LogLevelFatal, LogLevelPanic:
+		return true
+	default:
+		return false
+	}
+}
+
+func isStackTraceContinuation(message string) bool {
+	stackPrefixes := []string{
+		"at ",
+		"File ",
+		"Traceback ",
+		"Caused by:",
+		"... ",
+		"goroutine ",
+	}
+
+	for _, prefix := range stackPrefixes {
+		if strings.HasPrefix(message, prefix) {
+			return true
+		}
+	}
+
+	return strings.HasPrefix(message, "/") && strings.Contains(message, ":")
 }
 
 func tryParseTimestampCandidate(candidate string) (time.Time, bool) {

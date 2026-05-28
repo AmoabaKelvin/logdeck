@@ -28,6 +28,7 @@ func parseDockerLogs(reader io.Reader, levelFilter string, searchRegex *regexp.R
 
 	stdout.Flush()
 	stderr.Flush()
+	entries = models.GroupRelatedLogEntries(entries)
 
 	if levelFilter == "" && searchRegex == nil {
 		return entries, nil
