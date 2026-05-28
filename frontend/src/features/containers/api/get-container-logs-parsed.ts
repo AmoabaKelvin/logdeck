@@ -20,6 +20,8 @@ export interface LogEntry {
   message?: string;
   stream?: "stdout" | "stderr";
   raw?: string;
+  fields?: Record<string, string>;
+  continuationCount?: number;
 }
 
 export interface ContainerLogsParsedResponse {
@@ -223,4 +225,83 @@ export function getLogLevelBadgeColor(level: LogLevel | undefined): string {
     default:
       return "bg-muted text-muted-foreground";
   }
+}
+
+const STRUCTURED_FIELD_REGEX = /^([A-Za-z_][A-Za-z0-9_.-]*)\s*[:=]\s*(.+)$/;
+const STACK_TRACE_PREFIXES = [
+  "at ",
+  "File ",
+  "Traceback ",
+  "Caused by:",
+  "... ",
+  "goroutine ",
+];
+
+export function groupRelatedLogEntries<TLogEntry extends LogEntry>(
+  entries: TLogEntry[]
+): TLogEntry[] {
+  const grouped: TLogEntry[] = [];
+
+  for (const entry of entries) {
+    const previous = grouped.at(-1);
+    if (previous && isContinuationLogEntry(entry, previous)) {
+      grouped[grouped.length - 1] = appendContinuationLogEntry(previous, entry);
+      continue;
+    }
+
+    grouped.push(entry);
+  }
+
+  return grouped;
+}
+
+function isContinuationLogEntry(entry: LogEntry, previous: LogEntry): boolean {
+  if (entry.level !== "UNKNOWN") return false;
+
+  const message = (entry.message ?? entry.raw ?? "").trim();
+  const previousMessage = (previous.message ?? previous.raw ?? "").trim();
+  if (!message || !previousMessage) return false;
+
+  if (STRUCTURED_FIELD_REGEX.test(message)) return true;
+
+  return isProblemLevel(previous.level) && isStackTraceContinuation(message);
+}
+
+function appendContinuationLogEntry<TLogEntry extends LogEntry>(
+  entry: TLogEntry,
+  continuation: LogEntry
+): TLogEntry {
+  const message = (continuation.message ?? continuation.raw ?? "").trim();
+  const raw = continuation.raw?.trim();
+  const fields = { ...(entry.fields ?? {}) };
+  const fieldMatch = message.match(STRUCTURED_FIELD_REGEX);
+
+  if (fieldMatch) {
+    fields[fieldMatch[1]] = fieldMatch[2].trim();
+  }
+
+  return {
+    ...entry,
+    message: [entry.message, message].filter(Boolean).join("\n"),
+    raw: [entry.raw, raw].filter(Boolean).join("\n"),
+    fields: Object.keys(fields).length > 0 ? fields : entry.fields,
+    continuationCount: (entry.continuationCount ?? 0) + 1,
+  } as TLogEntry;
+}
+
+function isProblemLevel(level: LogLevel | undefined): boolean {
+  return (
+    level === "WARN" ||
+    level === "WARNING" ||
+    level === "ERROR" ||
+    level === "FATAL" ||
+    level === "PANIC"
+  );
+}
+
+function isStackTraceContinuation(message: string): boolean {
+  return (
+    STACK_TRACE_PREFIXES.some((prefix) => message.startsWith(prefix)) ||
+    (message.startsWith("/") && message.includes(":"))
+  );
 }

@@ -60,6 +60,7 @@ import {
 import {
   getContainerLogsParsed,
   getLogLevelBadgeColor,
+  groupRelatedLogEntries,
   streamContainerLogsParsed
 } from "../api/get-container-logs-parsed";
 import { useContainerLogStream } from "../hooks/use-container-log-stream";
@@ -161,7 +162,7 @@ export function ContainersLogsSheet({
     isLoadingLogs,
     isStreamPaused,
     isStreaming,
-    logs,
+    logs: rawLogs,
     stopStreaming,
     togglePauseStreaming,
     toggleStreaming,
@@ -193,6 +194,7 @@ export function ContainersLogsSheet({
       toast.error(`Failed to start streaming: ${error.message}`);
     },
   });
+  const logs = useMemo(() => groupRelatedLogEntries(rawLogs), [rawLogs]);
 
   const handleRefresh = () => {
     if (!isStreaming) {
@@ -1296,7 +1298,7 @@ export function ContainersLogsSheet({
                                 {entry.level ?? "UNKNOWN"}
                               </Badge>
                               <span
-                                className={`text-foreground flex-1 ${wrapText ? "break-words" : ""}`}
+                                className={`text-foreground flex-1 ${wrapText ? "whitespace-pre-wrap break-words" : "whitespace-pre"}`}
                               >
                                 {isJsonString(displayText) ? (
                                   <CollapsibleJson
