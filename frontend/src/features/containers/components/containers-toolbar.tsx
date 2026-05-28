@@ -134,8 +134,8 @@ export function ContainersToolbar({
 								All hosts
 							</DropdownMenuRadioItem>
 							{availableHosts.map((host) => (
-								<DropdownMenuRadioItem key={host.Name} value={host.Name}>
-									{host.Name}
+								<DropdownMenuRadioItem key={host.name} value={host.name}>
+									{host.name}
 								</DropdownMenuRadioItem>
 							))}
 						</DropdownMenuRadioGroup>
@@ -256,12 +256,7 @@ export function ContainersToolbar({
 
 				<Tooltip>
 					<TooltipTrigger asChild>
-						<Button
-							variant="ghost"
-							size="sm"
-							className="h-9 shrink-0"
-							asChild
-						>
+						<Button variant="ghost" size="sm" className="h-9 shrink-0" asChild>
 							<Link to="/settings" aria-label="Settings">
 								<SettingsIcon className="size-4" />
 							</Link>
