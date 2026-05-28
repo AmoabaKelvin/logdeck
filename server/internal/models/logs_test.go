@@ -5,6 +5,110 @@ import (
 	"testing"
 )
 
+func TestDetectLogLevelUsesExplicitStructuredLevels(t *testing.T) {
+	tests := []struct {
+		name    string
+		message string
+		want    LogLevel
+	}{
+		{
+			name:    "json string level",
+			message: `{"level":"error","time":1716872438,"msg":"request failed"}`,
+			want:    LogLevelError,
+		},
+		{
+			name:    "pino numeric level",
+			message: `{"level":30,"time":1716872438,"msg":"request completed"}`,
+			want:    LogLevelInfo,
+		},
+		{
+			name:    "otel severity text",
+			message: `{"severity_text":"WARN","body":"retrying request"}`,
+			want:    LogLevelWarn,
+		},
+		{
+			name:    "otel camel case severity text",
+			message: `{"severityText":"ERROR","body":"request failed"}`,
+			want:    LogLevelError,
+		},
+		{
+			name:    "otel numeric severity",
+			message: `{"severityNumber":17,"body":"request failed"}`,
+			want:    LogLevelError,
+		},
+		{
+			name:    "logfmt level",
+			message: `time=2026-05-28T05:00:38Z level=debug msg="cache hit"`,
+			want:    LogLevelDebug,
+		},
+		{
+			name:    "python level name",
+			message: `{"levelname":"WARNING","message":"queue latency high"}`,
+			want:    LogLevelWarn,
+		},
+		{
+			name:    "logfmt otel numeric severity",
+			message: `time=2026-05-28T05:00:38Z severity_number=21 msg="service unavailable"`,
+			want:    LogLevelFatal,
+		},
+		{
+			name:    "slog uppercase level",
+			message: `time=2026-05-28T05:00:38Z level=ERROR msg="request failed"`,
+			want:    LogLevelError,
+		},
+		{
+			name:    "bracketed prefix",
+			message: `[FATAL] database migration failed`,
+			want:    LogLevelFatal,
+		},
+		{
+			name:    "plain prefix",
+			message: `WARNING -- queue latency high`,
+			want:    LogLevelWarn,
+		},
+		{
+			name:    "glog prefix",
+			message: `E0528 05:00:38.367891 request failed`,
+			want:    LogLevelError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := DetectLogLevel(tt.message); got != tt.want {
+				t.Fatalf("DetectLogLevel(%q) = %s, want %s", tt.message, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDetectLogLevelKeepsMessageFallbacks(t *testing.T) {
+	tests := []struct {
+		message string
+		want    LogLevel
+	}{
+		{message: "request failed after retry", want: LogLevelError},
+		{message: "worker emitted notice event", want: LogLevelInfo},
+		{message: "request completed successfully", want: LogLevelUnknown},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.message, func(t *testing.T) {
+			if got := DetectLogLevel(tt.message); got != tt.want {
+				t.Fatalf("DetectLogLevel(%q) = %s, want %s", tt.message, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseLogLineDetectsExplicitLevelAfterTimestamp(t *testing.T) {
+	entry := ParseLogLine(`2026-05-28T05:00:38.367Z {"level":50,"msg":"request failed"}`, "stdout")
+
+	if entry.Level != LogLevelError {
+		t.Fatalf("expected ERROR from JSON level after Docker timestamp, got %s", entry.Level)
+	}
+}
+
 func TestGroupRelatedLogEntriesFoldsStructuredFieldsIntoPreviousEntry(t *testing.T) {
 	entries := []LogEntry{
 		ParseLogLine("2026-05-28T05:00:38.367Z [2026-05-28 05:00:38.367 +0000] INFO: Request received", "stdout"),
