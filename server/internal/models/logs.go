@@ -1,7 +1,9 @@
 package models
 
 import (
+	"encoding/json"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -62,9 +64,17 @@ var timestampFormats = []string{
 var tzOffsetNoColon = regexp.MustCompile(`([+-]\d{2})(\d{2})$`)
 var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 var structuredFieldRegex = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_.-]*)\s*[:=]\s*(.+)$`)
+var otelSeverityNumberRegex = regexp.MustCompile(`(?i)(?:^|[\s,{([])severity_?number\s*[:=]\s*"?([0-9]{1,3})"?`)
+var keyedLevelRegex = regexp.MustCompile(`(?i)(?:^|[\s,{([])(?:level|lvl|level_?name|severity|severity_?text|log[._-]?level)\s*[:=]\s*"?([A-Za-z]+|[0-9]{1,3})"?`)
+var prefixedLevelRegex = regexp.MustCompile(`(?i)^(?:\[|\(|<)?(trace|trc|debug|dbg|dbug|verbose|info|inf|information|notice|warn|warning|wrn|error|err|fatal|critical|crit|panic|emergency|emerg)(?:\]|\)|>|:|\s+-|\s+--|\s+)`)
+var glogPrefixRegex = regexp.MustCompile(`^([IWEF])\d{4}\s`)
 
 // DetectLogLevel analyzes a log message to determine its severity level
 func DetectLogLevel(message string) LogLevel {
+	if level, ok := ExtractExplicitLogLevel(message); ok {
+		return level
+	}
+
 	checkOrder := []LogLevel{
 		LogLevelPanic,
 		LogLevelFatal,
@@ -84,6 +94,176 @@ func DetectLogLevel(message string) LogLevel {
 	}
 
 	return LogLevelUnknown
+}
+
+func ExtractExplicitLogLevel(message string) (LogLevel, bool) {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return LogLevelUnknown, false
+	}
+
+	if level, ok := extractJSONLogLevel(message); ok {
+		return level, true
+	}
+
+	if matches := otelSeverityNumberRegex.FindStringSubmatch(message); len(matches) == 2 {
+		if level, ok := normalizeOtelSeverityNumber(matches[1]); ok {
+			return level, true
+		}
+	}
+
+	if matches := keyedLevelRegex.FindStringSubmatch(message); len(matches) == 2 {
+		if level, ok := normalizeLogLevel(matches[1]); ok {
+			return level, true
+		}
+	}
+
+	if matches := prefixedLevelRegex.FindStringSubmatch(message); len(matches) == 2 {
+		if level, ok := normalizeLogLevel(matches[1]); ok {
+			return level, true
+		}
+	}
+
+	if matches := glogPrefixRegex.FindStringSubmatch(message); len(matches) == 2 {
+		switch matches[1] {
+		case "I":
+			return LogLevelInfo, true
+		case "W":
+			return LogLevelWarn, true
+		case "E":
+			return LogLevelError, true
+		case "F":
+			return LogLevelFatal, true
+		}
+	}
+
+	return LogLevelUnknown, false
+}
+
+func extractJSONLogLevel(message string) (LogLevel, bool) {
+	if !strings.HasPrefix(message, "{") {
+		return LogLevelUnknown, false
+	}
+
+	var payload map[string]any
+	decoder := json.NewDecoder(strings.NewReader(message))
+	decoder.UseNumber()
+	if err := decoder.Decode(&payload); err != nil {
+		return LogLevelUnknown, false
+	}
+
+	for _, key := range []string{"level", "lvl", "levelname", "level_name", "severity", "severity_text", "severityText", "log.level"} {
+		value, exists := payload[key]
+		if !exists {
+			continue
+		}
+		if level, ok := normalizeLogLevelValue(value, false); ok {
+			return level, true
+		}
+	}
+
+	for _, key := range []string{"severity_number", "severityNumber"} {
+		value, exists := payload[key]
+		if !exists {
+			continue
+		}
+		if level, ok := normalizeLogLevelValue(value, true); ok {
+			return level, true
+		}
+	}
+
+	return LogLevelUnknown, false
+}
+
+func normalizeLogLevelValue(value any, otelSeverityNumber bool) (LogLevel, bool) {
+	switch typed := value.(type) {
+	case string:
+		if otelSeverityNumber {
+			return normalizeOtelSeverityNumber(typed)
+		}
+		return normalizeLogLevel(typed)
+	case json.Number:
+		if otelSeverityNumber {
+			return normalizeOtelSeverityNumber(typed.String())
+		}
+		return normalizeNumericLogLevel(typed.String())
+	case float64:
+		if typed == float64(int(typed)) {
+			if otelSeverityNumber {
+				return normalizeOtelSeverityNumber(strconv.Itoa(int(typed)))
+			}
+			return normalizeNumericLogLevel(strconv.Itoa(int(typed)))
+		}
+		return LogLevelUnknown, false
+	default:
+		return LogLevelUnknown, false
+	}
+}
+
+func normalizeOtelSeverityNumber(value string) (LogLevel, bool) {
+	levelNumber, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil {
+		return LogLevelUnknown, false
+	}
+
+	switch {
+	case levelNumber >= 1 && levelNumber <= 4:
+		return LogLevelTrace, true
+	case levelNumber >= 5 && levelNumber <= 8:
+		return LogLevelDebug, true
+	case levelNumber >= 9 && levelNumber <= 12:
+		return LogLevelInfo, true
+	case levelNumber >= 13 && levelNumber <= 16:
+		return LogLevelWarn, true
+	case levelNumber >= 17 && levelNumber <= 20:
+		return LogLevelError, true
+	case levelNumber >= 21 && levelNumber <= 24:
+		return LogLevelFatal, true
+	default:
+		return LogLevelUnknown, false
+	}
+}
+
+func normalizeLogLevel(value string) (LogLevel, bool) {
+	normalized := strings.ToLower(strings.Trim(value, `"'[](){}<>: ,`))
+
+	switch normalized {
+	case "trace", "trc":
+		return LogLevelTrace, true
+	case "debug", "dbg", "dbug", "verbose":
+		return LogLevelDebug, true
+	case "info", "inf", "information", "notice", "log":
+		return LogLevelInfo, true
+	case "warn", "warning", "wrn":
+		return LogLevelWarn, true
+	case "error", "err", "fail", "failed", "exception":
+		return LogLevelError, true
+	case "fatal", "critical", "crit", "alert":
+		return LogLevelFatal, true
+	case "panic", "emergency", "emerg":
+		return LogLevelPanic, true
+	}
+
+	return normalizeNumericLogLevel(normalized)
+}
+
+func normalizeNumericLogLevel(value string) (LogLevel, bool) {
+	switch strings.TrimSpace(value) {
+	case "10":
+		return LogLevelTrace, true
+	case "20":
+		return LogLevelDebug, true
+	case "30":
+		return LogLevelInfo, true
+	case "40":
+		return LogLevelWarn, true
+	case "50":
+		return LogLevelError, true
+	case "60":
+		return LogLevelFatal, true
+	default:
+		return LogLevelUnknown, false
+	}
 }
 
 // ParseTimestamp attempts to extract a timestamp from the beginning of a log line
