@@ -64,6 +64,7 @@ import type {
 import {
 	getContainerLogsParsed,
 	getLogLevelBadgeColor,
+	streamContainerEvents,
 	streamContainerLogsParsed,
 } from "@/features/containers/api/get-container-logs-parsed";
 import { getContainers } from "@/features/containers/api/get-containers";
@@ -158,6 +159,7 @@ function ContainerLogsPage() {
 	const { data: containersData } = useQuery({
 		queryKey: ["containers"],
 		queryFn: getContainers,
+		refetchInterval: 5000,
 	});
 	const { statsMap } = useContainerStats();
 
@@ -224,6 +226,7 @@ function ContainerLogsPage() {
 		tail: logLines,
 		getLogs: getContainerLogsParsed,
 		streamLogs: streamContainerLogsParsed,
+		streamEvents: (id, h, signal) => streamContainerEvents(id, h, signal),
 		scrollToBottom,
 		onResetState: () => {
 			setPinnedLogIndices(new Set());
@@ -247,10 +250,13 @@ function ContainerLogsPage() {
 		if (!isStreaming) {
 			fetchLogs();
 		}
+	}, [isStreaming, fetchLogs]);
+
+	useEffect(() => {
 		return () => {
 			stopStreaming();
 		};
-	}, [isStreaming, fetchLogs, stopStreaming]);
+	}, [stopStreaming]);
 
 	const handleLogLinesChange = (value: string) => {
 		const num = parseInt(value, 10);
@@ -896,9 +902,9 @@ function ContainerLogsPage() {
 												State
 											</span>
 											<Badge
-												className={`${getStateBadgeClass(container.state)} border-0`}
+												className={`${container ? getStateBadgeClass(container.state) : "bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500"} border-0`}
 											>
-												{toTitleCase(container.state)}
+												{container ? toTitleCase(container.state) : "—"}
 											</Badge>
 										</div>
 										<div>
@@ -1400,7 +1406,12 @@ function ContainerLogsPage() {
 								ref={parentRef}
 								className="h-[calc(100vh-400px)] min-h-[400px] w-full overflow-auto"
 							>
-								{isLoadingLogs && logs.length === 0 ? (
+								{isStreaming && !isLoadingLogs && logs.length === 0 ? (
+									<div className="flex items-center justify-center py-8 text-muted-foreground">
+										<Spinner className="mr-2 size-4" />
+										Waiting to reconnect…
+									</div>
+								) : isLoadingLogs && logs.length === 0 ? (
 									<div className="flex items-center justify-center py-8 text-muted-foreground">
 										<Spinner className="mr-2 size-4" />
 										Loading logs...

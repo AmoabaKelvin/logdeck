@@ -90,6 +90,7 @@ func (ar *APIRouter) registerContainerRoutes(r chi.Router) {
 		// Read-only routes (always available)
 		r.Get("/", ar.GetContainer)
 		r.Get("/logs/parsed", ar.GetContainerLogsParsed)
+		r.Get("/events", ar.StreamContainerEvents)
 		r.Get("/env", ar.GetEnvVariables)
 
 		// Mutating routes (blocked in read-only mode)

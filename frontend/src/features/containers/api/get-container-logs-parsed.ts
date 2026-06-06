@@ -187,6 +187,26 @@ export async function* streamContainerLogsParsed(
   }
 }
 
+export async function* streamContainerEvents(
+  id: string,
+  host: string,
+  signal?: AbortSignal
+): AsyncGenerator<{ action: string }, void, unknown> {
+  const url = `${BASE_URL}/${encodeURIComponent(id)}/events?host=${encodeURIComponent(host)}`;
+  const response = await authenticatedFetch(url, {
+    headers: { Accept: "application/x-ndjson" },
+    signal,
+  });
+
+  if (!response.ok || !response.body) return;
+
+  for await (const entry of iterateNDJSONStream(response.body, signal)) {
+    if (entry && typeof (entry as { action?: string }).action === "string") {
+      yield entry as { action: string };
+    }
+  }
+}
+
 export function getLogLevelColor(level: LogLevel | undefined): string {
   switch (level ?? "UNKNOWN") {
     case "TRACE":

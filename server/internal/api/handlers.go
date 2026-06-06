@@ -192,7 +192,7 @@ func (ar *APIRouter) GetContainerLogsParsed(w http.ResponseWriter, r *http.Reque
 	}
 
 	if options.Follow {
-		ar.streamParsedLogs(w, host, id, options)
+		ar.streamParsedLogs(w, r, host, id, options)
 		return
 	}
 
@@ -208,8 +208,49 @@ func (ar *APIRouter) GetContainerLogsParsed(w http.ResponseWriter, r *http.Reque
 	})
 }
 
-func (ar *APIRouter) streamParsedLogs(w http.ResponseWriter, host, id string, options models.LogOptions) {
-	stream, err := ar.registry.Docker().StreamContainerLogsParsed(host, id, options)
+func (ar *APIRouter) StreamContainerEvents(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	host := r.URL.Query().Get("host")
+	if host == "" {
+		host = "local"
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	msgCh, errCh, err := ar.registry.Docker().StreamContainerEvents(r.Context(), host, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+
+	enc := json.NewEncoder(w)
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case err := <-errCh:
+			if err != nil && err != context.Canceled {
+				_ = enc.Encode(map[string]string{"error": err.Error()})
+				flusher.Flush()
+			}
+			return
+		case msg := <-msgCh:
+			_ = enc.Encode(map[string]string{"action": string(msg.Action)})
+			flusher.Flush()
+		}
+	}
+}
+
+func (ar *APIRouter) streamParsedLogs(w http.ResponseWriter, r *http.Request, host, id string, options models.LogOptions) {
+	stream, err := ar.registry.Docker().StreamContainerLogsParsed(r.Context(), host, id, options)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

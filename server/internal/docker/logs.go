@@ -7,9 +7,12 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/models"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/events"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/pkg/stdcopy"
 )
 
@@ -101,6 +104,7 @@ type streamingLogWriter struct {
 	encoder     *json.Encoder
 	encoderMu   *sync.Mutex
 	pipeWriter  *io.PipeWriter
+	activityCh  chan<- struct{}
 	levelFilter string
 	searchRegex *regexp.Regexp
 }
@@ -163,9 +167,16 @@ func (w *streamingLogWriter) emit(line string) error {
 
 	if err != nil {
 		w.pipeWriter.CloseWithError(err)
+		return err
 	}
 
-	return err
+	// Non-blocking ping so the watcher resets its idle timer.
+	select {
+	case w.activityCh <- struct{}{}:
+	default:
+	}
+
+	return nil
 }
 
 func buildLogsOptions(options models.LogOptions, follow, timestamps bool) container.LogsOptions {
@@ -179,6 +190,25 @@ func buildLogsOptions(options models.LogOptions, follow, timestamps bool) contai
 		ShowStdout: options.ShowStdout,
 		ShowStderr: options.ShowStderr,
 	}
+}
+
+func (c *MultiHostClient) StreamContainerEvents(ctx context.Context, hostName, id string) (<-chan events.Message, <-chan error, error) {
+	apiClient, err := c.GetClient(hostName)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	eventFilters := filters.NewArgs(
+		filters.Arg("type", "container"),
+		filters.Arg("container", id),
+		filters.Arg("event", string(events.ActionStart)),
+		filters.Arg("event", string(events.ActionDie)),
+		filters.Arg("event", string(events.ActionKill)),
+		filters.Arg("event", string(events.ActionStop)),
+		filters.Arg("event", string(events.ActionRestart)),
+	)
+	msgCh, errCh := apiClient.Events(ctx, events.ListOptions{Filters: eventFilters})
+	return msgCh, errCh, nil
 }
 
 // multi host client methods
@@ -202,16 +232,57 @@ func (c *MultiHostClient) GetContainerLogsParsed(hostName, id string, options mo
 	return parseDockerLogs(logs, options.Level, searchRegex)
 }
 
-func (c *MultiHostClient) StreamContainerLogsParsed(hostName, id string, options models.LogOptions) (io.ReadCloser, error) {
+func (c *MultiHostClient) StreamContainerLogsParsed(ctx context.Context, hostName, id string, options models.LogOptions) (io.ReadCloser, error) {
 	apiClient, err := c.GetClient(hostName)
 	if err != nil {
 		return nil, err
 	}
 
-	logs, err := apiClient.ContainerLogs(context.Background(), id, buildLogsOptions(options, options.Follow, true))
+	streamCtx, cancelStream := context.WithCancel(ctx)
+
+	logStream, err := apiClient.ContainerLogs(streamCtx, id, buildLogsOptions(options, options.Follow, true))
 	if err != nil {
+		cancelStream()
 		return nil, err
 	}
+
+	activityCh := make(chan struct{}, 1)
+
+	go func() {
+		defer cancelStream()
+		eventFilters := filters.NewArgs(
+			filters.Arg("type", "container"),
+			filters.Arg("container", id),
+			filters.Arg("event", string(events.ActionDie)),
+			filters.Arg("event", string(events.ActionKill)),
+			filters.Arg("event", string(events.ActionStop)),
+		)
+		eventCh, errCh := apiClient.Events(streamCtx, events.ListOptions{Filters: eventFilters})
+
+		idleTimer := time.NewTimer(30 * time.Second)
+		defer idleTimer.Stop()
+
+		for {
+			select {
+			case <-streamCtx.Done():
+				return
+			case <-eventCh:
+				return
+			case <-errCh:
+				return
+			case <-activityCh:
+				if !idleTimer.Stop() {
+					select {
+					case <-idleTimer.C:
+					default:
+					}
+				}
+				idleTimer.Reset(30 * time.Second)
+			case <-idleTimer.C:
+				return
+			}
+		}
+	}()
 
 	pipeReader, pipeWriter := io.Pipe()
 
@@ -221,8 +292,14 @@ func (c *MultiHostClient) StreamContainerLogsParsed(hostName, id string, options
 	}
 
 	go func() {
-		defer logs.Close()
+		defer cancelStream()
+		defer logStream.Close()
 		defer pipeWriter.Close()
+
+		go func() {
+			<-streamCtx.Done()
+			logStream.Close()
+		}()
 
 		encoder := json.NewEncoder(pipeWriter)
 		var mu sync.Mutex
@@ -232,6 +309,7 @@ func (c *MultiHostClient) StreamContainerLogsParsed(hostName, id string, options
 			encoder:     encoder,
 			encoderMu:   &mu,
 			pipeWriter:  pipeWriter,
+			activityCh:  activityCh,
 			levelFilter: options.Level,
 			searchRegex: searchRegex,
 		}
@@ -240,11 +318,12 @@ func (c *MultiHostClient) StreamContainerLogsParsed(hostName, id string, options
 			encoder:     encoder,
 			encoderMu:   &mu,
 			pipeWriter:  pipeWriter,
+			activityCh:  activityCh,
 			levelFilter: options.Level,
 			searchRegex: searchRegex,
 		}
 
-		_, err = stdcopy.StdCopy(stdout, stderr, logs)
+		_, err = stdcopy.StdCopy(stdout, stderr, logStream)
 		stdout.Flush()
 		stderr.Flush()
 
