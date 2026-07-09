@@ -29,6 +29,7 @@ import {
 } from "./container-utils";
 import { EnvironmentVariables } from "./environment-variables";
 import { LogViewer } from "./log-viewer/log-viewer";
+import { useLocalLogViewState } from "./log-viewer/use-log-view-state";
 
 interface ContainersLogsSheetProps {
 	container: ContainerInfo | null;
@@ -47,6 +48,9 @@ export function ContainersLogsSheet({
 }: ContainersLogsSheetProps) {
 	const [showLabels, setShowLabels] = useState(false);
 	const [showEnvVariables, setShowEnvVariables] = useState(false);
+	// Kept here (not inside LogViewer) so the sheet's view settings survive
+	// closing and reopening; LogViewer itself remounts per container.
+	const logViewState = useLocalLogViewState();
 
 	// Collapse the detail sections whenever the sheet closes or the shown
 	// container changes.
@@ -237,6 +241,7 @@ export function ContainersLogsSheet({
 							containerId={container.id}
 							host={container.host}
 							containerName={container.names?.[0]}
+							viewState={logViewState}
 						/>
 					</div>
 				)}

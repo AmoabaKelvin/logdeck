@@ -72,9 +72,12 @@ import { CollapsibleJson } from "@/features/containers/components/collapsible-js
 import { SelectionActionBar } from "@/features/containers/components/selection-action-bar";
 import { useContainerLogStream } from "@/features/containers/hooks/use-container-log-stream";
 import { isJsonString } from "@/lib/json-format";
+import { resolveTimeRange } from "./time-range";
+import { TimeRangeControl } from "./time-range-control";
 import { useLogFiltering } from "./use-log-filtering";
 import { navigatePins, useLogPins } from "./use-log-pins";
 import { useLogSearch, useSearchMatches } from "./use-log-search";
+import type { LogViewState } from "./use-log-view-state";
 
 export interface LogViewerHandle {
 	// Used after a container recreate: restart the stream (or refetch) so the
@@ -91,6 +94,9 @@ interface LogViewerProps {
 	// Raw container name (may include the leading slash); used for download
 	// filenames.
 	containerName?: string;
+	// Host-owned view state: local in the sheet, URL-persisted on the full
+	// page (see use-log-view-state.ts).
+	viewState: LogViewState;
 	ref?: React.Ref<LogViewerHandle>;
 }
 
@@ -111,18 +117,28 @@ export function LogViewer({
 	containerId,
 	host,
 	containerName,
+	viewState,
 	ref,
 }: LogViewerProps) {
-	const [logLines, setLogLines] = useState(100);
-	const [searchText, setSearchText] = useState("");
-	const [useRegex, setUseRegex] = useState(false);
+	const {
+		searchText,
+		setSearchText,
+		useRegex,
+		setUseRegex,
+		selectedLevels,
+		setSelectedLevels,
+		showTimestamps,
+		setShowTimestamps,
+		wrapText,
+		setWrapText,
+		logLines,
+		setLogLines,
+		timeRange,
+		setTimeRange,
+	} = viewState;
+
 	const [excludeMatches, setExcludeMatches] = useState(false);
-	const [selectedLevels, setSelectedLevels] = useState<Set<LogLevel>>(
-		new Set(),
-	);
-	const [showTimestamps, setShowTimestamps] = useState(true);
 	const [autoScroll, setAutoScroll] = useState(true);
-	const [wrapText, setWrapText] = useState(false);
 	const [showFilters, setShowFilters] = useState(false);
 	const [selectedIndices, setSelectedIndices] = useState<Set<number>>(
 		new Set(),
@@ -160,6 +176,13 @@ export function LogViewer({
 		}
 	}, []);
 
+	// Anchor relative presets once per time-range change (not per render) so
+	// the fetch callback identity stays stable between changes.
+	const { since, until } = useMemo(
+		() => resolveTimeRange(timeRange),
+		[timeRange],
+	);
+
 	const {
 		animatedRange,
 		bufferedCount,
@@ -177,6 +200,8 @@ export function LogViewer({
 		containerId,
 		host,
 		tail: logLines,
+		since,
+		until,
 		getLogs: getContainerLogsParsed,
 		streamLogs: streamContainerLogsParsed,
 		scrollToBottom,
@@ -270,15 +295,13 @@ export function LogViewer({
 	};
 
 	const toggleLogLevel = (level: LogLevel) => {
-		setSelectedLevels((prev) => {
-			const newSet = new Set(prev);
-			if (newSet.has(level)) {
-				newSet.delete(level);
-			} else {
-				newSet.add(level);
-			}
-			return newSet;
-		});
+		const newSet = new Set(selectedLevels);
+		if (newSet.has(level)) {
+			newSet.delete(level);
+		} else {
+			newSet.add(level);
+		}
+		setSelectedLevels(newSet);
 	};
 
 	const handleCopyLog = (entry: LogEntry) => {
@@ -933,6 +956,12 @@ export function LogViewer({
 
 				{levelFilterPopover}
 
+				<TimeRangeControl
+					timeRange={timeRange}
+					setTimeRange={setTimeRange}
+					disabled={isStreaming}
+				/>
+
 				<Button
 					variant="outline"
 					size="sm"
@@ -1027,9 +1056,15 @@ export function LogViewer({
 					</button>
 				</div>
 
-				{/* Controls: log level, stream, auto-scroll, overflow */}
+				{/* Controls: log level, time range, stream, auto-scroll, overflow */}
 				<div className="flex items-center gap-1 shrink-0">
 					{levelFilterPopover}
+
+					<TimeRangeControl
+						timeRange={timeRange}
+						setTimeRange={setTimeRange}
+						disabled={isStreaming}
+					/>
 
 					<Tooltip>
 						<TooltipTrigger asChild>

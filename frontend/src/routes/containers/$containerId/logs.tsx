@@ -25,6 +25,7 @@ import {
 import { EnvironmentVariables } from "@/features/containers/components/environment-variables";
 import type { LogViewerHandle } from "@/features/containers/components/log-viewer/log-viewer";
 import { LogViewer } from "@/features/containers/components/log-viewer/log-viewer";
+import { useUrlLogViewState } from "@/features/containers/components/log-viewer/use-log-view-state";
 import { Terminal } from "@/features/containers/components/terminal";
 import { useContainerStats } from "@/features/containers/hooks/use-container-stats";
 import { requireAuthIfEnabled } from "@/lib/auth-guard";
@@ -45,6 +46,7 @@ function ContainerLogsPage() {
 	const [showEnvVariables, setShowEnvVariables] = useState(false);
 	const [showTerminal, setShowTerminal] = useState(false);
 	const logViewerRef = useRef<LogViewerHandle>(null);
+	const logViewState = useUrlLogViewState();
 
 	// Decode the URL parameter (could be name or ID)
 	const containerIdentifier = decodeURIComponent(encodedContainerId);
@@ -334,6 +336,7 @@ function ContainerLogsPage() {
 						containerId={actualContainerId}
 						host={container?.host}
 						containerName={container?.names?.[0]}
+						viewState={logViewState}
 					/>
 				</div>
 			</div>
