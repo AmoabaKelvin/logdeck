@@ -2,7 +2,7 @@
 
 LogDeck is an open-source, high-performance Docker container monitoring and management tool. Built for speed and ease of use, it provides real-time log streaming, multi-host support, and a beautiful interface for managing your containers.
 
-![LogDeck Landing](./docs/landing.png)
+![LogDeck Dashboard](./docs/landing.png)
 ![LogDeck Container View and Logs](./docs/logs.png)
 
 ## Features
