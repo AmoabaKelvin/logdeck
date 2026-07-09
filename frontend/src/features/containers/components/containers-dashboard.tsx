@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Spinner } from "@/components/ui/spinner";
 
+import { ResourceNav } from "@/features/resources/components/resource-nav";
+
 import {
   removeContainer,
   restartContainer,
@@ -23,6 +25,7 @@ import {
 import { useContainersDashboardUrlState } from "../hooks/use-containers-dashboard-url-state";
 import { useLiveContainersQuery } from "../hooks/use-live-containers-query";
 import { useContainerStats } from "../hooks/use-container-stats";
+import { useHostsStats } from "../hooks/use-hosts-stats";
 import { useSystemStats } from "../hooks/use-system-stats";
 
 import {
@@ -57,6 +60,7 @@ export function ContainersDashboard() {
   const isReadOnly = data?.readOnly ?? false;
   const hosts = data?.hosts ?? [];
   const hostErrors = data?.hostErrors ?? [];
+  const { data: hostsStatsData } = useHostsStats(hosts.length > 1);
 
   useEffect(() => {
     for (const he of hostErrors) {
@@ -380,10 +384,12 @@ export function ContainersDashboard() {
 
   return (
     <div className="w-full space-y-8">
+      <ResourceNav />
       <ContainersSummaryCards
         totalContainers={containers.length}
         hostInfo={hostInfo}
         systemUsage={systemUsage}
+        hostsStats={hostsStatsData?.hosts}
       />
 
       <section className="space-y-4">
