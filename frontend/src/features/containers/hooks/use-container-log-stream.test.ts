@@ -33,7 +33,7 @@ function createControlledStream() {
 	};
 
 	async function* stream(
-		signal?: AbortSignal
+		signal?: AbortSignal,
 	): AsyncGenerator<TestEntry | LogStreamHeartbeat, void, unknown> {
 		while (true) {
 			while (queue.length > 0) {
@@ -65,12 +65,8 @@ function setup(options?: { maxLogLines?: number }) {
 	const scrollToBottom = vi.fn();
 	const renderCount = { current: 0 };
 	const streamLogs = vi.fn(
-		(
-			_id: string,
-			_host: string,
-			_options: unknown,
-			signal: AbortSignal
-		) => controlled.stream(signal)
+		(_id: string, _host: string, _options: unknown, signal: AbortSignal) =>
+			controlled.stream(signal),
 	);
 
 	const hook = renderHook(() => {

@@ -4,18 +4,18 @@ import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import TanStackQueryDevtools from "@/integrations/tanstack-query/devtools";
 
 export function DevTools() {
-  return (
-    <TanStackDevtools
-      config={{
-        position: "bottom-right",
-      }}
-      plugins={[
-        {
-          name: "Tanstack Router",
-          render: <TanStackRouterDevtoolsPanel />,
-        },
-        TanStackQueryDevtools,
-      ]}
-    />
-  );
+	return (
+		<TanStackDevtools
+			config={{
+				position: "bottom-right",
+			}}
+			plugins={[
+				{
+					name: "Tanstack Router",
+					render: <TanStackRouterDevtoolsPanel />,
+				},
+				TanStackQueryDevtools,
+			]}
+		/>
+	);
 }

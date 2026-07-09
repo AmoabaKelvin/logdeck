@@ -1,7 +1,10 @@
+import { format } from "date-fns";
 import { ClockIcon } from "lucide-react";
 import { useId, useState } from "react";
+import type { DateRange } from "react-day-picker";
 
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -31,20 +34,27 @@ interface TimeRangeControlProps {
 	disabled?: boolean;
 }
 
-// ISO timestamp <-> datetime-local input value (local time, minute precision).
-function toDateTimeLocalValue(iso: string | null): string {
-	if (!iso) return "";
-	const date = new Date(iso);
-	if (Number.isNaN(date.getTime())) return "";
-	const pad = (value: number) => String(value).padStart(2, "0");
-	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+// Combine a calendar day with an "HH:mm" time-of-day into an ISO timestamp.
+function combineDateAndTime(day: Date, time: string): string {
+	const [hours = 0, minutes = 0] = time.split(":").map(Number);
+	const date = new Date(day);
+	date.setHours(hours, minutes, 0, 0);
+	return date.toISOString();
 }
 
-function fromDateTimeLocalValue(value: string): string | null {
-	if (!value) return null;
-	const date = new Date(value);
-	if (Number.isNaN(date.getTime())) return null;
-	return date.toISOString();
+function toTimeValue(iso: string | null, fallback: string): string {
+	if (!iso) return fallback;
+	const date = new Date(iso);
+	if (Number.isNaN(date.getTime())) return fallback;
+	return format(date, "HH:mm");
+}
+
+function customRangeLabel(timeRange: TimeRange): string {
+	if (!timeRange.since && !timeRange.until) return "Pick range";
+	const fmt = (iso: string | null) =>
+		iso ? format(new Date(iso), "MMM d, HH:mm") : "now";
+	if (!timeRange.since) return `Until ${fmt(timeRange.until)}`;
+	return `${fmt(timeRange.since)} – ${fmt(timeRange.until)}`;
 }
 
 export function TimeRangeControl({
@@ -53,14 +63,18 @@ export function TimeRangeControl({
 	disabled = false,
 }: TimeRangeControlProps) {
 	const [isCustomOpen, setIsCustomOpen] = useState(false);
-	const [sinceDraft, setSinceDraft] = useState("");
-	const [untilDraft, setUntilDraft] = useState("");
-	const sinceInputId = useId();
-	const untilInputId = useId();
+	const [draftRange, setDraftRange] = useState<DateRange | undefined>();
+	const [sinceTime, setSinceTime] = useState("00:00");
+	const [untilTime, setUntilTime] = useState("23:59");
+	const sinceTimeId = useId();
+	const untilTimeId = useId();
 
 	const openCustomEditor = () => {
-		setSinceDraft(toDateTimeLocalValue(timeRange.since));
-		setUntilDraft(toDateTimeLocalValue(timeRange.until));
+		const since = timeRange.since ? new Date(timeRange.since) : undefined;
+		const until = timeRange.until ? new Date(timeRange.until) : undefined;
+		setDraftRange(since || until ? { from: since, to: until } : undefined);
+		setSinceTime(toTimeValue(timeRange.since, "00:00"));
+		setUntilTime(toTimeValue(timeRange.until, "23:59"));
 		setIsCustomOpen(true);
 	};
 
@@ -77,8 +91,12 @@ export function TimeRangeControl({
 	const applyCustomRange = () => {
 		setTimeRange({
 			preset: "custom",
-			since: fromDateTimeLocalValue(sinceDraft),
-			until: fromDateTimeLocalValue(untilDraft),
+			since: draftRange?.from
+				? combineDateAndTime(draftRange.from, sinceTime)
+				: null,
+			until: draftRange?.to
+				? combineDateAndTime(draftRange.to, untilTime)
+				: null,
 		});
 		setIsCustomOpen(false);
 	};
@@ -112,35 +130,47 @@ export function TimeRangeControl({
 							onClick={openCustomEditor}
 							className="h-8 text-xs"
 						>
-							Edit
+							{customRangeLabel(timeRange)}
 						</Button>
 					</PopoverTrigger>
-					<PopoverContent align="start" className="w-72 space-y-3">
-						<div className="space-y-1.5">
-							<Label htmlFor={sinceInputId} className="text-xs">
-								From
-							</Label>
-							<Input
-								id={sinceInputId}
-								type="datetime-local"
-								value={sinceDraft}
-								onChange={(e) => setSinceDraft(e.target.value)}
-								className="h-8 text-xs"
-							/>
+					<PopoverContent align="start" className="w-auto p-3">
+						<Calendar
+							mode="range"
+							defaultMonth={draftRange?.from}
+							selected={draftRange}
+							onSelect={setDraftRange}
+						/>
+						<div className="mt-3 grid grid-cols-2 gap-3 border-t pt-3">
+							<div className="space-y-1.5">
+								<Label htmlFor={sinceTimeId} className="text-xs">
+									From time
+								</Label>
+								<Input
+									id={sinceTimeId}
+									type="time"
+									value={sinceTime}
+									onChange={(e) => setSinceTime(e.target.value)}
+									className="h-8 text-xs"
+								/>
+							</div>
+							<div className="space-y-1.5">
+								<Label htmlFor={untilTimeId} className="text-xs">
+									To time
+								</Label>
+								<Input
+									id={untilTimeId}
+									type="time"
+									value={untilTime}
+									onChange={(e) => setUntilTime(e.target.value)}
+									className="h-8 text-xs"
+								/>
+							</div>
 						</div>
-						<div className="space-y-1.5">
-							<Label htmlFor={untilInputId} className="text-xs">
-								To
-							</Label>
-							<Input
-								id={untilInputId}
-								type="datetime-local"
-								value={untilDraft}
-								onChange={(e) => setUntilDraft(e.target.value)}
-								className="h-8 text-xs"
-							/>
-						</div>
-						<Button size="sm" onClick={applyCustomRange} className="w-full">
+						<Button
+							size="sm"
+							onClick={applyCustomRange}
+							className="mt-3 w-full"
+						>
 							Apply
 						</Button>
 					</PopoverContent>
