@@ -23,6 +23,9 @@ export interface LogEntry {
   raw?: string;
   fields?: Record<string, string>;
   continuationCount?: number;
+  // Present only on aggregated multi-container streams.
+  containerId?: string;
+  containerName?: string;
 }
 
 export interface ContainerLogsParsedResponse {
@@ -208,6 +211,9 @@ export function groupRelatedLogEntries<TLogEntry extends LogEntry>(
 
 function isContinuationLogEntry(entry: LogEntry, previous: LogEntry): boolean {
   if (entry.level !== "UNKNOWN") return false;
+  // Aggregate streams interleave containers; never fold a line into another
+  // container's entry.
+  if (entry.containerName !== previous.containerName) return false;
 
   const message = (entry.message ?? entry.raw ?? "").trim();
   const previousMessage = (previous.message ?? previous.raw ?? "").trim();

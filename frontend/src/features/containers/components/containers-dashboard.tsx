@@ -14,6 +14,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Spinner } from "@/components/ui/spinner";
 
+import { ResourceNav } from "@/features/resources/components/resource-nav";
+
+import { performComposeAction } from "../api/compose-actions";
 import {
   removeContainer,
   restartContainer,
@@ -23,7 +26,8 @@ import {
 import { useContainersDashboardUrlState } from "../hooks/use-containers-dashboard-url-state";
 import { useLiveContainersQuery } from "../hooks/use-live-containers-query";
 import { useContainerStats } from "../hooks/use-container-stats";
-import { useSampleHistory } from "../hooks/use-stats-history";
+import { useHostsStats } from "../hooks/use-hosts-stats";
+import { useSystemUsageHistory } from "../hooks/use-stats-history";
 import { useSystemStats } from "../hooks/use-system-stats";
 
 import {
@@ -39,11 +43,13 @@ import { ContainersTable } from "./containers-table";
 import { ContainersToolbar } from "./containers-toolbar";
 
 import type { DateRange } from "react-day-picker";
+import type { ComposeAction } from "../api/compose-actions";
 import type { GetContainersResponse } from "../api/get-containers";
 import type { ContainerInfo } from "../types";
 import type {
   ContainerActionType,
   GroupByOption,
+  GroupedContainers,
   SortDirection,
 } from "./container-utils";
 
@@ -52,13 +58,14 @@ export function ContainersDashboard() {
   const { data, error, isError, isFetching, isLoading, refetch } =
     useLiveContainersQuery();
   const { data: systemStats } = useSystemStats();
-  const systemHistory = useSampleHistory(systemStats?.usage);
+  const systemHistory = useSystemUsageHistory(systemStats?.usage);
   const { statsMap, statsHistory } = useContainerStats();
 
   const containers = data?.containers ?? [];
   const isReadOnly = data?.readOnly ?? false;
   const hosts = data?.hosts ?? [];
   const hostErrors = data?.hostErrors ?? [];
+  const { data: hostsStatsData } = useHostsStats(hosts.length > 1);
 
   useEffect(() => {
     for (const he of hostErrors) {
@@ -112,6 +119,10 @@ export function ContainersDashboard() {
   const [pendingAction, setPendingAction] = useState<{
     id: string;
     type: ContainerActionType;
+  } | null>(null);
+  const [pendingComposeAction, setPendingComposeAction] = useState<{
+    project: string;
+    type: ComposeAction;
   } | null>(null);
   const [confirmAction, setConfirmAction] = useState<{
     type: Extract<ContainerActionType, "stop" | "remove">;
@@ -260,6 +271,53 @@ export function ContainersDashboard() {
     }
   };
 
+  const executeComposeAction = async (
+    actionType: ComposeAction,
+    group: GroupedContainers
+  ) => {
+    // A UI group can theoretically span hosts; act once per distinct host.
+    const groupHosts = Array.from(
+      new Set(group.items.map((container) => container.host))
+    );
+    setPendingComposeAction({ project: group.project, type: actionType });
+    try {
+      const results = await Promise.all(
+        groupHosts.map((host) =>
+          performComposeAction(group.project, actionType, host)
+        )
+      );
+      const succeeded = results.reduce(
+        (sum, result) => sum + result.succeeded,
+        0
+      );
+      const verb =
+        actionType === "start"
+          ? "Started"
+          : actionType === "stop"
+            ? "Stopped"
+            : "Restarted";
+      toast.success(
+        `${verb} ${succeeded} container${succeeded === 1 ? "" : "s"} in ${group.project}`
+      );
+      await refetch();
+    } catch (error) {
+      if (error instanceof Error) {
+        toast.error(error.message);
+      } else {
+        toast.error("Unexpected error while performing compose action.");
+      }
+    } finally {
+      setPendingComposeAction(null);
+    }
+  };
+
+  const handleComposeAction = (
+    action: ComposeAction,
+    group: GroupedContainers
+  ) => {
+    void executeComposeAction(action, group);
+  };
+
   const handleConfirmAction = async () => {
     if (!confirmAction) return;
     const { type, container } = confirmAction;
@@ -382,10 +440,12 @@ export function ContainersDashboard() {
 
   return (
     <div className="w-full space-y-8">
+      <ResourceNav />
       <ContainersSummaryCards
         totalContainers={containers.length}
         hostInfo={hostInfo}
         systemUsage={systemUsage}
+        hostsStats={hostsStatsData?.hosts}
         systemHistory={systemHistory}
       />
 
@@ -421,6 +481,7 @@ export function ContainersDashboard() {
           groupedItems={groupedItems}
           pageItems={pageItems}
           pendingAction={pendingAction}
+          pendingComposeAction={pendingComposeAction}
           isReadOnly={isReadOnly}
           statsMap={statsMap}
           statsHistory={statsHistory}
@@ -428,6 +489,7 @@ export function ContainersDashboard() {
           onStop={handleStopContainer}
           onRestart={handleRestartContainer}
           onDelete={handleDeleteContainer}
+          onComposeAction={handleComposeAction}
           onViewLogs={handleViewLogs}
           onRetry={() => {
             void refetch();

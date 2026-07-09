@@ -25,6 +25,7 @@ import { EnvironmentVariables } from "@/features/containers/components/environme
 import type { LogViewerHandle } from "@/features/containers/components/log-viewer/log-viewer";
 import { LogViewer } from "@/features/containers/components/log-viewer/log-viewer";
 import { useUrlLogViewState } from "@/features/containers/components/log-viewer/use-log-view-state";
+import { ResourceLimits } from "@/features/containers/components/resource-limits";
 import { Terminal } from "@/features/containers/components/terminal";
 import { useContainerStats } from "@/features/containers/hooks/use-container-stats";
 import { useLiveContainersQuery } from "@/features/containers/hooks/use-live-containers-query";
@@ -44,6 +45,7 @@ function ContainerLogsPage() {
 
 	const [showLabels, setShowLabels] = useState(false);
 	const [showEnvVariables, setShowEnvVariables] = useState(false);
+	const [showResourceLimits, setShowResourceLimits] = useState(false);
 	const [showTerminal, setShowTerminal] = useState(false);
 	const logViewerRef = useRef<LogViewerHandle>(null);
 	const logViewState = useUrlLogViewState();
@@ -293,6 +295,30 @@ function ContainerLogsPage() {
 													onContainerIdChange={handleContainerRecreated}
 												/>
 											</div>
+										)}
+									</div>
+
+									{/* Resource Limits Section */}
+									<div className="space-y-2 border-t pt-4">
+										<Button
+											variant="ghost"
+											size="sm"
+											onClick={() => setShowResourceLimits((value) => !value)}
+											className="h-8 w-full justify-start text-muted-foreground hover:text-foreground"
+										>
+											<ChevronDownIcon
+												className={`mr-2 size-4 transition-transform ${
+													showResourceLimits ? "rotate-180" : ""
+												}`}
+											/>
+											{showResourceLimits ? "Hide" : "Show"} resource limits
+										</Button>
+										{showResourceLimits && container && (
+											<ResourceLimits
+												containerId={actualContainerId}
+												containerHost={container.host}
+												isReadOnly={containersData?.readOnly}
+											/>
 										)}
 									</div>
 

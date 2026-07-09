@@ -25,7 +25,7 @@ const COMPOSE_PROJECT_LABELS = [
   "io.podman.compose.project",
 ];
 
-function getComposeProject(labels?: Record<string, string>) {
+export function getComposeProject(labels?: Record<string, string>) {
   for (const label of COMPOSE_PROJECT_LABELS) {
     const project = labels?.[label]?.trim();
     if (project) {
