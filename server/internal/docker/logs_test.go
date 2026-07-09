@@ -1,12 +1,17 @@
 package docker
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/models"
 	"github.com/docker/docker/pkg/stdcopy"
@@ -114,6 +119,7 @@ func TestStreamingLogWriterLineBufferCap(t *testing.T) {
 				encoder:    json.NewEncoder(&out),
 				encoderMu:  &mu,
 				pipeWriter: pipeWriter,
+				wroteEntry: new(atomic.Bool),
 			}
 			for _, chunk := range tt.writes {
 				if _, err := w.Write([]byte(chunk)); err != nil {
@@ -131,5 +137,98 @@ func TestStreamingLogWriterLineBufferCap(t *testing.T) {
 				t.Fatalf("buffer exceeds cap: %d bytes", len(w.buffer))
 			}
 		})
+	}
+}
+
+// sendTick delivers a monitor tick, failing fast instead of deadlocking if the
+// monitor stopped consuming.
+func sendTick(t *testing.T, tick chan<- time.Time) {
+	t.Helper()
+	select {
+	case tick <- time.Time{}:
+	case <-time.After(5 * time.Second):
+		t.Fatal("follow monitor did not consume tick")
+	}
+}
+
+func TestFollowMonitorTearsDownStreamWhenDaemonDies(t *testing.T) {
+	// A raw stream that never delivers data and never closes, like the socket
+	// to a daemon that died mid-restart.
+	rawReader, _ := io.Pipe()
+	tick := make(chan time.Time)
+
+	stream := newParsedLogStream(context.Background(), rawReader, models.LogOptions{Follow: true},
+		func(context.Context) error { return errors.New("daemon down") }, tick)
+
+	type result struct {
+		out string
+		err error
+	}
+	results := make(chan result, 1)
+	go func() {
+		out, err := io.ReadAll(stream)
+		results <- result{string(out), err}
+	}()
+
+	sendTick(t, tick) // heartbeat + first failed ping
+	sendTick(t, tick) // heartbeat + second failed ping: daemon declared dead
+
+	select {
+	case res := <-results:
+		if res.err == nil || !strings.Contains(res.err.Error(), "docker daemon unreachable") {
+			t.Fatalf("expected daemon-unreachable error, got %v", res.err)
+		}
+		if got := strings.Count(res.out, `"type":"heartbeat"`); got != 2 {
+			t.Fatalf("expected 2 heartbeats before teardown, got %d in %q", got, res.out)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("stream did not terminate after the daemon died")
+	}
+}
+
+func TestFollowMonitorHeartbeatsOnlyWhenIdleAndStopsAfterClose(t *testing.T) {
+	rawReader, rawWriter := io.Pipe()
+	tick := make(chan time.Time)
+
+	stream := newParsedLogStream(context.Background(), rawReader, models.LogOptions{Follow: true},
+		func(context.Context) error { return nil }, tick)
+	reader := bufio.NewReader(stream)
+
+	go func() {
+		stdw := stdcopy.NewStdWriter(rawWriter, stdcopy.Stdout)
+		stdw.Write([]byte("hello world\n"))
+	}()
+	line, err := reader.ReadString('\n')
+	if err != nil || !strings.Contains(line, "hello world") {
+		t.Fatalf("expected log entry, got %q (err %v)", line, err)
+	}
+
+	sendTick(t, tick) // an entry was written this interval: no heartbeat
+	sendTick(t, tick) // idle interval: heartbeat
+	line, err = reader.ReadString('\n')
+	if err != nil || !strings.Contains(line, `"type":"heartbeat"`) {
+		t.Fatalf("expected heartbeat after idle tick, got %q (err %v)", line, err)
+	}
+
+	// The stream ends normally. If the first tick had wrongly produced a
+	// heartbeat, an extra heartbeat line would be read here instead of EOF.
+	rawWriter.Close()
+	if line, err = reader.ReadString('\n'); err != io.EOF {
+		t.Fatalf("expected EOF after the log stream ended, got %q (err %v)", line, err)
+	}
+
+	// The monitor exits once the stream ends: it either sees the done channel
+	// or consumes one final tick whose heartbeat write fails on the closed
+	// pipe. Two more ticks can therefore never both be consumed.
+	consumed := 0
+	for i := 0; i < 2; i++ {
+		select {
+		case tick <- time.Time{}:
+			consumed++
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	if consumed == 2 {
+		t.Fatal("follow monitor kept running after the stream ended")
 	}
 }

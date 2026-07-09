@@ -3,14 +3,28 @@ package docker
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/models"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/pkg/stdcopy"
+)
+
+// Follow-mode liveness monitor knobs. A daemon that dies without closing the
+// socket leaves StdCopy blocked forever (issue #53); each monitor tick emits a
+// heartbeat if nothing was written since the previous tick (so the client can
+// tell a quiet stream from a dead one) and pings the daemon so a dead socket
+// tears the stream down instead of hanging.
+const (
+	monitorInterval = 15 * time.Second
+	pingTimeout     = 3 * time.Second
+	maxPingFailures = 2
 )
 
 // parseDockerLogs parses the Docker log stream into structured entries,
@@ -112,6 +126,7 @@ type streamingLogWriter struct {
 	pipeWriter  *io.PipeWriter
 	levelFilter string
 	searchRegex *regexp.Regexp
+	wroteEntry  *atomic.Bool // set on each encoded entry; monitor clears it per tick
 }
 
 func (w *streamingLogWriter) Write(p []byte) (n int, err error) {
@@ -175,6 +190,9 @@ func (w *streamingLogWriter) emit(line string) error {
 	}
 
 	w.encoderMu.Lock()
+	// Set before Encode (which blocks on the pipe) so a monitor tick during
+	// the write already counts it as activity.
+	w.wroteEntry.Store(true)
 	err := w.encoder.Encode(entry)
 	w.encoderMu.Unlock()
 
@@ -232,6 +250,19 @@ func (c *MultiHostClient) StreamContainerLogsParsed(ctx context.Context, hostNam
 		return nil, err
 	}
 
+	ping := func(ctx context.Context) error {
+		_, err := apiClient.Ping(ctx)
+		return err
+	}
+	return newParsedLogStream(ctx, logs, options, ping, nil), nil
+}
+
+// newParsedLogStream parses the raw Docker log stream into NDJSON on a pipe.
+// When following, a monitor goroutine keeps the stream honest: heartbeats on
+// quiet intervals and teardown when the daemon stops answering pings. tick
+// overrides the monitor cadence in tests; nil means a real time.Ticker at
+// monitorInterval.
+func newParsedLogStream(ctx context.Context, logs io.ReadCloser, options models.LogOptions, ping func(context.Context) error, tick <-chan time.Time) io.ReadCloser {
 	pipeReader, pipeWriter := io.Pipe()
 
 	var searchRegex *regexp.Regexp
@@ -239,31 +270,81 @@ func (c *MultiHostClient) StreamContainerLogsParsed(ctx context.Context, hostNam
 		searchRegex, _ = regexp.Compile(options.Search) // already validated by handler
 	}
 
+	encoder := json.NewEncoder(pipeWriter)
+	var mu sync.Mutex
+	var wroteEntry atomic.Bool
+
+	stdout := &streamingLogWriter{
+		stream:      "stdout",
+		encoder:     encoder,
+		encoderMu:   &mu,
+		pipeWriter:  pipeWriter,
+		levelFilter: options.Level,
+		searchRegex: searchRegex,
+		wroteEntry:  &wroteEntry,
+	}
+	stderr := &streamingLogWriter{
+		stream:      "stderr",
+		encoder:     encoder,
+		encoderMu:   &mu,
+		pipeWriter:  pipeWriter,
+		levelFilter: options.Level,
+		searchRegex: searchRegex,
+		wroteEntry:  &wroteEntry,
+	}
+
+	done := make(chan struct{})
+
+	if options.Follow {
+		go func() {
+			if tick == nil {
+				ticker := time.NewTicker(monitorInterval)
+				defer ticker.Stop()
+				tick = ticker.C
+			}
+
+			pingFailures := 0
+			for {
+				select {
+				case <-done:
+					return
+				case <-ctx.Done():
+					return
+				case <-tick:
+				}
+
+				if !wroteEntry.Swap(false) {
+					mu.Lock()
+					err := encoder.Encode(map[string]string{"type": "heartbeat"})
+					mu.Unlock()
+					if err != nil {
+						return
+					}
+				}
+
+				pingCtx, cancel := context.WithTimeout(ctx, pingTimeout)
+				err := ping(pingCtx)
+				cancel()
+				if err == nil {
+					pingFailures = 0
+					continue
+				}
+				pingFailures++
+				if pingFailures >= maxPingFailures {
+					pipeWriter.CloseWithError(fmt.Errorf("docker daemon unreachable while streaming logs: %w", err))
+					logs.Close() // unblock StdCopy, which is stuck reading the dead socket
+					return
+				}
+			}
+		}()
+	}
+
 	go func() {
+		defer close(done)
 		defer logs.Close()
 		defer pipeWriter.Close()
 
-		encoder := json.NewEncoder(pipeWriter)
-		var mu sync.Mutex
-
-		stdout := &streamingLogWriter{
-			stream:      "stdout",
-			encoder:     encoder,
-			encoderMu:   &mu,
-			pipeWriter:  pipeWriter,
-			levelFilter: options.Level,
-			searchRegex: searchRegex,
-		}
-		stderr := &streamingLogWriter{
-			stream:      "stderr",
-			encoder:     encoder,
-			encoderMu:   &mu,
-			pipeWriter:  pipeWriter,
-			levelFilter: options.Level,
-			searchRegex: searchRegex,
-		}
-
-		_, err = stdcopy.StdCopy(stdout, stderr, logs)
+		_, err := stdcopy.StdCopy(stdout, stderr, logs)
 		stdout.Flush()
 		stderr.Flush()
 
@@ -272,5 +353,5 @@ func (c *MultiHostClient) StreamContainerLogsParsed(ctx context.Context, hostNam
 		}
 	}()
 
-	return pipeReader, nil
+	return pipeReader
 }
