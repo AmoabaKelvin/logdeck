@@ -137,7 +137,10 @@ describe("useContainerLogStream", () => {
 		});
 
 		expect(result.current.logs.map((e) => e.id)).toEqual([4, 5, 6, 7, 8]);
-		expect(result.current.droppedCount).toBe(3);
+		// The 3 overflow entries never reached the displayed array, so they are
+		// reported separately from the pin-shift counter.
+		expect(result.current.droppedCount).toBe(0);
+		expect(result.current.bufferedDroppedCount).toBe(3);
 
 		await act(async () => {
 			controlled.push(entry(9), entry(10));
@@ -148,7 +151,52 @@ describe("useContainerLogStream", () => {
 		});
 
 		expect(result.current.logs.map((e) => e.id)).toEqual([6, 7, 8, 9, 10]);
-		expect(result.current.droppedCount).toBe(5);
+		expect(result.current.droppedCount).toBe(2);
+		expect(result.current.bufferedDroppedCount).toBe(3);
+	});
+
+	it("does not count paused-backlog trims in the pin-shift counter", async () => {
+		const { result, controlled } = setup({ maxLogLines: 5 });
+
+		await act(async () => {
+			void result.current.startStreaming();
+			controlled.push(entry(1), entry(2));
+			await drainMicrotasks();
+		});
+		await act(async () => {
+			vi.advanceTimersByTime(100);
+		});
+		expect(result.current.logs.map((e) => e.id)).toEqual([1, 2]);
+		expect(result.current.droppedCount).toBe(0);
+
+		act(() => {
+			result.current.togglePauseStreaming();
+		});
+
+		// Push more than maxLogLines while paused: the backlog is trimmed, but
+		// the displayed array is untouched, so droppedCount (which consumers
+		// use to shift pin indices) must not move.
+		await act(async () => {
+			controlled.push(...[3, 4, 5, 6, 7, 8, 9, 10].map(entry));
+			await drainMicrotasks();
+		});
+		await act(async () => {
+			vi.advanceTimersByTime(100);
+		});
+		expect(result.current.bufferedCount).toBe(5);
+		expect(result.current.bufferedDroppedCount).toBe(3);
+		expect(result.current.droppedCount).toBe(0);
+		expect(result.current.logs.map((e) => e.id)).toEqual([1, 2]);
+
+		// On resume the trimmed backlog (6..10) replaces the displayed buffer;
+		// both displayed entries are dropped from the front, so the pin-shift
+		// counter advances by exactly what left the displayed array.
+		act(() => {
+			result.current.togglePauseStreaming();
+		});
+		expect(result.current.logs.map((e) => e.id)).toEqual([6, 7, 8, 9, 10]);
+		expect(result.current.droppedCount).toBe(2);
+		expect(result.current.bufferedDroppedCount).toBe(3);
 	});
 
 	it("buffers while paused and lands buffered lines after resume", async () => {

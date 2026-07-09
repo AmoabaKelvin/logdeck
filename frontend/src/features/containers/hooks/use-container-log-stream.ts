@@ -53,6 +53,7 @@ export function useContainerLogStream<TLogEntry>({
   const [isStreamPaused, setIsStreamPaused] = useState(false);
   const [bufferedCount, setBufferedCount] = useState(0);
   const [droppedCount, setDroppedCount] = useState(0);
+  const [bufferedDroppedCount, setBufferedDroppedCount] = useState(0);
   const [animatedRange, setAnimatedRange] = useState<{
     start: number;
     end: number;
@@ -64,6 +65,7 @@ export function useContainerLogStream<TLogEntry>({
   const pendingLogsRef = useRef<TLogEntry[]>([]);
   const logsLengthRef = useRef(0);
   const droppedCountRef = useRef(0);
+  const bufferedDroppedCountRef = useRef(0);
   const maxLogLinesRef = useRef(maxLogLines);
   const flushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -117,12 +119,25 @@ export function useContainerLogStream<TLogEntry>({
   const resetDroppedCount = useCallback(() => {
     droppedCountRef.current = 0;
     setDroppedCount(0);
+    bufferedDroppedCountRef.current = 0;
+    setBufferedDroppedCount(0);
   }, []);
 
+  // Entries dropped from the front of the displayed `logs` array. Consumers
+  // shift index-based bookkeeping (pins) by this value, so it must never
+  // include entries that were dropped before they were displayed.
   const recordDroppedLines = useCallback((count: number) => {
     if (count <= 0) return;
     droppedCountRef.current += count;
     setDroppedCount(droppedCountRef.current);
+  }, []);
+
+  // Entries dropped before ever reaching the displayed array (paused-backlog
+  // trims, pending overflow within a single flush window).
+  const recordBufferedDroppedLines = useCallback((count: number) => {
+    if (count <= 0) return;
+    bufferedDroppedCountRef.current += count;
+    setBufferedDroppedCount(bufferedDroppedCountRef.current);
   }, []);
 
   const scheduleScrollToBottom = useCallback(
@@ -157,8 +172,12 @@ export function useContainerLogStream<TLogEntry>({
       pendingLogsRef.current = [];
 
       const max = maxLogLinesRef.current;
-      const total = logsLengthRef.current + pending.length;
+      const prevLength = logsLengthRef.current;
+      const total = prevLength + pending.length;
       const dropped = Math.max(0, total - max);
+      // Drops come off the front of concat(displayed, pending), so at most
+      // prevLength of them shift the displayed indices.
+      const droppedFromDisplayed = Math.min(prevLength, dropped);
       const nextLength = total - dropped;
 
       setLogs((prev) => {
@@ -166,24 +185,31 @@ export function useContainerLogStream<TLogEntry>({
         return next.length > max ? next.slice(next.length - max) : next;
       });
       logsLengthRef.current = nextLength;
-      recordDroppedLines(dropped);
+      recordDroppedLines(droppedFromDisplayed);
+      recordBufferedDroppedLines(dropped - droppedFromDisplayed);
       triggerRowAnimation(Math.max(0, nextLength - pending.length), nextLength - 1);
       scheduleScrollToBottom(scrollBehavior === "smooth" ? 40 : 100, scrollBehavior);
     },
-    [recordDroppedLines, scheduleScrollToBottom, triggerRowAnimation]
+    [
+      recordBufferedDroppedLines,
+      recordDroppedLines,
+      scheduleScrollToBottom,
+      triggerRowAnimation,
+    ]
   );
 
   // While paused, keep the buffered backlog capped and sync its count on the
-  // flush cadence instead of per line.
+  // flush cadence instead of per line. Backlog trims never touch the
+  // displayed array, so they must not feed the pin-shift counter.
   const syncBufferedLogs = useCallback(() => {
     const buffered = bufferedLogsRef.current;
     const max = maxLogLinesRef.current;
     if (buffered.length > max) {
-      recordDroppedLines(buffered.length - max);
+      recordBufferedDroppedLines(buffered.length - max);
       buffered.splice(0, buffered.length - max);
     }
     setBufferedCount(buffered.length);
-  }, [recordDroppedLines]);
+  }, [recordBufferedDroppedLines]);
 
   const handleFlushTick = useCallback(() => {
     if (isStreamPausedRef.current) {
@@ -379,6 +405,7 @@ export function useContainerLogStream<TLogEntry>({
   return {
     bufferedCount,
     animatedRange,
+    bufferedDroppedCount,
     clearLogs,
     droppedCount,
     fetchLogs,
