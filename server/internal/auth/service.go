@@ -3,9 +3,11 @@ package auth
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/config"
@@ -63,18 +65,31 @@ func NewService() (*Service, error) {
 	}, nil
 }
 
-// ValidateCredentials checks if the provided credentials are valid
+// ValidateCredentials checks if the provided credentials are valid.
+// Bcrypt hashes (env-configured) and SHA256+salt hashes (file-configured)
+// are both supported.
 func (s *Service) ValidateCredentials(username, password string) error {
-	if username != s.adminUsername {
-		return ErrInvalidCredentials
+	usernameMatch := subtle.ConstantTimeCompare([]byte(username), []byte(s.adminUsername)) == 1
+
+	var passwordMatch bool
+	if isBcryptHash(s.adminPasswordHash) {
+		passwordMatch = bcrypt.CompareHashAndPassword([]byte(s.adminPasswordHash), []byte(password)) == nil
+	} else {
+		hash := HashPasswordSHA256(password, s.sha256Salt)
+		passwordMatch = subtle.ConstantTimeCompare([]byte(hash), []byte(s.adminPasswordHash)) == 1
 	}
 
-	hash := sha256.Sum256([]byte(password + s.sha256Salt))
-	if hex.EncodeToString(hash[:]) != s.adminPasswordHash {
+	if !usernameMatch || !passwordMatch {
 		return ErrInvalidCredentials
 	}
 
 	return nil
+}
+
+func isBcryptHash(hash string) bool {
+	return strings.HasPrefix(hash, "$2a$") ||
+		strings.HasPrefix(hash, "$2b$") ||
+		strings.HasPrefix(hash, "$2y$")
 }
 
 // GenerateToken creates a new JWT token for the user
