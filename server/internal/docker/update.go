@@ -62,6 +62,21 @@ func (c *MultiHostClient) UpdateContainerResources(ctx context.Context, hostName
 		return err
 	}
 
-	_, err = apiClient.ContainerUpdate(ctx, id, buildUpdateConfig(req))
+	cfg := buildUpdateConfig(req)
+
+	// Podman resets the restart policy to "no" when an update omits it
+	// (Docker leaves it unchanged), so carry the current policy over
+	// explicitly when the request doesn't set one.
+	if req.RestartPolicy == nil {
+		inspect, err := apiClient.ContainerInspect(ctx, id)
+		if err != nil {
+			return err
+		}
+		if inspect.HostConfig != nil {
+			cfg.RestartPolicy = inspect.HostConfig.RestartPolicy
+		}
+	}
+
+	_, err = apiClient.ContainerUpdate(ctx, id, cfg)
 	return err
 }
