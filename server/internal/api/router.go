@@ -108,6 +108,7 @@ func (ar *APIRouter) registerContainerRoutes(r chi.Router) {
 		r.Get("/", ar.GetContainer)
 		r.Get("/logs/parsed", ar.GetContainerLogsParsed)
 		r.Get("/env", ar.GetEnvVariables)
+		r.Get("/resources", ar.GetContainerResources)
 
 		// Mutating routes (blocked in read-only mode)
 		r.Group(func(mutating chi.Router) {
@@ -119,6 +120,7 @@ func (ar *APIRouter) registerContainerRoutes(r chi.Router) {
 			mutating.Post("/restart", ar.RestartContainer)
 			mutating.Post("/remove", ar.RemoveContainer)
 			mutating.Put("/env", ar.UpdateEnvVariables)
+			mutating.Put("/resources", ar.UpdateContainerResources)
 			mutating.Get("/exec", ar.HandleTerminal)
 		})
 	})
