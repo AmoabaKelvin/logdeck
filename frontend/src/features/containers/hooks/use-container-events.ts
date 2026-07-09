@@ -40,9 +40,7 @@ export function useContainerEvents(onEvent: (event: ContainerEvent) => void) {
         for await (const event of stream) {
           onEventRef.current(event);
         }
-      } catch {
-        // Fall through to the reconnect logic below.
-      }
+      } catch {}
 
       setIsConnected(false);
       if (abortController.signal.aborted) return;
