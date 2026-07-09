@@ -72,6 +72,7 @@ import { CollapsibleJson } from "@/features/containers/components/collapsible-js
 import { SelectionActionBar } from "@/features/containers/components/selection-action-bar";
 import { useContainerLogStream } from "@/features/containers/hooks/use-container-log-stream";
 import { isJsonString } from "@/lib/json-format";
+import { mapRawRangeToGroupedRange } from "./animated-range";
 import { resolveTimeRange } from "./time-range";
 import { TimeRangeControl } from "./time-range-control";
 import { useLogFiltering } from "./use-log-filtering";
@@ -218,6 +219,13 @@ export function LogViewer({
 
 	const logs = useMemo(() => groupRelatedLogEntries(rawLogs), [rawLogs]);
 
+	// The hook reports newly-appended rows in raw index space; translate to
+	// the grouped rows actually rendered.
+	const animatedGroupedRange = useMemo(
+		() => mapRawRangeToGroupedRange(logs, animatedRange),
+		[logs, animatedRange],
+	);
+
 	const {
 		filteredLogs,
 		filteredToOriginalIndex,
@@ -266,10 +274,20 @@ export function LogViewer({
 		if (!isStreaming) {
 			fetchLogs();
 		}
+	}, [isStreaming, fetchLogs]);
+
+	// Teardown must run on unmount only. If stopStreaming were cleanup of the
+	// fetch effect above, every isStreaming transition would re-run it and
+	// abort a stream right as it starts.
+	const stopStreamingRef = useRef(stopStreaming);
+	useEffect(() => {
+		stopStreamingRef.current = stopStreaming;
+	}, [stopStreaming]);
+	useEffect(() => {
 		return () => {
-			stopStreaming();
+			stopStreamingRef.current();
 		};
-	}, [isStreaming, fetchLogs, stopStreaming]);
+	}, []);
 
 	useImperativeHandle(
 		ref,
@@ -1358,6 +1376,13 @@ export function LogViewer({
 							const hasMatch = searchMatchSet.has(virtualRow.index);
 							const isSelected = selectedIndices.has(virtualRow.index);
 							const isPinned = pinnedFilteredIndices.has(virtualRow.index);
+							// Animation range is in grouped index space; compare against
+							// this row's grouped index, not its filtered position.
+							const groupedIndex = filteredToOriginalIndex[virtualRow.index];
+							const isNewRow =
+								animatedGroupedRange !== null &&
+								groupedIndex >= animatedGroupedRange.start &&
+								groupedIndex <= animatedGroupedRange.end;
 
 							return (
 								// biome-ignore lint/a11y/useSemanticElements: div required for virtual scrolling absolute positioning
@@ -1400,13 +1425,7 @@ export function LogViewer({
 														: virtualRow.index % 2 === 0
 															? "bg-muted/30 border-l-[3px] border-transparent hover:bg-muted/50"
 															: "border-l-[3px] border-transparent hover:bg-muted/50"
-									} ${
-										animatedRange &&
-										virtualRow.index >= animatedRange.start &&
-										virtualRow.index <= animatedRange.end
-											? "log-stream-row-enter"
-											: ""
-									}`}
+									} ${isNewRow ? "log-stream-row-enter" : ""}`}
 								>
 									{showTimestamps && (
 										<span className="text-muted-foreground shrink-0 text-[11px]">
