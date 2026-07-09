@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/api"
@@ -89,8 +92,30 @@ func main() {
 
 	apiRouter := api.NewRouter(registry, manager)
 
-	log.Println("Server starting on :8080")
-	if err := http.ListenAndServe(":8080", apiRouter); err != nil {
-		log.Fatalf("Server failed to start: %v", err)
+	// No WriteTimeout/IdleTimeout: log streaming and terminal WebSockets are
+	// long-lived connections and would be killed by them.
+	server := &http.Server{
+		Addr:              ":8080",
+		Handler:           apiRouter,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	go func() {
+		log.Println("Server starting on :8080")
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server failed to start: %v", err)
+		}
+	}()
+
+	<-ctx.Done()
+	log.Println("Shutting down server...")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Graceful shutdown failed: %v", err)
 	}
 }
