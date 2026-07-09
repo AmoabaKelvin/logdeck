@@ -3,6 +3,8 @@ package api
 import (
 	"net"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -64,14 +66,34 @@ func (rl *rateLimiter) sweep(now time.Time) {
 	}
 }
 
+// clientIP returns the client IP used as the rate-limit key. Proxy headers
+// (X-Forwarded-For, X-Real-IP) are only trusted when TRUST_PROXY_HEADERS=true
+// is set - behind a reverse proxy every client otherwise collapses to the
+// proxy's IP, while trusting the headers on a directly exposed server would
+// let clients spoof their way past the limit.
+func clientIP(r *http.Request) string {
+	if os.Getenv("TRUST_PROXY_HEADERS") == "true" {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			if ip := strings.TrimSpace(strings.Split(xff, ",")[0]); ip != "" {
+				return ip
+			}
+		}
+		if ip := r.Header.Get("X-Real-IP"); ip != "" {
+			return ip
+		}
+	}
+
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return ip
+}
+
 // middleware rejects requests over the per-IP limit with 429 Too Many Requests.
 func (rl *rateLimiter) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			ip = r.RemoteAddr
-		}
-		if !rl.allow(ip) {
+		if !rl.allow(clientIP(r)) {
 			http.Error(w, "Too many login attempts, please try again later", http.StatusTooManyRequests)
 			return
 		}

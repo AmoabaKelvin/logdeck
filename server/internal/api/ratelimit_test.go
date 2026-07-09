@@ -72,3 +72,51 @@ func TestRateLimiterMiddleware(t *testing.T) {
 		t.Errorf("expected 429 over the limit, got %d", w.Code)
 	}
 }
+
+func TestClientIPIgnoresProxyHeadersByDefault(t *testing.T) {
+	t.Setenv("TRUST_PROXY_HEADERS", "")
+
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
+	r.RemoteAddr = "10.0.0.1:12345"
+	r.Header.Set("X-Forwarded-For", "203.0.113.7")
+	r.Header.Set("X-Real-IP", "203.0.113.8")
+
+	if got := clientIP(r); got != "10.0.0.1" {
+		t.Errorf("expected spoofed headers to be ignored, got %q", got)
+	}
+}
+
+func TestClientIPHonorsProxyHeadersWhenTrusted(t *testing.T) {
+	t.Setenv("TRUST_PROXY_HEADERS", "true")
+
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
+	r.RemoteAddr = "10.0.0.1:12345"
+	r.Header.Set("X-Forwarded-For", "203.0.113.7, 10.0.0.1")
+
+	if got := clientIP(r); got != "203.0.113.7" {
+		t.Errorf("expected leftmost X-Forwarded-For entry, got %q", got)
+	}
+}
+
+func TestClientIPFallsBackToRealIPWhenTrusted(t *testing.T) {
+	t.Setenv("TRUST_PROXY_HEADERS", "true")
+
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
+	r.RemoteAddr = "10.0.0.1:12345"
+	r.Header.Set("X-Real-IP", "203.0.113.8")
+
+	if got := clientIP(r); got != "203.0.113.8" {
+		t.Errorf("expected X-Real-IP, got %q", got)
+	}
+}
+
+func TestClientIPUsesRemoteAddrWithoutHeaders(t *testing.T) {
+	t.Setenv("TRUST_PROXY_HEADERS", "true")
+
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
+	r.RemoteAddr = "10.0.0.1:12345"
+
+	if got := clientIP(r); got != "10.0.0.1" {
+		t.Errorf("expected RemoteAddr host, got %q", got)
+	}
+}
