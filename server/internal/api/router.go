@@ -86,6 +86,7 @@ func (ar *APIRouter) Routes() *chi.Mux {
 			protected.Get("/images", ar.GetImages)
 			protected.Get("/volumes", ar.GetVolumes)
 			protected.Get("/networks", ar.GetNetworks)
+			protected.Get("/hosts/stats", ar.GetHostsStats)
 			ar.registerContainerRoutes(protected)
 		})
 	})
