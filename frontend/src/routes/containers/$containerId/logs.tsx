@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ArrowLeftIcon, ChevronDownIcon, TerminalIcon } from "lucide-react";
 import { useRef, useState } from "react";
@@ -11,7 +11,6 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { getContainers } from "@/features/containers/api/get-containers";
 import {
 	formatContainerName,
 	formatCPUPercent,
@@ -28,6 +27,7 @@ import { LogViewer } from "@/features/containers/components/log-viewer/log-viewe
 import { useUrlLogViewState } from "@/features/containers/components/log-viewer/use-log-view-state";
 import { Terminal } from "@/features/containers/components/terminal";
 import { useContainerStats } from "@/features/containers/hooks/use-container-stats";
+import { useLiveContainersQuery } from "@/features/containers/hooks/use-live-containers-query";
 import { requireAuthIfEnabled } from "@/lib/auth-guard";
 
 export const Route = createFileRoute("/containers/$containerId/logs")({
@@ -52,10 +52,7 @@ function ContainerLogsPage() {
 	const containerIdentifier = decodeURIComponent(encodedContainerId);
 
 	// Fetch container info
-	const { data: containersData } = useQuery({
-		queryKey: ["containers"],
-		queryFn: getContainers,
-	});
+	const { data: containersData } = useLiveContainersQuery();
 	const { statsMap } = useContainerStats();
 
 	const containers = containersData?.containers ?? [];
