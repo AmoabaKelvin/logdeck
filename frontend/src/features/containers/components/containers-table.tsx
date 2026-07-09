@@ -31,6 +31,9 @@ import {
   toTitleCase,
 } from "./container-utils";
 
+import { Sparkline } from "./sparkline";
+
+import type { StatsHistoryMap } from "../hooks/use-stats-history";
 import type { ContainerInfo, ContainerStatsMap } from "../types";
 
 import type {
@@ -95,6 +98,7 @@ interface ContainersTableProps {
   pendingAction: { id: string; type: ContainerActionType } | null;
   isReadOnly: boolean;
   statsMap: ContainerStatsMap;
+  statsHistory: StatsHistoryMap;
   onStart: (container: ContainerInfo) => void;
   onStop: (container: ContainerInfo) => void;
   onRestart: (container: ContainerInfo) => void;
@@ -114,6 +118,7 @@ export function ContainersTable({
   pendingAction,
   isReadOnly,
   statsMap,
+  statsHistory,
   onStart,
   onStop,
   onRestart,
@@ -157,13 +162,25 @@ export function ContainersTable({
             <span className="text-muted-foreground">—</span>
           ) : (
             <div className="space-y-0.5 font-mono text-xs">
-              <div>
-                <span className="text-muted-foreground">CPU: </span>
-                {formatCPUPercent(statsMap[container.id]?.cpu_percent)}
+              <div className="flex items-center gap-2">
+                <span>
+                  <span className="text-muted-foreground">CPU: </span>
+                  {formatCPUPercent(statsMap[container.id]?.cpu_percent)}
+                </span>
+                <Sparkline
+                  values={(statsHistory[container.id] ?? []).map((s) => s.cpu)}
+                />
               </div>
-              <div>
-                <span className="text-muted-foreground">Mem: </span>
-                {formatMemoryStats(statsMap[container.id])}
+              <div className="flex items-center gap-2">
+                <span>
+                  <span className="text-muted-foreground">Mem: </span>
+                  {formatMemoryStats(statsMap[container.id])}
+                </span>
+                <Sparkline
+                  values={(statsHistory[container.id] ?? []).map(
+                    (s) => s.memoryPercent
+                  )}
+                />
               </div>
             </div>
           )}

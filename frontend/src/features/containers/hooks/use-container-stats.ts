@@ -5,6 +5,7 @@ import { getContainerStats } from "../api/get-container-stats";
 import type { ContainerStatsMap } from "../types";
 
 import { useDocumentVisible } from "./use-document-visible";
+import { useContainerStatsHistory } from "./use-stats-history";
 
 export function useContainerStats() {
   const isVisible = useDocumentVisible();
@@ -25,8 +26,11 @@ export function useContainerStats() {
     }, {} as ContainerStatsMap);
   }, [query.data?.stats]);
 
+  const statsHistory = useContainerStatsHistory(query.data?.stats);
+
   return {
     ...query,
     statsMap,
+    statsHistory,
   };
 }
