@@ -1,12 +1,12 @@
-import "xterm/css/xterm.css";
+import "@xterm/xterm/css/xterm.css";
 
+import { FitAddon } from "@xterm/addon-fit";
+import type { ITheme } from "@xterm/xterm";
+import { Terminal as XTerm } from "@xterm/xterm";
 import { ArrowDownIcon, CopyIcon, RefreshCwIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { ITheme } from "xterm";
-import { Terminal as XTerm } from "xterm";
-import { FitAddon } from "xterm-addon-fit";
 import { Button } from "@/components/ui/button";
 import {
 	Tooltip,

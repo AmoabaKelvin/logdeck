@@ -1,6 +1,9 @@
 package api
 
-import "testing"
+import (
+	"net/http/httptest"
+	"testing"
+)
 
 func TestClampTail(t *testing.T) {
 	tests := []struct {
@@ -22,5 +25,17 @@ func TestClampTail(t *testing.T) {
 				t.Fatalf("clampTail(%q) = %q, want %q", tt.tail, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestParseLogOptionsLevel(t *testing.T) {
+	r := httptest.NewRequest("GET", "/api/v1/containers/abc/logs/parsed?level=error", nil)
+	if got := parseLogOptions(r).Level; got != "error" {
+		t.Fatalf("parseLogOptions Level = %q, want %q", got, "error")
+	}
+
+	r = httptest.NewRequest("GET", "/api/v1/containers/abc/logs/parsed", nil)
+	if got := parseLogOptions(r).Level; got != "" {
+		t.Fatalf("parseLogOptions Level = %q, want empty", got)
 	}
 }
