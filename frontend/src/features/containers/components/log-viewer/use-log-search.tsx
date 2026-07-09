@@ -139,7 +139,6 @@ export function useSearchMatches({
 	// Set view of searchMatches for O(1) per-row lookups during rendering
 	const searchMatchSet = useMemo(() => new Set(searchMatches), [searchMatches]);
 
-	// Reset current match index when search changes
 	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally reset when searchText or useRegex changes
 	useEffect(() => {
 		setCurrentMatchIndex(0);

@@ -250,8 +250,8 @@ export function LogViewer({
 		resetPins,
 	} = useLogPins({ droppedCount, filteredToOriginalIndex });
 
-	// The stream hook captures onResetState once; route it through a ref so it
-	// always calls the current resetPins.
+	// resetPins can only be declared after the stream hook call (it needs
+	// droppedCount), so onResetState reaches it through this ref.
 	const resetPinsRef = useRef(resetPins);
 	useEffect(() => {
 		resetPinsRef.current = resetPins;
@@ -351,7 +351,6 @@ export function LogViewer({
 	const handleLogClick = useCallback(
 		(index: number, event: React.MouseEvent) => {
 			if (event.shiftKey && lastClickedIndex !== null) {
-				// Shift-click: range selection
 				const start = Math.min(lastClickedIndex, index);
 				const end = Math.max(lastClickedIndex, index);
 				const newSelected = new Set<number>();
@@ -360,7 +359,6 @@ export function LogViewer({
 				}
 				setSelectedIndices(newSelected);
 			} else {
-				// Regular click: toggle single selection and set anchor
 				setSelectedIndices((prev) => {
 					const newSet = new Set(prev);
 					if (newSet.has(index)) {
@@ -454,7 +452,6 @@ export function LogViewer({
 		if (selectedIndices.size === 0) return;
 
 		const sortedIndices = Array.from(selectedIndices).sort((a, b) => a - b);
-		// Filter out any invalid indices as a safety measure
 		const validIndices = sortedIndices.filter(
 			(idx) => idx >= 0 && idx < filteredLogs.length,
 		);
@@ -477,7 +474,6 @@ export function LogViewer({
 			});
 	}, [selectedIndices, filteredLogs, clearSelection]);
 
-	// Clear selection when filters or search settings change
 	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally clear selection on data changes
 	useEffect(() => {
 		clearSelection();
@@ -492,7 +488,6 @@ export function LogViewer({
 		overscan: 5,
 	});
 
-	// Navigate to previous match
 	const goToPreviousMatch = useCallback(() => {
 		if (searchMatches.length === 0) return;
 		const newIndex =
@@ -501,7 +496,6 @@ export function LogViewer({
 		rowVirtualizer.scrollToIndex(searchMatches[newIndex], { align: "center" });
 	}, [searchMatches, currentMatchIndex, setCurrentMatchIndex, rowVirtualizer]);
 
-	// Navigate to next match
 	const goToNextMatch = useCallback(() => {
 		if (searchMatches.length === 0) return;
 		const newIndex =
@@ -1369,7 +1363,6 @@ export function LogViewer({
 									})}`
 								: "—";
 
-							// Check if this row is the current search match
 							const isCurrentMatch =
 								searchMatches.length > 0 &&
 								searchMatches[currentMatchIndex] === virtualRow.index;
