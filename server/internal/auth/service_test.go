@@ -50,6 +50,30 @@ func TestValidateCredentialsSHA256(t *testing.T) {
 	}
 }
 
+func TestNewServiceRejectsMalformedBcryptHash(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("ADMIN_USERNAME", "admin")
+	t.Setenv("ADMIN_PASSWORD_SALT", "")
+
+	t.Setenv("ADMIN_PASSWORD", "not-a-bcrypt-hash")
+	if _, err := NewService(); !errors.Is(err, ErrInvalidPasswordHash) {
+		t.Errorf("expected ErrInvalidPasswordHash for malformed hash, got: %v", err)
+	}
+
+	hash, err := HashPassword("password")
+	if err != nil {
+		t.Fatalf("HashPassword failed: %v", err)
+	}
+	t.Setenv("ADMIN_PASSWORD", hash)
+	svc, err := NewService()
+	if err != nil {
+		t.Errorf("expected valid bcrypt hash to be accepted, got: %v", err)
+	}
+	if svc == nil {
+		t.Error("expected a service for a valid bcrypt hash")
+	}
+}
+
 func TestIsBcryptHash(t *testing.T) {
 	for _, hash := range []string{"$2a$10$abc", "$2b$10$abc", "$2y$10$abc"} {
 		if !isBcryptHash(hash) {

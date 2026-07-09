@@ -35,7 +35,6 @@ export async function* iterateNDJSONStream<T>(
       }
     }
 
-    // Process remaining buffer
     if (buffer.trim()) {
       try {
         yield JSON.parse(buffer) as T;
