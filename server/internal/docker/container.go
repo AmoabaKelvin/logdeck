@@ -202,7 +202,8 @@ func recreateContainerWithEnv(ctx context.Context, apiClient containerRecreateAP
 		return "", err
 	}
 
-	newConfig := inspect.Config
+	// Copy the config so we don't mutate the shared InspectResponse in place.
+	newConfig := *inspect.Config
 	newConfig.Env = envs
 
 	var networking *network.NetworkingConfig
@@ -214,7 +215,7 @@ func recreateContainerWithEnv(ctx context.Context, apiClient containerRecreateAP
 
 	resp, err := apiClient.ContainerCreate(
 		ctx,
-		newConfig,
+		&newConfig,
 		inspect.HostConfig,
 		networking,
 		nil,
