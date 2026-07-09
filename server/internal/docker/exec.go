@@ -66,6 +66,3 @@ func (c *MultiHostClient) ResizeExec(ctx context.Context, host, execID string, h
 	})
 }
 
-// GetClientExport exposes GetClient for use in other packages if needed
-// although it is already exported in client.go, this is just a comment reminder
-

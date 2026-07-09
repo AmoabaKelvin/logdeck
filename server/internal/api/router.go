@@ -50,7 +50,7 @@ func (ar *APIRouter) Routes() *chi.Mux {
 	ar.router.Use(chimiddleware.RequestID)
 	ar.router.Use(chimiddleware.Recoverer)
 	ar.router.Use(cors.Handler(cors.Options{
-		AllowedOrigins: []string{"*"},
+		AllowedOrigins: corsAllowedOrigins(),
 		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders: []string{"*"},
 	}))
@@ -68,7 +68,7 @@ func (ar *APIRouter) Routes() *chi.Mux {
 		r.Get("/system/stats", ar.GetSystemStats)
 
 		// Auth endpoints (always registered, dynamic behavior)
-		r.Post("/auth/login", ar.handleLogin)
+		r.With(loginRateLimiter.middleware).Post("/auth/login", ar.handleLogin)
 
 		// Settings endpoints (follow same auth pattern as other routes)
 		ar.registerSettingsRoutes(r)

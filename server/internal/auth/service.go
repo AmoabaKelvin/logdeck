@@ -3,9 +3,11 @@ package auth
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/config"
@@ -19,7 +21,7 @@ var (
 	ErrInvalidToken        = errors.New("invalid token")
 	ErrTokenExpired        = errors.New("token has expired")
 	ErrMissingEnvVars      = errors.New("missing required environment variables")
-	ErrInvalidPasswordHash = errors.New("ADMIN_PASSWORD must be a valid bcrypt hash. Generate one using: cd server/scripts && go run hash-password.go yourPassword")
+	ErrInvalidPasswordHash = errors.New("ADMIN_PASSWORD must be a valid bcrypt hash. Generate one with: htpasswd -bnBC 10 '' yourPassword | tr -d ':'")
 )
 
 type Service struct {
@@ -54,6 +56,14 @@ func NewService() (*Service, error) {
 		return nil, ErrMissingEnvVars
 	}
 
+	// Without a salt, the password must be a bcrypt hash; validate it up
+	// front so a malformed hash fails at startup instead of on every login.
+	if sha256Salt == "" {
+		if _, err := bcrypt.Cost([]byte(adminPasswordHash)); err != nil {
+			return nil, ErrInvalidPasswordHash
+		}
+	}
+
 	return &Service{
 		jwtSecret:         []byte(jwtSecret),
 		adminUsername:     adminUsername,
@@ -63,18 +73,31 @@ func NewService() (*Service, error) {
 	}, nil
 }
 
-// ValidateCredentials checks if the provided credentials are valid
+// ValidateCredentials checks if the provided credentials are valid.
+// Bcrypt hashes (env-configured) and SHA256+salt hashes (file-configured)
+// are both supported.
 func (s *Service) ValidateCredentials(username, password string) error {
-	if username != s.adminUsername {
-		return ErrInvalidCredentials
+	usernameMatch := subtle.ConstantTimeCompare([]byte(username), []byte(s.adminUsername)) == 1
+
+	var passwordMatch bool
+	if isBcryptHash(s.adminPasswordHash) {
+		passwordMatch = bcrypt.CompareHashAndPassword([]byte(s.adminPasswordHash), []byte(password)) == nil
+	} else {
+		hash := HashPasswordSHA256(password, s.sha256Salt)
+		passwordMatch = subtle.ConstantTimeCompare([]byte(hash), []byte(s.adminPasswordHash)) == 1
 	}
 
-	hash := sha256.Sum256([]byte(password + s.sha256Salt))
-	if hex.EncodeToString(hash[:]) != s.adminPasswordHash {
+	if !usernameMatch || !passwordMatch {
 		return ErrInvalidCredentials
 	}
 
 	return nil
+}
+
+func isBcryptHash(hash string) bool {
+	return strings.HasPrefix(hash, "$2a$") ||
+		strings.HasPrefix(hash, "$2b$") ||
+		strings.HasPrefix(hash, "$2y$")
 }
 
 // GenerateToken creates a new JWT token for the user

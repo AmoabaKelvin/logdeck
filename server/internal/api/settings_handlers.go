@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -110,8 +111,8 @@ func (ar *APIRouter) UpdateDockerHosts(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("invalid host name: %q", h.Name), http.StatusBadRequest)
 			return
 		}
-		if !isValidHostScheme(h.Host) {
-			http.Error(w, fmt.Sprintf("invalid host URL: %q (must start with unix://, ssh://, or tcp://)", h.Host), http.StatusBadRequest)
+		if !isValidDockerHostURL(h.Host) {
+			http.Error(w, fmt.Sprintf("invalid host URL: %q (must be a valid unix://, ssh://, or tcp:// URL)", h.Host), http.StatusBadRequest)
 			return
 		}
 		if seen[h.Name] {
@@ -286,8 +287,8 @@ func (ar *APIRouter) TestDockerHost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !isValidHostScheme(req.Host) {
-		http.Error(w, "invalid host URL (must start with unix://, ssh://, or tcp://)", http.StatusBadRequest)
+	if !isValidDockerHostURL(req.Host) {
+		http.Error(w, "invalid host URL (must be a valid unix://, ssh://, or tcp:// URL)", http.StatusBadRequest)
 		return
 	}
 
@@ -397,10 +398,19 @@ func settingsErrorStatus(err error) int {
 	return http.StatusInternalServerError
 }
 
-func isValidHostScheme(host string) bool {
-	return strings.HasPrefix(host, "unix://") ||
-		strings.HasPrefix(host, "ssh://") ||
-		strings.HasPrefix(host, "tcp://")
+func isValidDockerHostURL(host string) bool {
+	u, err := url.Parse(host)
+	if err != nil {
+		return false
+	}
+	switch u.Scheme {
+	case "unix":
+		return u.Path != "" || u.Opaque != ""
+	case "ssh", "tcp":
+		return u.Host != ""
+	default:
+		return false
+	}
 }
 
 func isValidCoolifyURL(raw string) bool {
