@@ -19,13 +19,15 @@ type APIRouter struct {
 	router   *chi.Mux
 	registry *services.Registry
 	manager  *config.Manager
+	version  string
 }
 
-func NewRouter(registry *services.Registry, manager *config.Manager) *chi.Mux {
+func NewRouter(registry *services.Registry, manager *config.Manager, version string) *chi.Mux {
 	r := &APIRouter{
 		router:   chi.NewRouter(),
 		registry: registry,
 		manager:  manager,
+		version:  version,
 	}
 
 	return r.Routes()
@@ -57,6 +59,10 @@ func (ar *APIRouter) Routes() *chi.Mux {
 	ar.router.Route("/api/v1", func(r chi.Router) {
 		// Access logging only for API routes (static SPA routes stay quiet)
 		r.Use(middleware.AccessLog)
+
+		// Health and version - publicly available
+		r.Get("/healthz", ar.handleHealthz)
+		r.Get("/version", ar.handleVersion)
 
 		// System stats - publicly available
 		r.Get("/system/stats", ar.GetSystemStats)

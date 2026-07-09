@@ -17,6 +17,10 @@ import (
 	"github.com/AmoabaKelvin/logdeck/internal/system"
 )
 
+// version is injected at build time via
+// -ldflags "-X main.version=<version>". Defaults to "dev".
+var version = "dev"
+
 func main() {
 	system.Init()
 
@@ -90,7 +94,7 @@ func main() {
 		log.Println("Configuration reloaded successfully")
 	})
 
-	apiRouter := api.NewRouter(registry, manager)
+	apiRouter := api.NewRouter(registry, manager, version)
 
 	// No WriteTimeout/IdleTimeout: log streaming and terminal WebSockets are
 	// long-lived connections and would be killed by them.
