@@ -85,7 +85,7 @@ func (ar *APIRouter) GetContainer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	container, err := ar.registry.Docker().GetContainer(host, id)
+	container, err := ar.registry.Docker().GetContainer(r.Context(), host, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -104,7 +104,7 @@ func (ar *APIRouter) StartContainer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := ar.registry.Docker().StartContainer(host, id)
+	err := ar.registry.Docker().StartContainer(r.Context(), host, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -123,7 +123,7 @@ func (ar *APIRouter) StopContainer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := ar.registry.Docker().StopContainer(host, id)
+	err := ar.registry.Docker().StopContainer(r.Context(), host, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -142,7 +142,7 @@ func (ar *APIRouter) RestartContainer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := ar.registry.Docker().RestartContainer(host, id)
+	err := ar.registry.Docker().RestartContainer(r.Context(), host, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -161,7 +161,7 @@ func (ar *APIRouter) RemoveContainer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := ar.registry.Docker().RemoveContainer(host, id)
+	err := ar.registry.Docker().RemoveContainer(r.Context(), host, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -192,11 +192,11 @@ func (ar *APIRouter) GetContainerLogsParsed(w http.ResponseWriter, r *http.Reque
 	}
 
 	if options.Follow {
-		ar.streamParsedLogs(w, host, id, options)
+		ar.streamParsedLogs(w, r, host, id, options)
 		return
 	}
 
-	logs, err := ar.registry.Docker().GetContainerLogsParsed(host, id, options)
+	logs, err := ar.registry.Docker().GetContainerLogsParsed(r.Context(), host, id, options)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -208,8 +208,8 @@ func (ar *APIRouter) GetContainerLogsParsed(w http.ResponseWriter, r *http.Reque
 	})
 }
 
-func (ar *APIRouter) streamParsedLogs(w http.ResponseWriter, host, id string, options models.LogOptions) {
-	stream, err := ar.registry.Docker().StreamContainerLogsParsed(host, id, options)
+func (ar *APIRouter) streamParsedLogs(w http.ResponseWriter, r *http.Request, host, id string, options models.LogOptions) {
+	stream, err := ar.registry.Docker().StreamContainerLogsParsed(r.Context(), host, id, options)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -294,7 +294,7 @@ func (ar *APIRouter) GetEnvVariables(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	envVariables, err := ar.registry.Docker().GetEnvVariables(host, id)
+	envVariables, err := ar.registry.Docker().GetEnvVariables(r.Context(), host, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -329,7 +329,7 @@ func (ar *APIRouter) UpdateEnvVariables(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	newContainerID, labels, err := ar.registry.Docker().SetEnvVariables(host, id, envVariables.Env)
+	newContainerID, labels, err := ar.registry.Docker().SetEnvVariables(r.Context(), host, id, envVariables.Env)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
