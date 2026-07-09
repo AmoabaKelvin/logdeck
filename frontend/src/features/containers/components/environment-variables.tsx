@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Edit2, Plus, Save, Trash2, Upload, X } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -16,7 +16,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
 	Tooltip,
 	TooltipContent,
@@ -36,7 +35,7 @@ interface EnvironmentVariablesProps {
 }
 
 // Parse .env file content into key-value pairs
-function parseEnvFile(content: string): Record<string, string> {
+export function parseEnvFile(content: string): Record<string, string> {
 	const env: Record<string, string> = {};
 	const lines = content.split("\n");
 
@@ -95,8 +94,6 @@ export function EnvironmentVariables({
 	);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const newValueInputRef = useRef<HTMLInputElement>(null);
-	const newKeyId = useId();
-	const newValueId = useId();
 
 	const {
 		data: envVariables,
@@ -227,6 +224,31 @@ export function EnvironmentVariables({
 			const caret = input.value.length;
 			input.setSelectionRange(caret, caret);
 		});
+	};
+
+	// Pasting a whole .env (multiple KEY=value lines) into the key field
+	// imports every pair at once — new keys added, existing keys updated.
+	// Must intercept the paste: text inputs strip newlines before onChange.
+	const handleKeyPaste = (event: React.ClipboardEvent<HTMLInputElement>) => {
+		const text = event.clipboardData.getData("text");
+		if (!text.includes("\n")) return;
+
+		event.preventDefault();
+		const parsed = parseEnvFile(text);
+		const count = Object.keys(parsed).length;
+		if (count === 0) {
+			toast.error("No KEY=value pairs found in pasted text");
+			return;
+		}
+
+		setEditedEnv((prev) => ({ ...prev, ...parsed }));
+		setModifiedKeys((prev) => new Set([...prev, ...Object.keys(parsed)]));
+		setNewKey("");
+		setNewValue("");
+		setShowAddNew(false);
+		toast.success(
+			`Imported ${count} variable${count === 1 ? "" : "s"} from pasted text`,
+		);
 	};
 
 	const handleAddNew = () => {
@@ -409,141 +431,120 @@ export function EnvironmentVariables({
 				)}
 			</div>
 
-			{/* Add new variable form */}
-			{showAddNew && (
-				<div className="rounded-lg border border-primary p-3 transition-colors bg-muted/30">
-					<div className="flex items-end gap-3">
-						<div className="flex-1 space-y-2">
-							<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-								<div className="space-y-1.5">
-									<Label htmlFor={newKeyId} className="text-xs font-medium">
-										Key
-									</Label>
-									<Input
-										id={newKeyId}
-										value={newKey}
-										onChange={(e) => handleNewKeyChange(e.target.value)}
-										placeholder="VARIABLE_NAME or KEY=value"
-										className="font-mono text-xs h-8"
-									/>
-								</div>
-								<div className="space-y-1.5">
-									<Label htmlFor={newValueId} className="text-xs font-medium">
-										Value
-									</Label>
-									<Input
-										id={newValueId}
-										ref={newValueInputRef}
-										value={newValue}
-										onChange={(e) => setNewValue(e.target.value)}
-										placeholder="value"
-										className="font-mono text-xs h-8"
-									/>
-								</div>
+			{/* Variables list: one header row, then dense key/value rows */}
+			{(envEntries.length > 0 || showAddNew) && (
+				<div>
+					<div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_2rem] items-center gap-2 border-b pb-1.5 text-xs font-medium text-muted-foreground">
+						<span>Key</span>
+						<span>Value</span>
+						<span />
+					</div>
+
+					{showAddNew && (
+						<div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_2rem] items-center gap-2 border-b py-1.5">
+							<Input
+								value={newKey}
+								onChange={(e) => handleNewKeyChange(e.target.value)}
+								onPaste={handleKeyPaste}
+								placeholder="VARIABLE_NAME, KEY=value, or paste a .env"
+								aria-label="Key"
+								className="h-8 font-mono text-xs"
+							/>
+							<Input
+								ref={newValueInputRef}
+								value={newValue}
+								onChange={(e) => setNewValue(e.target.value)}
+								onKeyDown={(e) => {
+									if (e.key === "Enter") handleAddNew();
+								}}
+								placeholder="value"
+								aria-label="Value"
+								className="h-8 font-mono text-xs"
+							/>
+							<div className="flex gap-0.5">
+								<Button
+									variant="ghost"
+									size="icon"
+									onClick={handleAddNew}
+									className="h-8 w-8 text-primary hover:text-primary"
+									title="Add variable"
+								>
+									<Plus className="h-3.5 w-3.5" />
+								</Button>
+								<Button
+									variant="ghost"
+									size="icon"
+									onClick={() => {
+										setShowAddNew(false);
+										setNewKey("");
+										setNewValue("");
+									}}
+									className="h-8 w-8 text-muted-foreground"
+									title="Cancel"
+								>
+									<X className="h-3.5 w-3.5" />
+								</Button>
 							</div>
 						</div>
-						<div className="flex gap-1">
-							<Button
-								variant="ghost"
-								size="icon"
-								onClick={handleAddNew}
-								className="mb-0.5 h-8 w-8 text-primary hover:text-primary"
-								title="Add variable"
+					)}
+
+					{envEntries.map(([key, value]) => {
+						const isModified = modifiedKeys.has(key);
+						return (
+							<div
+								key={key}
+								className={`grid grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_2rem] items-center gap-2 border-b py-1.5 transition-colors last:border-b-0 ${
+									isModified && isEditing ? "bg-primary/5" : "hover:bg-muted/30"
+								}`}
 							>
-								<Plus className="h-3.5 w-3.5" />
-							</Button>
-							<Button
-								variant="ghost"
-								size="icon"
-								onClick={() => {
-									setShowAddNew(false);
-									setNewKey("");
-									setNewValue("");
-								}}
-								className="mb-0.5 h-8 w-8 text-muted-foreground"
-								title="Cancel"
-							>
-								<X className="h-3.5 w-3.5" />
-							</Button>
-						</div>
-					</div>
+								<div className="flex min-w-0 items-center gap-2">
+									<span
+										className="truncate font-mono text-xs font-medium"
+										title={key}
+									>
+										{key}
+									</span>
+									{isModified && isEditing && (
+										<Badge variant="default" className="h-4 px-1.5 text-[10px]">
+											New
+										</Badge>
+									)}
+								</div>
+								{isEditing ? (
+									<Input
+										value={value}
+										onChange={(e) => handleValueChange(key, e.target.value)}
+										aria-label={`Value for ${key}`}
+										className="h-8 font-mono text-xs"
+									/>
+								) : (
+									<span
+										className="truncate font-mono text-xs text-muted-foreground"
+										title={value}
+									>
+										{value}
+									</span>
+								)}
+								{isEditing ? (
+									<Button
+										variant="ghost"
+										size="icon"
+										onClick={() => handleDelete(key)}
+										className="h-8 w-8 text-muted-foreground hover:text-destructive"
+										title="Remove variable"
+									>
+										<Trash2 className="h-3.5 w-3.5" />
+									</Button>
+								) : (
+									<span />
+								)}
+							</div>
+						);
+					})}
 				</div>
 			)}
 
-			{/* Existing environment variables */}
-			{envEntries.map(([key, value]) => {
-				const isModified = modifiedKeys.has(key);
-				return (
-					<div
-						key={key}
-						className={`flex items-end gap-3 rounded-lg border p-3 transition-colors ${
-							deletedKeys.has(key)
-								? "opacity-50 bg-destructive/10"
-								: isModified && isEditing
-									? "border-primary/50 bg-primary/5 hover:bg-primary/10"
-									: "hover:bg-muted/50"
-						}`}
-					>
-						<div className="flex-1 space-y-2">
-							<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-								<div className="space-y-1.5">
-									<div className="flex items-center gap-2">
-										<Label
-											htmlFor={`key-${key}`}
-											className="text-xs font-medium"
-										>
-											Key
-										</Label>
-										{isModified && isEditing && (
-											<Badge
-												variant="default"
-												className="h-4 text-[10px] px-1.5"
-											>
-												New
-											</Badge>
-										)}
-									</div>
-									<Input
-										id={`key-${key}`}
-										value={key}
-										disabled
-										className="font-mono text-xs h-8"
-									/>
-								</div>
-								<div className="space-y-1.5">
-									<Label
-										htmlFor={`value-${key}`}
-										className="text-xs font-medium"
-									>
-										Value
-									</Label>
-									<Input
-										id={`value-${key}`}
-										value={value}
-										onChange={(e) => handleValueChange(key, e.target.value)}
-										disabled={!isEditing}
-										className="font-mono text-xs h-8"
-									/>
-								</div>
-							</div>
-						</div>
-						<Button
-							variant="ghost"
-							size="icon"
-							onClick={() => handleDelete(key)}
-							className="mb-0.5 h-8 w-8 text-muted-foreground hover:text-destructive"
-							disabled={!isEditing}
-							title={
-								isEditing ? "Mark for deletion" : "Edit to enable deletion"
-							}
-						>
-							<Trash2 className="h-3.5 w-3.5" />
-						</Button>
-					</div>
-				);
-			})}
-
-			{envEntries.length === 0 && isEditing && (
+			{envEntries.length === 0 && isEditing && !showAddNew && (
 				<div className="flex items-center justify-center py-4 text-sm text-muted-foreground">
 					No environment variables. Click "Add" to create one.
 				</div>
