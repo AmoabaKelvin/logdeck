@@ -85,7 +85,7 @@ func (ar *APIRouter) GetContainer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	container, err := ar.registry.Docker().GetContainer(host, id)
+	container, err := ar.registry.Docker().GetContainer(r.Context(), host, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -104,7 +104,7 @@ func (ar *APIRouter) StartContainer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := ar.registry.Docker().StartContainer(host, id)
+	err := ar.registry.Docker().StartContainer(r.Context(), host, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -123,7 +123,7 @@ func (ar *APIRouter) StopContainer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := ar.registry.Docker().StopContainer(host, id)
+	err := ar.registry.Docker().StopContainer(r.Context(), host, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -142,7 +142,7 @@ func (ar *APIRouter) RestartContainer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := ar.registry.Docker().RestartContainer(host, id)
+	err := ar.registry.Docker().RestartContainer(r.Context(), host, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -161,7 +161,7 @@ func (ar *APIRouter) RemoveContainer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := ar.registry.Docker().RemoveContainer(host, id)
+	err := ar.registry.Docker().RemoveContainer(r.Context(), host, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -192,11 +192,11 @@ func (ar *APIRouter) GetContainerLogsParsed(w http.ResponseWriter, r *http.Reque
 	}
 
 	if options.Follow {
-		ar.streamParsedLogs(w, host, id, options)
+		ar.streamParsedLogs(w, r, host, id, options)
 		return
 	}
 
-	logs, err := ar.registry.Docker().GetContainerLogsParsed(host, id, options)
+	logs, err := ar.registry.Docker().GetContainerLogsParsed(r.Context(), host, id, options)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -208,8 +208,8 @@ func (ar *APIRouter) GetContainerLogsParsed(w http.ResponseWriter, r *http.Reque
 	})
 }
 
-func (ar *APIRouter) streamParsedLogs(w http.ResponseWriter, host, id string, options models.LogOptions) {
-	stream, err := ar.registry.Docker().StreamContainerLogsParsed(host, id, options)
+func (ar *APIRouter) streamParsedLogs(w http.ResponseWriter, r *http.Request, host, id string, options models.LogOptions) {
+	stream, err := ar.registry.Docker().StreamContainerLogsParsed(r.Context(), host, id, options)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -241,6 +241,39 @@ func (ar *APIRouter) streamParsedLogs(w http.ResponseWriter, host, id string, op
 	}
 }
 
+func (ar *APIRouter) GetContainerEvents(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	ctx := r.Context()
+	events := ar.registry.Docker().StreamContainerEvents(ctx)
+
+	encoder := json.NewEncoder(w)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case event, ok := <-events:
+			if !ok {
+				return
+			}
+			if err := encoder.Encode(event); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
+}
+
 func parseLogOptions(r *http.Request) models.LogOptions {
 	query := r.URL.Query()
 
@@ -263,7 +296,7 @@ func parseLogOptions(r *http.Request) models.LogOptions {
 	}
 
 	if tail := query.Get("tail"); tail != "" {
-		options.Tail = tail
+		options.Tail = clampTail(tail)
 	}
 
 	if details := query.Get("details"); details != "" {
@@ -285,6 +318,18 @@ func parseLogOptions(r *http.Request) models.LogOptions {
 	return options
 }
 
+// maxTailLines bounds how many log lines a single request can pull into
+// memory. "all" (and any other non-numeric value) is treated as the max.
+const maxTailLines = 10000
+
+func clampTail(tail string) string {
+	n, err := strconv.Atoi(tail)
+	if err != nil || n < 0 || n > maxTailLines {
+		return strconv.Itoa(maxTailLines)
+	}
+	return tail
+}
+
 func (ar *APIRouter) GetEnvVariables(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	host := r.URL.Query().Get("host")
@@ -294,7 +339,7 @@ func (ar *APIRouter) GetEnvVariables(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	envVariables, err := ar.registry.Docker().GetEnvVariables(host, id)
+	envVariables, err := ar.registry.Docker().GetEnvVariables(r.Context(), host, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -329,7 +374,7 @@ func (ar *APIRouter) UpdateEnvVariables(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	newContainerID, labels, err := ar.registry.Docker().SetEnvVariables(host, id, envVariables.Env)
+	newContainerID, labels, err := ar.registry.Docker().SetEnvVariables(r.Context(), host, id, envVariables.Env)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

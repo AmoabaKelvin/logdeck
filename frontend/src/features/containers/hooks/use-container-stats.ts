@@ -4,11 +4,14 @@ import { useMemo } from "react";
 import { getContainerStats } from "../api/get-container-stats";
 import type { ContainerStatsMap } from "../types";
 
+import { useDocumentVisible } from "./use-document-visible";
+
 export function useContainerStats() {
+  const isVisible = useDocumentVisible();
   const query = useQuery({
     queryKey: ["containers", "stats"],
     queryFn: getContainerStats,
-    refetchInterval: 5000, // Refresh every 5 seconds
+    refetchInterval: isVisible ? 5000 : false, // Refresh every 5 seconds while the page is visible
     staleTime: 4000, // Consider stale after 4 seconds
   });
 

@@ -209,6 +209,7 @@ function ContainerLogsPage() {
 	const {
 		animatedRange,
 		bufferedCount,
+		droppedCount,
 		fetchLogs,
 		isLoadingLogs,
 		isStreamPaused,
@@ -236,6 +237,25 @@ function ContainerLogsPage() {
 			toast.error(`Failed to start streaming: ${error.message}`);
 		},
 	});
+
+	// Pins are stored as indices into `logs`; when the ring buffer drops the
+	// oldest entries those indices shift down by the dropped amount.
+	const prevDroppedCountRef = useRef(0);
+	useEffect(() => {
+		const delta = droppedCount - prevDroppedCountRef.current;
+		prevDroppedCountRef.current = droppedCount;
+		if (delta <= 0) return;
+		setPinnedLogIndices((prev) => {
+			if (prev.size === 0) return prev;
+			const next = new Set<number>();
+			prev.forEach((index) => {
+				if (index - delta >= 0) {
+					next.add(index - delta);
+				}
+			});
+			return next;
+		});
+	}, [droppedCount]);
 
 	const handleRefresh = () => {
 		if (!isStreaming) {
@@ -414,6 +434,14 @@ function ContainerLogsPage() {
 		[filteredLogItems],
 	);
 
+	const originalToFilteredIndex = useMemo(() => {
+		const map = new Map<number, number>();
+		filteredToOriginalIndex.forEach((originalIndex, filteredIndex) => {
+			map.set(originalIndex, filteredIndex);
+		});
+		return map;
+	}, [filteredToOriginalIndex]);
+
 	const pinnedFilteredIndices = useMemo(() => {
 		const next = new Set<number>();
 		filteredToOriginalIndex.forEach((originalIndex, filteredIndex) => {
@@ -522,6 +550,9 @@ function ContainerLogsPage() {
 		return matches;
 	}, [filteredLogs, searchText, useRegex, searchParsed]);
 
+	// Set view of searchMatches for O(1) per-row lookups during rendering
+	const searchMatchSet = useMemo(() => new Set(searchMatches), [searchMatches]);
+
 	// Reset current match index when search changes
 	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally reset when searchText or useRegex changes
 	useEffect(() => {
@@ -590,7 +621,7 @@ function ContainerLogsPage() {
 			setCurrentPinnedIndex(newPinnedIndex);
 			const targetOriginalIndex = sortedPinnedIndices[newPinnedIndex];
 			const targetFilteredIndex =
-				filteredToOriginalIndex.indexOf(targetOriginalIndex);
+				originalToFilteredIndex.get(targetOriginalIndex) ?? -1;
 
 			if (targetFilteredIndex === -1) {
 				toast.info("Pinned line is hidden by current filters");
@@ -604,7 +635,7 @@ function ContainerLogsPage() {
 		[
 			sortedPinnedIndices,
 			currentPinnedIndex,
-			filteredToOriginalIndex,
+			originalToFilteredIndex,
 			rowVirtualizer,
 		],
 	);
@@ -1447,7 +1478,7 @@ function ContainerLogsPage() {
 											const isCurrentMatch =
 												searchMatches.length > 0 &&
 												searchMatches[currentMatchIndex] === virtualRow.index;
-											const hasMatch = searchMatches.includes(virtualRow.index);
+											const hasMatch = searchMatchSet.has(virtualRow.index);
 											const isSelected = selectedIndices.has(virtualRow.index);
 											const isPinned = pinnedFilteredIndices.has(
 												virtualRow.index,

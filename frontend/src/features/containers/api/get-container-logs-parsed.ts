@@ -1,4 +1,5 @@
 import { authenticatedFetch } from "@/lib/api-client";
+import { iterateNDJSONStream } from "@/lib/ndjson";
 import { API_BASE_URL } from "@/types/api";
 
 const BASE_URL = `${API_BASE_URL}/api/v1/containers`;
@@ -108,55 +109,6 @@ export async function getContainerLogsParsed(
   return data.logs || [];
 }
 
-async function* iterateNDJSONStream(
-  stream: ReadableStream<Uint8Array>,
-  signal?: AbortSignal
-): AsyncGenerator<LogEntry, void, unknown> {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  try {
-    while (true) {
-      if (signal?.aborted) {
-        reader.cancel().catch(() => {});
-        break;
-      }
-
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-
-      for (const line of lines) {
-        if (line.trim()) {
-          try {
-            const entry: LogEntry = JSON.parse(line);
-            yield entry;
-          } catch (error) {
-            console.error("Failed to parse log entry:", line, error);
-          }
-        }
-      }
-    }
-
-    // Process remaining buffer
-    if (buffer.trim()) {
-      try {
-        const entry: LogEntry = JSON.parse(buffer);
-        yield entry;
-      } catch (error) {
-        console.error("Failed to parse final log entry:", buffer, error);
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
-}
-
 export async function* streamContainerLogsParsed(
   id: string,
   host: string,
@@ -182,7 +134,10 @@ export async function* streamContainerLogsParsed(
     throw new Error("Streaming is not supported in this environment.");
   }
 
-  for await (const entry of iterateNDJSONStream(response.body, signal)) {
+  for await (const entry of iterateNDJSONStream<LogEntry>(
+    response.body,
+    signal
+  )) {
     yield entry;
   }
 }
