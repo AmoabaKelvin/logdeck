@@ -9,19 +9,37 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as VolumesRouteImport } from './routes/volumes'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as NetworksRouteImport } from './routes/networks'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as ImagesRouteImport } from './routes/images'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ContainersContainerIdLogsRouteImport } from './routes/containers/$containerId/logs'
 
+const VolumesRoute = VolumesRouteImport.update({
+  id: '/volumes',
+  path: '/volumes',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const NetworksRoute = NetworksRouteImport.update({
+  id: '/networks',
+  path: '/networks',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ImagesRoute = ImagesRouteImport.update({
+  id: '/images',
+  path: '/images',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -38,45 +56,81 @@ const ContainersContainerIdLogsRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/images': typeof ImagesRoute
   '/login': typeof LoginRoute
+  '/networks': typeof NetworksRoute
   '/settings': typeof SettingsRoute
+  '/volumes': typeof VolumesRoute
   '/containers/$containerId/logs': typeof ContainersContainerIdLogsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/images': typeof ImagesRoute
   '/login': typeof LoginRoute
+  '/networks': typeof NetworksRoute
   '/settings': typeof SettingsRoute
+  '/volumes': typeof VolumesRoute
   '/containers/$containerId/logs': typeof ContainersContainerIdLogsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/images': typeof ImagesRoute
   '/login': typeof LoginRoute
+  '/networks': typeof NetworksRoute
   '/settings': typeof SettingsRoute
+  '/volumes': typeof VolumesRoute
   '/containers/$containerId/logs': typeof ContainersContainerIdLogsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/settings' | '/containers/$containerId/logs'
+  fullPaths:
+    | '/'
+    | '/images'
+    | '/login'
+    | '/networks'
+    | '/settings'
+    | '/volumes'
+    | '/containers/$containerId/logs'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/settings' | '/containers/$containerId/logs'
+  to:
+    | '/'
+    | '/images'
+    | '/login'
+    | '/networks'
+    | '/settings'
+    | '/volumes'
+    | '/containers/$containerId/logs'
   id:
     | '__root__'
     | '/'
+    | '/images'
     | '/login'
+    | '/networks'
     | '/settings'
+    | '/volumes'
     | '/containers/$containerId/logs'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ImagesRoute: typeof ImagesRoute
   LoginRoute: typeof LoginRoute
+  NetworksRoute: typeof NetworksRoute
   SettingsRoute: typeof SettingsRoute
+  VolumesRoute: typeof VolumesRoute
   ContainersContainerIdLogsRoute: typeof ContainersContainerIdLogsRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/volumes': {
+      id: '/volumes'
+      path: '/volumes'
+      fullPath: '/volumes'
+      preLoaderRoute: typeof VolumesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -84,11 +138,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/networks': {
+      id: '/networks'
+      path: '/networks'
+      fullPath: '/networks'
+      preLoaderRoute: typeof NetworksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/images': {
+      id: '/images'
+      path: '/images'
+      fullPath: '/images'
+      preLoaderRoute: typeof ImagesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -110,8 +178,11 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ImagesRoute: ImagesRoute,
   LoginRoute: LoginRoute,
+  NetworksRoute: NetworksRoute,
   SettingsRoute: SettingsRoute,
+  VolumesRoute: VolumesRoute,
   ContainersContainerIdLogsRoute: ContainersContainerIdLogsRoute,
 }
 export const routeTree = rootRouteImport
