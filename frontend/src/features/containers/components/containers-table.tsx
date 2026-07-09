@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { FileTextIcon, PlayIcon, RotateCwIcon, SquareIcon, Trash2Icon } from "lucide-react";
 import { Fragment } from "react";
 import type { LucideIcon } from "lucide-react";
@@ -338,39 +339,51 @@ export function ContainersTable({
                         {group.project} · {group.items.length} container
                         {group.items.length === 1 ? "" : "s"}
                       </span>
-                      {isComposeGroup(group) && (
-                        <TooltipProvider>
-                          <div className="flex items-center gap-1">
-                            <ActionButton
-                              icon={PlayIcon}
-                              action="start"
-                              containerId={group.project}
-                              onClick={() => onComposeAction("start", group)}
-                              isPending={isComposePending}
-                              busy={isComposeBusy(group.project)}
-                              isReadOnly={isReadOnly}
-                            />
-                            <ActionButton
-                              icon={SquareIcon}
-                              action="stop"
-                              containerId={group.project}
-                              onClick={() => onComposeAction("stop", group)}
-                              isPending={isComposePending}
-                              busy={isComposeBusy(group.project)}
-                              isReadOnly={isReadOnly}
-                            />
-                            <ActionButton
-                              icon={RotateCwIcon}
-                              action="restart"
-                              containerId={group.project}
-                              onClick={() => onComposeAction("restart", group)}
-                              isPending={isComposePending}
-                              busy={isComposeBusy(group.project)}
-                              isReadOnly={isReadOnly}
-                            />
-                          </div>
-                        </TooltipProvider>
-                      )}
+                      <div className="flex items-center gap-3">
+                        {group.project !== "Standalone" && (
+                          <Link
+                            to="/stacks/$project/logs"
+                            params={{ project: group.project }}
+                            className="inline-flex items-center gap-1 text-primary hover:underline"
+                          >
+                            <FileTextIcon className="size-3" />
+                            Stack logs
+                          </Link>
+                        )}
+                        {isComposeGroup(group) && (
+                          <TooltipProvider>
+                            <div className="flex items-center gap-1">
+                              <ActionButton
+                                icon={PlayIcon}
+                                action="start"
+                                containerId={group.project}
+                                onClick={() => onComposeAction("start", group)}
+                                isPending={isComposePending}
+                                busy={isComposeBusy(group.project)}
+                                isReadOnly={isReadOnly}
+                              />
+                              <ActionButton
+                                icon={SquareIcon}
+                                action="stop"
+                                containerId={group.project}
+                                onClick={() => onComposeAction("stop", group)}
+                                isPending={isComposePending}
+                                busy={isComposeBusy(group.project)}
+                                isReadOnly={isReadOnly}
+                              />
+                              <ActionButton
+                                icon={RotateCwIcon}
+                                action="restart"
+                                containerId={group.project}
+                                onClick={() => onComposeAction("restart", group)}
+                                isPending={isComposePending}
+                                busy={isComposeBusy(group.project)}
+                                isReadOnly={isReadOnly}
+                              />
+                            </div>
+                          </TooltipProvider>
+                        )}
+                      </div>
                     </div>
                   </TableCell>
                 </TableRow>
