@@ -14,6 +14,15 @@ type ContainerInfo struct {
 	Host    string            `json:"host"`
 }
 
+// ContainerEvent represents a container lifecycle event streamed to the frontend
+type ContainerEvent struct {
+	Host          string `json:"host"`
+	ContainerID   string `json:"containerId"`
+	ContainerName string `json:"containerName"`
+	Action        string `json:"action"`
+	Timestamp     int64  `json:"timestamp"`
+}
+
 // LogOptions represents options for fetching container logs
 type LogOptions struct {
 	Follow     bool   `json:"follow"`

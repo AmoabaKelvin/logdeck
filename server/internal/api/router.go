@@ -78,6 +78,7 @@ func (ar *APIRouter) Routes() *chi.Mux {
 			protected.Use(auth.DynamicMiddleware(ar.registry.Auth))
 
 			protected.Get("/auth/me", ar.handleGetMe)
+			protected.Get("/events", ar.GetContainerEvents)
 			ar.registerContainerRoutes(protected)
 		})
 	})
