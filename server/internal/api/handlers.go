@@ -241,6 +241,39 @@ func (ar *APIRouter) streamParsedLogs(w http.ResponseWriter, host, id string, op
 	}
 }
 
+func (ar *APIRouter) GetContainerEvents(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	ctx := r.Context()
+	events := ar.registry.Docker().StreamContainerEvents(ctx)
+
+	encoder := json.NewEncoder(w)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case event, ok := <-events:
+			if !ok {
+				return
+			}
+			if err := encoder.Encode(event); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
+}
+
 func parseLogOptions(r *http.Request) models.LogOptions {
 	query := r.URL.Query()
 
