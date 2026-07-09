@@ -47,6 +47,11 @@ func parseDockerLogs(reader io.Reader, levelFilter string, searchRegex *regexp.R
 	return filtered, nil
 }
 
+// maxLineBufferSize caps the pending (newline-less) line buffer in the log
+// writers. An oversized chunk is flushed as its own log entry so a single
+// line without a newline cannot grow without bound.
+const maxLineBufferSize = 1 << 20 // 1 MiB
+
 // logWriter implements io.Writer and parses log lines
 type logWriter struct {
 	stream  string
@@ -78,6 +83,10 @@ func (w *logWriter) Write(p []byte) (n int, err error) {
 			entry := models.ParseLogLine(line, w.stream)
 			*w.entries = append(*w.entries, entry)
 		}
+	}
+
+	if len(w.buffer) > maxLineBufferSize {
+		w.Flush()
 	}
 
 	return len(p), nil
@@ -132,6 +141,14 @@ func (w *streamingLogWriter) Write(p []byte) (n int, err error) {
 		}
 	}
 
+	if len(w.buffer) > maxLineBufferSize {
+		line := strings.TrimSuffix(string(w.buffer), "\r")
+		w.buffer = nil
+		if encodeErr := w.emit(line); encodeErr != nil {
+			return 0, encodeErr
+		}
+	}
+
 	return len(p), nil
 }
 
@@ -182,13 +199,13 @@ func buildLogsOptions(options models.LogOptions, follow, timestamps bool) contai
 }
 
 // multi host client methods
-func (c *MultiHostClient) GetContainerLogsParsed(hostName, id string, options models.LogOptions) ([]models.LogEntry, error) {
+func (c *MultiHostClient) GetContainerLogsParsed(ctx context.Context, hostName, id string, options models.LogOptions) ([]models.LogEntry, error) {
 	apiClient, err := c.GetClient(hostName)
 	if err != nil {
 		return nil, err
 	}
 
-	logs, err := apiClient.ContainerLogs(context.Background(), id, buildLogsOptions(options, false, true))
+	logs, err := apiClient.ContainerLogs(ctx, id, buildLogsOptions(options, false, true))
 	if err != nil {
 		return nil, err
 	}
@@ -202,13 +219,15 @@ func (c *MultiHostClient) GetContainerLogsParsed(hostName, id string, options mo
 	return parseDockerLogs(logs, options.Level, searchRegex)
 }
 
-func (c *MultiHostClient) StreamContainerLogsParsed(hostName, id string, options models.LogOptions) (io.ReadCloser, error) {
+// StreamContainerLogsParsed streams parsed logs. The Docker log stream is tied
+// to ctx, so a disconnected client cancels the follow-mode stream.
+func (c *MultiHostClient) StreamContainerLogsParsed(ctx context.Context, hostName, id string, options models.LogOptions) (io.ReadCloser, error) {
 	apiClient, err := c.GetClient(hostName)
 	if err != nil {
 		return nil, err
 	}
 
-	logs, err := apiClient.ContainerLogs(context.Background(), id, buildLogsOptions(options, options.Follow, true))
+	logs, err := apiClient.ContainerLogs(ctx, id, buildLogsOptions(options, options.Follow, true))
 	if err != nil {
 		return nil, err
 	}
