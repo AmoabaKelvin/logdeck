@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -20,9 +20,8 @@ import {
   startContainer,
   stopContainer,
 } from "../api/container-actions";
-import { useContainerEvents } from "../hooks/use-container-events";
 import { useContainersDashboardUrlState } from "../hooks/use-containers-dashboard-url-state";
-import { useContainersQuery } from "../hooks/use-containers-query";
+import { useLiveContainersQuery } from "../hooks/use-live-containers-query";
 import { useContainerStats } from "../hooks/use-container-stats";
 import { useSystemStats } from "../hooks/use-system-stats";
 
@@ -47,40 +46,10 @@ import type {
   SortDirection,
 } from "./container-utils";
 
-const EVENT_INVALIDATE_DEBOUNCE_MS = 300;
-
 export function ContainersDashboard() {
   const queryClient = useQueryClient();
-
-  // Invalidate the containers query on lifecycle events, debounced so an
-  // event burst doesn't stampede refetches.
-  const invalidateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  );
-  const handleContainerEvent = useCallback(() => {
-    if (invalidateTimeoutRef.current !== null) return;
-    invalidateTimeoutRef.current = setTimeout(() => {
-      invalidateTimeoutRef.current = null;
-      void queryClient.invalidateQueries({
-        queryKey: ["containers"],
-        exact: true,
-      });
-    }, EVENT_INVALIDATE_DEBOUNCE_MS);
-  }, [queryClient]);
-
-  useEffect(() => {
-    return () => {
-      if (invalidateTimeoutRef.current !== null) {
-        clearTimeout(invalidateTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  const { isConnected: isEventStreamConnected } =
-    useContainerEvents(handleContainerEvent);
-
   const { data, error, isError, isFetching, isLoading, refetch } =
-    useContainersQuery({ eventsConnected: isEventStreamConnected });
+    useLiveContainersQuery();
   const { data: systemStats } = useSystemStats();
   const { statsMap } = useContainerStats();
 
