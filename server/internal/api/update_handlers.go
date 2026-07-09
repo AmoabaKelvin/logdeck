@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/AmoabaKelvin/logdeck/internal/docker"
 	"github.com/AmoabaKelvin/logdeck/internal/models"
 	"github.com/go-chi/chi/v5"
 )
@@ -26,7 +27,11 @@ func (ar *APIRouter) GetContainerResources(w http.ResponseWriter, r *http.Reques
 	resources := models.ContainerResources{}
 	if container.HostConfig != nil {
 		resources.MemoryBytes = container.HostConfig.Memory
-		resources.NanoCPUs = container.HostConfig.NanoCPUs
+		resources.NanoCPUs = docker.NanoCPUsFromHostConfig(
+			container.HostConfig.NanoCPUs,
+			container.HostConfig.CPUQuota,
+			container.HostConfig.CPUPeriod,
+		)
 		resources.RestartPolicy = models.RestartPolicySpec{
 			Name:              string(container.HostConfig.RestartPolicy.Name),
 			MaximumRetryCount: container.HostConfig.RestartPolicy.MaximumRetryCount,
