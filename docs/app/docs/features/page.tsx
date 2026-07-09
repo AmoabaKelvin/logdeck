@@ -99,6 +99,49 @@ const features = [
     ],
   },
   {
+    title: "Compose Stack Tools",
+    description:
+      "Operate on whole Compose stacks instead of one container at a time.",
+    items: [
+      "Start, stop, or restart every container in a stack from its group header",
+      "Aggregated stack logs: all containers merged by timestamp in one stream",
+      "Color-coded container badges identify each log line's source",
+      "Works with Docker Compose and podman-compose projects",
+    ],
+  },
+  {
+    title: "Stats & Trends",
+    description:
+      "Live resource usage with short-term history, across all your hosts.",
+    items: [
+      "Live CPU and memory readings per container",
+      "Sparkline trend lines covering the last five minutes",
+      "Per-host engine stats (CPUs, memory, container counts, version) in multi-host setups",
+      "System stats for the machine running LogDeck",
+    ],
+  },
+  {
+    title: "Resource Limits & Restart Policies",
+    description:
+      "Tune container resources without recreating or restarting anything.",
+    items: [
+      "Edit memory limits, CPU limits, and restart policies from the container page",
+      "Applied live via the engine's update API — no downtime",
+      "Human-friendly inputs (512m, 1g) with validation",
+      "Respects read-only mode",
+    ],
+  },
+  {
+    title: "Images, Volumes & Networks",
+    description:
+      "See what else lives on your hosts beyond containers.",
+    items: [
+      "Read-only listings of images, volumes, and networks",
+      "Aggregated across all configured hosts",
+      "Text filtering and per-host error reporting",
+    ],
+  },
+  {
     title: "Optional Authentication",
     description:
       "Secure your LogDeck instance or run it completely open based on your needs.",

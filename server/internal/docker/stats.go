@@ -60,6 +60,69 @@ func pruneCache() {
 	}
 }
 
+// cpuSample is one raw CPU counter reading, kept per container so
+// consecutive polls can be diffed. Podman's one-shot stats endpoint leaves
+// PreCPUStats zeroed (Docker double-samples server-side), which would turn
+// the naive calculation into a since-start average instead of current usage.
+type cpuSample struct {
+	totalUsage  uint64
+	systemUsage uint64
+	readAt      time.Time
+}
+
+const cpuSampleMaxAge = 2 * time.Minute
+
+var (
+	prevCPUMu      sync.Mutex
+	prevCPUSamples = map[string]cpuSample{}
+)
+
+// swapPrevCPUSample stores the current reading and returns the previous one.
+func swapPrevCPUSample(key string, current cpuSample) (cpuSample, bool) {
+	prevCPUMu.Lock()
+	defer prevCPUMu.Unlock()
+
+	prev, ok := prevCPUSamples[key]
+	prevCPUSamples[key] = current
+
+	if len(prevCPUSamples) > 256 {
+		for k, s := range prevCPUSamples {
+			if time.Since(s.readAt) > cpuSampleMaxAge {
+				delete(prevCPUSamples, k)
+			}
+		}
+	}
+	return prev, ok
+}
+
+// currentCPUPercent returns an instantaneous CPU percentage. When the engine
+// pre-populated PreCPUStats (Docker), its window is used directly; otherwise
+// (Podman one-shot) the reading is diffed against our previous poll. The very
+// first Podman reading falls back to the engine numbers — a since-start
+// average — which is better than reporting 0.
+func currentCPUPercent(key string, stats *container.StatsResponse) float64 {
+	current := cpuSample{
+		totalUsage:  stats.CPUStats.CPUUsage.TotalUsage,
+		systemUsage: stats.CPUStats.SystemUsage,
+		readAt:      time.Now(),
+	}
+	prev, ok := swapPrevCPUSample(key, current)
+
+	if stats.PreCPUStats.SystemUsage > 0 {
+		return calculateCPUPercent(stats)
+	}
+
+	if ok && time.Since(prev.readAt) < cpuSampleMaxAge &&
+		current.totalUsage >= prev.totalUsage &&
+		current.systemUsage > prev.systemUsage {
+		cpuDelta := float64(current.totalUsage - prev.totalUsage)
+		systemDelta := float64(current.systemUsage - prev.systemUsage)
+		return (cpuDelta / systemDelta) * numCPUs(stats) * 100.0
+	}
+
+	return calculateCPUPercent(stats)
+}
+
 // ContainerIdentifier represents a container on a specific host
 type ContainerIdentifier struct {
 	ID   string
@@ -94,7 +157,7 @@ func (c *MultiHostClient) GetContainerStats(ctx context.Context, hostName, conta
 	stats := &models.ContainerStats{
 		ID:            containerID,
 		Host:          hostName,
-		CPUPercent:    calculateCPUPercent(&v),
+		CPUPercent:    currentCPUPercent(cacheKey, &v),
 		MemoryPercent: memPercent,
 		MemoryUsed:    memUsed,
 		MemoryLimit:   memLimit,
@@ -167,14 +230,17 @@ func calculateCPUPercent(stats *container.StatsResponse) float64 {
 		return 0.0
 	}
 
-	numCPUs := float64(stats.CPUStats.OnlineCPUs)
-	if numCPUs == 0 {
-		if numCPUs = float64(len(stats.CPUStats.CPUUsage.PercpuUsage)); numCPUs == 0 {
-			numCPUs = 1
+	return (cpuDelta / systemDelta) * numCPUs(stats) * 100.0
+}
+
+func numCPUs(stats *container.StatsResponse) float64 {
+	n := float64(stats.CPUStats.OnlineCPUs)
+	if n == 0 {
+		if n = float64(len(stats.CPUStats.CPUUsage.PercpuUsage)); n == 0 {
+			n = 1
 		}
 	}
-
-	return (cpuDelta / systemDelta) * numCPUs * 100.0
+	return n
 }
 
 func calculateMemoryStats(stats *container.StatsResponse) (percent float64, usage uint64, limit uint64) {

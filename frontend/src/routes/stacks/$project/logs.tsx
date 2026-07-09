@@ -1,4 +1,9 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import {
+	createFileRoute,
+	useCanGoBack,
+	useNavigate,
+	useRouter,
+} from "@tanstack/react-router";
 import { ArrowLeftIcon } from "lucide-react";
 import { useMemo } from "react";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -28,6 +33,8 @@ export const Route = createFileRoute("/stacks/$project/logs")({
 function StackLogsPage() {
 	const { project: encodedProject } = Route.useParams();
 	const navigate = useNavigate();
+	const router = useRouter();
+	const canGoBack = useCanGoBack();
 
 	const project = decodeURIComponent(encodedProject);
 	const logViewState = useUrlLogViewState();
@@ -59,9 +66,7 @@ function StackLogsPage() {
 									variant="ghost"
 									size="icon"
 									onClick={() =>
-										navigate({
-											to: "/",
-										})
+										canGoBack ? router.history.back() : navigate({ to: "/" })
 									}
 								>
 									<ArrowLeftIcon className="size-4" />

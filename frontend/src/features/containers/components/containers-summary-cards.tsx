@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import type { HostStats } from "../api/get-hosts-stats";
 
 import { formatBytes } from "./container-utils";
+import { Sparkline } from "./sparkline";
 
 interface HostInfo {
   hostname: string;
@@ -15,11 +16,17 @@ interface SystemUsage {
   memory: number;
 }
 
+interface SystemUsageSample {
+  cpuPercent: number;
+  memoryPercent: number;
+}
+
 interface ContainersSummaryCardsProps {
   totalContainers: number;
   hostInfo: HostInfo;
   systemUsage: SystemUsage;
   hostsStats?: HostStats[];
+  systemHistory: SystemUsageSample[];
 }
 
 function HostRow({ host }: { host: HostStats }) {
@@ -58,6 +65,7 @@ export function ContainersSummaryCards({
   hostInfo,
   systemUsage,
   hostsStats,
+  systemHistory,
 }: ContainersSummaryCardsProps) {
   const multiHost = hostsStats && hostsStats.length > 1;
 
@@ -114,7 +122,12 @@ export function ContainersSummaryCards({
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground">CPU</span>
-                  <span className="font-medium">{systemUsage.cpu}%</span>
+                  <span className="flex items-center gap-2">
+                    <Sparkline
+                      values={systemHistory.map((s) => s.cpuPercent)}
+                    />
+                    <span className="font-medium">{systemUsage.cpu}%</span>
+                  </span>
                 </div>
                 <div className="h-1.5 w-full rounded-full bg-muted">
                   <div
@@ -124,7 +137,12 @@ export function ContainersSummaryCards({
                 </div>
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground">Memory</span>
-                  <span className="font-medium">{systemUsage.memory}%</span>
+                  <span className="flex items-center gap-2">
+                    <Sparkline
+                      values={systemHistory.map((s) => s.memoryPercent)}
+                    />
+                    <span className="font-medium">{systemUsage.memory}%</span>
+                  </span>
                 </div>
                 <div className="h-1.5 w-full rounded-full bg-muted">
                   <div

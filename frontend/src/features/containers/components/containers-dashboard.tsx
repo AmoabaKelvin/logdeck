@@ -27,6 +27,7 @@ import { useContainersDashboardUrlState } from "../hooks/use-containers-dashboar
 import { useLiveContainersQuery } from "../hooks/use-live-containers-query";
 import { useContainerStats } from "../hooks/use-container-stats";
 import { useHostsStats } from "../hooks/use-hosts-stats";
+import { useSystemUsageHistory } from "../hooks/use-stats-history";
 import { useSystemStats } from "../hooks/use-system-stats";
 
 import {
@@ -57,7 +58,8 @@ export function ContainersDashboard() {
   const { data, error, isError, isFetching, isLoading, refetch } =
     useLiveContainersQuery();
   const { data: systemStats } = useSystemStats();
-  const { statsMap } = useContainerStats();
+  const systemHistory = useSystemUsageHistory(systemStats?.usage);
+  const { statsMap, statsHistory } = useContainerStats();
 
   const containers = data?.containers ?? [];
   const isReadOnly = data?.readOnly ?? false;
@@ -444,6 +446,7 @@ export function ContainersDashboard() {
         hostInfo={hostInfo}
         systemUsage={systemUsage}
         hostsStats={hostsStatsData?.hosts}
+        systemHistory={systemHistory}
       />
 
       <section className="space-y-4">
@@ -481,6 +484,7 @@ export function ContainersDashboard() {
           pendingComposeAction={pendingComposeAction}
           isReadOnly={isReadOnly}
           statsMap={statsMap}
+          statsHistory={statsHistory}
           onStart={handleStartContainer}
           onStop={handleStopContainer}
           onRestart={handleRestartContainer}
