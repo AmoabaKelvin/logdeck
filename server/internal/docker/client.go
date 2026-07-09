@@ -128,6 +128,30 @@ func (c *MultiHostClient) GetHosts() []config.DockerHost {
 	return c.hosts
 }
 
+// EngineInfo identifies the container engine behind a host. Podman serves the
+// Docker-compatible API and reports itself as a "Podman Engine" component in
+// the version response; anything else is treated as Docker.
+func (c *MultiHostClient) EngineInfo(ctx context.Context, hostName string) (engine, version string, err error) {
+	apiClient, err := c.GetClient(hostName)
+	if err != nil {
+		return "", "", err
+	}
+
+	v, err := apiClient.ServerVersion(ctx)
+	if err != nil {
+		return "", "", err
+	}
+
+	engine = "Docker"
+	for _, component := range v.Components {
+		if strings.Contains(component.Name, "Podman") {
+			engine = "Podman"
+			break
+		}
+	}
+	return engine, v.Version, nil
+}
+
 // Close closes all underlying Docker API clients.
 func (c *MultiHostClient) Close() {
 	for _, cl := range c.clients {

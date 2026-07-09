@@ -284,7 +284,7 @@ func (m *Manager) merge() (*Config, ConfigSources) {
 		}
 	}
 	if len(cfg.DockerHosts) == 0 {
-		cfg.DockerHosts = []DockerHost{{Name: "local", Host: "unix:///var/run/docker.sock"}}
+		cfg.DockerHosts = []DockerHost{DefaultLocalHost()}
 		sources.DockerHosts = SourceDefault
 	} else if m.envSnapshot.DockerHostsSet && len(m.fileConfig.DockerHosts) > 0 {
 		sources.DockerHosts = SourceMixed

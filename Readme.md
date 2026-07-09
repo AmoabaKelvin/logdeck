@@ -34,6 +34,17 @@ Manage containers across multiple Docker hosts from a single interface:
 
 For detailed configuration, see the [Multi-Host Setup Guide](./multi-host.md).
 
+### Podman Support
+
+LogDeck works with Podman as well as Docker, using Podman's Docker-compatible API:
+
+- Automatic detection of local Docker and Podman sockets (rootless and rootful)
+- All features work unchanged: logs, stats, lifecycle actions, events, and the terminal
+- Compose grouping recognizes both Docker Compose and podman-compose projects
+- Mix Docker and Podman hosts in a single multi-host setup
+
+For setup instructions, see the [Podman Setup Guide](./podman.md).
+
 ### Container Lifecycle Management
 
 - Start, stop, restart, and remove containers

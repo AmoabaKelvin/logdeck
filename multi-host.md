@@ -4,6 +4,8 @@
 
 LogDeck supports managing Docker containers across multiple Docker hosts simultaneously. This feature enables monitoring and controlling containers on local, remote, and SSH-connected Docker daemons from a single interface.
 
+Hosts can also be Podman endpoints (Podman serves a Docker-compatible API) and can be mixed freely with Docker hosts. See the [Podman Setup Guide](./podman.md) for socket paths and Podman-specific setup.
+
 ## Prerequisites
 
 ### Server Requirements

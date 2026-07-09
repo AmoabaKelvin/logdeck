@@ -18,7 +18,22 @@ export interface StateCounts {
   other: number;
 }
 
-const COMPOSE_PROJECT_LABEL = "com.docker.compose.project";
+// Docker Compose and recent podman-compose both set the com.docker label;
+// older podman-compose releases only set the io.podman one.
+const COMPOSE_PROJECT_LABELS = [
+  "com.docker.compose.project",
+  "io.podman.compose.project",
+];
+
+function getComposeProject(labels?: Record<string, string>) {
+  for (const label of COMPOSE_PROJECT_LABELS) {
+    const project = labels?.[label]?.trim();
+    if (project) {
+      return project;
+    }
+  }
+  return undefined;
+}
 
 export function formatContainerName(names: string[]) {
   if (!names.length) {
@@ -86,8 +101,7 @@ export function groupByCompose(
   const groups = new Map<string, ContainerInfo[]>();
 
   containers.forEach((container) => {
-    const key =
-      container.labels?.[COMPOSE_PROJECT_LABEL]?.trim() || "Standalone";
+    const key = getComposeProject(container.labels) || "Standalone";
     if (!groups.has(key)) {
       groups.set(key, []);
     }
