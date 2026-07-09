@@ -5,12 +5,13 @@ import {
 	useNavigate,
 	useRouter,
 } from "@tanstack/react-router";
-import { ArrowLeftIcon, ChevronDownIcon, TerminalIcon } from "lucide-react";
-import { useRef, useState } from "react";
+import { ArrowLeftIcon, TerminalIcon } from "lucide-react";
+import { useRef } from "react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
 	Tooltip,
 	TooltipContent,
@@ -50,10 +51,6 @@ function ContainerLogsPage() {
 	const canGoBack = useCanGoBack();
 	const queryClient = useQueryClient();
 
-	const [showLabels, setShowLabels] = useState(false);
-	const [showEnvVariables, setShowEnvVariables] = useState(false);
-	const [showResourceLimits, setShowResourceLimits] = useState(false);
-	const [showTerminal, setShowTerminal] = useState(false);
 	const logViewerRef = useRef<LogViewerHandle>(null);
 	const logViewState = useUrlLogViewState();
 
@@ -236,62 +233,26 @@ function ContainerLogsPage() {
 										</div>
 									</div>
 
-									{/* Labels Section */}
-									{container.labels &&
-										Object.keys(container.labels).length > 0 && (
-											<div className="space-y-2 border-t pt-4">
-												<Button
-													variant="ghost"
-													size="sm"
-													onClick={() => setShowLabels((value) => !value)}
-													className="h-8 w-full justify-start text-muted-foreground hover:text-foreground"
-												>
-													<ChevronDownIcon
-														className={`mr-2 size-4 transition-transform ${
-															showLabels ? "rotate-180" : ""
-														}`}
-													/>
-													{showLabels ? "Hide" : "Show"} container labels (
-													{Object.keys(container.labels).length})
-												</Button>
-												{showLabels && (
-													<div className="max-h-[200px] space-y-2 overflow-y-auto rounded-md border bg-muted/30 p-3">
-														{Object.entries(container.labels).map(
-															([key, value]) => (
-																<div
-																	key={key}
-																	className="rounded-md bg-background p-2 text-xs"
-																>
-																	<div className="mb-1 font-semibold text-foreground">
-																		{key}
-																	</div>
-																	<div className="break-all font-mono text-muted-foreground">
-																		{value}
-																	</div>
-																</div>
-															),
-														)}
-													</div>
-												)}
-											</div>
-										)}
+									<Tabs defaultValue="environment" className="border-t pt-4">
+										<TabsList>
+											<TabsTrigger value="environment">Environment</TabsTrigger>
+											<TabsTrigger value="resources">Resources</TabsTrigger>
+											<TabsTrigger value="labels">
+												Labels
+												{container.labels &&
+													Object.keys(container.labels).length > 0 && (
+														<span className="text-muted-foreground">
+															{Object.keys(container.labels).length}
+														</span>
+													)}
+											</TabsTrigger>
+											<TabsTrigger value="terminal">
+												<TerminalIcon className="size-4" />
+												Terminal
+											</TabsTrigger>
+										</TabsList>
 
-									{/* Environment Variables Section */}
-									<div className="space-y-2 border-t pt-4">
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() => setShowEnvVariables((value) => !value)}
-											className="h-8 w-full justify-start text-muted-foreground hover:text-foreground"
-										>
-											<ChevronDownIcon
-												className={`mr-2 size-4 transition-transform ${
-													showEnvVariables ? "rotate-180" : ""
-												}`}
-											/>
-											{showEnvVariables ? "Hide" : "Show"} environment variables
-										</Button>
-										{showEnvVariables && container && (
+										<TabsContent value="environment" className="pt-2">
 											<div className="max-h-[300px] overflow-y-auto">
 												<EnvironmentVariables
 													containerId={actualContainerId}
@@ -300,58 +261,50 @@ function ContainerLogsPage() {
 													onContainerIdChange={handleContainerRecreated}
 												/>
 											</div>
-										)}
-									</div>
+										</TabsContent>
 
-									{/* Resource Limits Section */}
-									<div className="space-y-2 border-t pt-4">
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() => setShowResourceLimits((value) => !value)}
-											className="h-8 w-full justify-start text-muted-foreground hover:text-foreground"
-										>
-											<ChevronDownIcon
-												className={`mr-2 size-4 transition-transform ${
-													showResourceLimits ? "rotate-180" : ""
-												}`}
-											/>
-											{showResourceLimits ? "Hide" : "Show"} resource limits
-										</Button>
-										{showResourceLimits && container && (
+										<TabsContent value="resources" className="pt-2">
 											<ResourceLimits
 												containerId={actualContainerId}
 												containerHost={container.host}
 												isReadOnly={containersData?.readOnly}
 											/>
-										)}
-									</div>
+										</TabsContent>
 
-									{/* Terminal Section */}
-									<div className="space-y-2 border-t pt-4">
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() => setShowTerminal((value) => !value)}
-											className="h-8 w-full justify-start text-muted-foreground hover:text-foreground"
-										>
-											<ChevronDownIcon
-												className={`mr-2 size-4 transition-transform ${
-													showTerminal ? "rotate-180" : ""
-												}`}
+										<TabsContent value="labels" className="pt-2">
+											{container.labels &&
+											Object.keys(container.labels).length > 0 ? (
+												<div className="max-h-[300px] overflow-y-auto">
+													{Object.entries(container.labels).map(
+														([key, value]) => (
+															<div
+																key={key}
+																className="border-b py-2 text-xs last:border-b-0"
+															>
+																<div className="mb-0.5 font-medium text-foreground">
+																	{key}
+																</div>
+																<div className="break-all font-mono text-muted-foreground">
+																	{value}
+																</div>
+															</div>
+														),
+													)}
+												</div>
+											) : (
+												<p className="py-2 text-sm text-muted-foreground">
+													This container has no labels.
+												</p>
+											)}
+										</TabsContent>
+
+										<TabsContent value="terminal" className="pt-2">
+											<Terminal
+												containerId={actualContainerId}
+												host={container.host}
 											/>
-											<TerminalIcon className="mr-2 size-4" />
-											{showTerminal ? "Hide" : "Show"} terminal
-										</Button>
-										{container && showTerminal && (
-											<div className="mt-2">
-												<Terminal
-													containerId={actualContainerId}
-													host={container.host}
-												/>
-											</div>
-										)}
-									</div>
+										</TabsContent>
+									</Tabs>
 								</div>
 							</CardContent>
 						</Card>
