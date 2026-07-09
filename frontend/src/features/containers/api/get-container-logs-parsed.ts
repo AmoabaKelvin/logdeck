@@ -142,26 +142,6 @@ export async function* streamContainerLogsParsed(
   }
 }
 
-export function getLogLevelColor(level: LogLevel | undefined): string {
-  switch (level ?? "UNKNOWN") {
-    case "TRACE":
-    case "DEBUG":
-      return "text-muted-foreground";
-    case "INFO":
-      return "text-blue-600 dark:text-blue-400";
-    case "WARN":
-    case "WARNING":
-      return "text-yellow-600 dark:text-yellow-400";
-    case "ERROR":
-      return "text-red-600 dark:text-red-400";
-    case "FATAL":
-    case "PANIC":
-      return "text-red-700 dark:text-red-500 font-semibold";
-    default:
-      return "text-foreground";
-  }
-}
-
 export function getLogLevelBadgeColor(level: LogLevel | undefined): string {
   switch (level ?? "UNKNOWN") {
     case "TRACE":

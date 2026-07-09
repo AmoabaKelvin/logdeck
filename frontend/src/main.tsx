@@ -4,6 +4,8 @@ import { RouterProvider, createRouter } from '@tanstack/react-router'
 
 import * as TanStackQueryProvider from './integrations/tanstack-query/root-provider.tsx'
 
+import { DefaultErrorComponent } from './components/default-error-component.tsx'
+
 // Import the generated route tree
 import { routeTree } from './routeTree.gen'
 
@@ -22,6 +24,7 @@ const router = createRouter({
   scrollRestoration: true,
   defaultStructuralSharing: true,
   defaultPreloadStaleTime: 0,
+  defaultErrorComponent: DefaultErrorComponent,
 })
 
 // Register the router instance for type safety

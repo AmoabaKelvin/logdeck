@@ -10,6 +10,10 @@ interface UseContainerLogStreamOptions<TLogEntry> {
   host?: string;
   tail: number;
   search?: string;
+  // Time bounds for historical fetches (RFC3339). Live streaming ignores
+  // them and always follows from now.
+  since?: string;
+  until?: string;
   maxLogLines?: number;
   getLogs: (
     containerId: string,
@@ -33,6 +37,8 @@ export function useContainerLogStream<TLogEntry>({
   host,
   tail,
   search,
+  since,
+  until,
   maxLogLines = DEFAULT_MAX_LOG_LINES,
   getLogs,
   streamLogs,
@@ -242,7 +248,12 @@ export function useContainerLogStream<TLogEntry>({
     resetDroppedCount();
     onResetStateRef.current?.();
     try {
-      const logEntries = await getLogsRef.current(containerId, host, { tail, search });
+      const logEntries = await getLogsRef.current(containerId, host, {
+        tail,
+        search,
+        since,
+        until,
+      });
       const max = maxLogLinesRef.current;
       const capped =
         logEntries.length > max ? logEntries.slice(logEntries.length - max) : logEntries;
@@ -268,6 +279,8 @@ export function useContainerLogStream<TLogEntry>({
     scheduleScrollToBottom,
     tail,
     search,
+    since,
+    until,
   ]);
 
   const stopStreaming = useCallback(() => {
