@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import tailwindcss from "@tailwindcss/vite";
 import tanstackRouter from "@tanstack/router-plugin/vite";
 import viteReact from "@vitejs/plugin-react";
@@ -18,6 +19,10 @@ export default defineConfig({
     alias: {
       "@": resolve(__dirname, "./src"),
     },
+  },
+  test: {
+    environment: "jsdom",
+    setupFiles: ["./src/test/setup.ts"],
   },
   server: {
     host: true, // Listen on all addresses, needed for Docker
