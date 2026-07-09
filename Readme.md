@@ -52,6 +52,29 @@ For setup instructions, see the [Podman Setup Guide](./podman.md).
 - Read-only mode for monitoring-only deployments
 - Real-time state updates
 
+### Compose Stack Tools
+
+- Start, stop, or restart a whole Compose stack from its group header
+- Aggregated stack logs: every container's logs merged by timestamp in one view, with color-coded container badges
+- Works with Docker Compose and podman-compose projects
+
+### Stats & Trends
+
+- Live CPU and memory readings per container
+- Sparkline trend lines showing the last five minutes of CPU and memory history
+- Per-host engine stats (CPUs, memory, container counts, version) in multi-host setups
+- System stats for the machine running LogDeck
+
+### Resource Limits & Restart Policies
+
+- Edit memory limits, CPU limits, and restart policies from the container page
+- Applied live via the engine's update API — no container recreate, no downtime
+
+### Images, Volumes & Networks
+
+- Read-only views of images, volumes, and networks across all configured hosts
+- Text filtering and per-host error reporting
+
 ### Container Discovery & Organization
 
 - Automatic discovery of all running containers
