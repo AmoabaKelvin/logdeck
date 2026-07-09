@@ -17,6 +17,10 @@ type LogEntry struct {
 	Raw               string            `json:"raw"`    // Original log line
 	Fields            map[string]string `json:"fields,omitempty"`
 	ContinuationCount int               `json:"continuationCount,omitempty"`
+	// Set only on aggregated multi-container streams; omitempty keeps the
+	// single-container payload unchanged.
+	ContainerID   string `json:"containerId,omitempty"`
+	ContainerName string `json:"containerName,omitempty"`
 }
 
 // LogLevel represents the severity of a log entry

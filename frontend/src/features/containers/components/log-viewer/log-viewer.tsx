@@ -58,7 +58,13 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import type { AggregateLogTarget } from "@/features/containers/api/get-aggregated-logs";
+import {
+	getAggregatedLogs,
+	streamAggregatedLogs,
+} from "@/features/containers/api/get-aggregated-logs";
 import type {
+	ContainerLogsOptions,
 	LogEntry,
 	LogLevel,
 } from "@/features/containers/api/get-container-logs-parsed";
@@ -98,11 +104,36 @@ interface LogViewerProps {
 	// Host-owned view state: local in the sheet, URL-persisted on the full
 	// page (see use-log-view-state.ts).
 	viewState: LogViewState;
+	// Aggregate mode: merge these containers' logs into one view instead of
+	// containerId/host. Entries carry containerName for the per-row badge.
+	targets?: AggregateLogTarget[];
 	ref?: React.Ref<LogViewerHandle>;
 }
 
 const activeToggleButtonClass =
 	"h-8 text-xs data-[active=true]:bg-muted data-[active=true]:text-foreground data-[active=true]:border-border data-[active=true]:ring-1 data-[active=true]:ring-primary/30 dark:data-[active=true]:bg-primary/15 dark:data-[active=true]:ring-primary/50 dark:data-[active=true]:border-primary/30";
+
+// Deterministic per-container badge color for aggregate views.
+const CONTAINER_NAME_BADGE_COLORS = [
+	"bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300",
+	"bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300",
+	"bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300",
+	"bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300",
+	"bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-300",
+	"bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-300",
+	"bg-lime-100 text-lime-700 dark:bg-lime-900 dark:text-lime-300",
+	"bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900 dark:text-fuchsia-300",
+];
+
+function getContainerNameBadgeColor(name: string): string {
+	let hash = 0;
+	for (let i = 0; i < name.length; i++) {
+		hash = (hash * 31 + name.charCodeAt(i)) | 0;
+	}
+	return CONTAINER_NAME_BADGE_COLORS[
+		Math.abs(hash) % CONTAINER_NAME_BADGE_COLORS.length
+	];
+}
 
 function formatLogEntryLine(entry: LogEntry): string {
 	const timestamp = entry.timestamp
@@ -119,6 +150,7 @@ export function LogViewer({
 	host,
 	containerName,
 	viewState,
+	targets,
 	ref,
 }: LogViewerProps) {
 	const {
@@ -184,6 +216,34 @@ export function LogViewer({
 		[timeRange],
 	);
 
+	// Aggregate mode reuses the single-stream hook untouched: the targets are
+	// baked into the fetch/stream functions, and a targets-derived key stands
+	// in for containerId/host so the hook refetches when the set changes.
+	const getLogs = useMemo(
+		() =>
+			targets
+				? (_id: string, _host: string, options: ContainerLogsOptions) =>
+						getAggregatedLogs(targets, options)
+				: getContainerLogsParsed,
+		[targets],
+	);
+	const streamLogs = useMemo(
+		() =>
+			targets
+				? (
+						_id: string,
+						_host: string,
+						options: ContainerLogsOptions,
+						signal: AbortSignal,
+					) => streamAggregatedLogs(targets, options, signal)
+				: streamContainerLogsParsed,
+		[targets],
+	);
+	const streamContainerId = targets
+		? targets.map((t) => t.id).join(",")
+		: containerId;
+	const streamHost = targets ? "aggregate" : host;
+
 	const {
 		animatedRange,
 		bufferedCount,
@@ -199,13 +259,13 @@ export function LogViewer({
 		togglePauseStreaming,
 		toggleStreaming,
 	} = useContainerLogStream<LogEntry>({
-		containerId,
-		host,
+		containerId: streamContainerId,
+		host: streamHost,
 		tail: logLines,
 		since,
 		until,
-		getLogs: getContainerLogsParsed,
-		streamLogs: streamContainerLogsParsed,
+		getLogs,
+		streamLogs,
 		scrollToBottom,
 		onResetState: () => {
 			resetPinsRef.current();
@@ -1442,6 +1502,14 @@ export function LogViewer({
 									>
 										{entry.level ?? "UNKNOWN"}
 									</Badge>
+									{entry.containerName && (
+										<Badge
+											variant="outline"
+											className={`shrink-0 text-xs px-1.5 py-0 h-5 ${getContainerNameBadgeColor(entry.containerName)}`}
+										>
+											{entry.containerName}
+										</Badge>
+									)}
 									<span
 										className={`text-foreground flex-1 ${wrapText ? "whitespace-pre-wrap break-words" : "whitespace-pre"}`}
 									>

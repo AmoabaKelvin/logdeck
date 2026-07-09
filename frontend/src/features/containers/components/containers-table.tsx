@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { FileTextIcon, PlayIcon, RotateCwIcon, SquareIcon, Trash2Icon } from "lucide-react";
 import { Fragment } from "react";
 import type { LucideIcon } from "lucide-react";
@@ -313,8 +314,22 @@ export function ContainersTable({
                     colSpan={8}
                     className="h-10 px-4 text-xs font-medium text-muted-foreground"
                   >
-                    {group.project} · {group.items.length} container
-                    {group.items.length === 1 ? "" : "s"}
+                    <div className="flex items-center justify-between">
+                      <span>
+                        {group.project} · {group.items.length} container
+                        {group.items.length === 1 ? "" : "s"}
+                      </span>
+                      {group.project !== "Standalone" && (
+                        <Link
+                          to="/stacks/$project/logs"
+                          params={{ project: group.project }}
+                          className="inline-flex items-center gap-1 text-primary hover:underline"
+                        >
+                          <FileTextIcon className="size-3" />
+                          Stack logs
+                        </Link>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
                 {group.items.map(renderContainerRow)}

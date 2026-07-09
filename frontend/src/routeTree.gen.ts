@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as StacksProjectLogsRouteImport } from './routes/stacks/$project/logs'
 import { Route as ContainersContainerIdLogsRouteImport } from './routes/containers/$containerId/logs'
 
 const SettingsRoute = SettingsRouteImport.update({
@@ -29,6 +30,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const StacksProjectLogsRoute = StacksProjectLogsRouteImport.update({
+  id: '/stacks/$project/logs',
+  path: '/stacks/$project/logs',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ContainersContainerIdLogsRoute =
   ContainersContainerIdLogsRouteImport.update({
     id: '/containers/$containerId/logs',
@@ -41,12 +47,14 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
   '/containers/$containerId/logs': typeof ContainersContainerIdLogsRoute
+  '/stacks/$project/logs': typeof StacksProjectLogsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
   '/containers/$containerId/logs': typeof ContainersContainerIdLogsRoute
+  '/stacks/$project/logs': typeof StacksProjectLogsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -54,18 +62,30 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
   '/containers/$containerId/logs': typeof ContainersContainerIdLogsRoute
+  '/stacks/$project/logs': typeof StacksProjectLogsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/settings' | '/containers/$containerId/logs'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/settings'
+    | '/containers/$containerId/logs'
+    | '/stacks/$project/logs'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/settings' | '/containers/$containerId/logs'
+  to:
+    | '/'
+    | '/login'
+    | '/settings'
+    | '/containers/$containerId/logs'
+    | '/stacks/$project/logs'
   id:
     | '__root__'
     | '/'
     | '/login'
     | '/settings'
     | '/containers/$containerId/logs'
+    | '/stacks/$project/logs'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -73,6 +93,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   SettingsRoute: typeof SettingsRoute
   ContainersContainerIdLogsRoute: typeof ContainersContainerIdLogsRoute
+  StacksProjectLogsRoute: typeof StacksProjectLogsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -98,6 +119,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/stacks/$project/logs': {
+      id: '/stacks/$project/logs'
+      path: '/stacks/$project/logs'
+      fullPath: '/stacks/$project/logs'
+      preLoaderRoute: typeof StacksProjectLogsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/containers/$containerId/logs': {
       id: '/containers/$containerId/logs'
       path: '/containers/$containerId/logs'
@@ -113,6 +141,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   SettingsRoute: SettingsRoute,
   ContainersContainerIdLogsRoute: ContainersContainerIdLogsRoute,
+  StacksProjectLogsRoute: StacksProjectLogsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
