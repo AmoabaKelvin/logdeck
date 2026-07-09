@@ -6,10 +6,14 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
+	"github.com/AmoabaKelvin/logdeck/internal/auth"
+	"github.com/AmoabaKelvin/logdeck/internal/models"
 	"github.com/docker/docker/api/types"
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/websocket"
@@ -70,6 +74,17 @@ func (ar *APIRouter) HandleTerminal(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Close()
 
+	// Exec sessions grant shell access inside containers - audit them.
+	user := execAuditUser(r)
+	start := time.Now()
+	slog.Info("exec session opened",
+		"user", user, "host", host, "container", id, "exec_id", execID)
+	defer func() {
+		slog.Info("exec session closed",
+			"user", user, "host", host, "container", id, "exec_id", execID,
+			"duration", time.Since(start))
+	}()
+
 	outputDone := make(chan struct{})
 	inputDone := make(chan struct{})
 
@@ -87,6 +102,15 @@ func (ar *APIRouter) HandleTerminal(w http.ResponseWriter, r *http.Request) {
 	case <-outputDone:
 	case <-inputDone:
 	}
+}
+
+// execAuditUser returns the authenticated username for audit logs, or
+// "anonymous" when auth is disabled.
+func execAuditUser(r *http.Request) string {
+	if user, ok := r.Context().Value(auth.UserContextKey).(models.User); ok {
+		return user.Username
+	}
+	return "anonymous"
 }
 
 func (ar *APIRouter) startExecSession(ctx context.Context, host, containerID string) (string, *types.HijackedResponse, error) {

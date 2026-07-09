@@ -247,12 +247,15 @@ func (ar *APIRouter) UpdateAuth(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if req.NewPassword != "" {
-				salt, err := auth.GenerateRandomHex(32)
+				// New passwords are stored as bcrypt hashes. Existing SHA256
+				// hashes keep working (ValidateCredentials detects the format
+				// by prefix) until the password is next changed.
+				hash, err := auth.HashPassword(req.NewPassword)
 				if err != nil {
-					return nil, fmt.Errorf("failed to generate salt")
+					return nil, fmt.Errorf("failed to hash password")
 				}
-				authCfg.AdminPasswordSalt = salt
-				authCfg.AdminPasswordHash = auth.HashPasswordSHA256(req.NewPassword, salt)
+				authCfg.AdminPasswordHash = hash
+				authCfg.AdminPasswordSalt = ""
 			}
 
 			if authCfg.AdminPasswordHash == "" {
