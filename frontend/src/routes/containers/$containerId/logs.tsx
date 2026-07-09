@@ -101,9 +101,7 @@ function ContainerLogsPage() {
 									variant="ghost"
 									size="icon"
 									onClick={() =>
-										canGoBack
-											? router.history.back()
-											: navigate({ to: "/" })
+										canGoBack ? router.history.back() : navigate({ to: "/" })
 									}
 								>
 									<ArrowLeftIcon className="size-4" />
