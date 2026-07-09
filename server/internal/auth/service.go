@@ -21,7 +21,7 @@ var (
 	ErrInvalidToken        = errors.New("invalid token")
 	ErrTokenExpired        = errors.New("token has expired")
 	ErrMissingEnvVars      = errors.New("missing required environment variables")
-	ErrInvalidPasswordHash = errors.New("ADMIN_PASSWORD must be a valid bcrypt hash. Generate one using: cd server/scripts && go run hash-password.go yourPassword")
+	ErrInvalidPasswordHash = errors.New("ADMIN_PASSWORD must be a valid bcrypt hash. Generate one with: htpasswd -bnBC 10 '' yourPassword | tr -d ':'")
 )
 
 type Service struct {
@@ -54,6 +54,14 @@ func NewService() (*Service, error) {
 	// If some but not all are set, return an error
 	if jwtSecret == "" || adminUsername == "" || (adminPasswordHash == "" && sha256Salt == "") {
 		return nil, ErrMissingEnvVars
+	}
+
+	// Without a salt, the password must be a bcrypt hash; validate it up
+	// front so a malformed hash fails at startup instead of on every login.
+	if sha256Salt == "" {
+		if _, err := bcrypt.Cost([]byte(adminPasswordHash)); err != nil {
+			return nil, ErrInvalidPasswordHash
+		}
 	}
 
 	return &Service{
