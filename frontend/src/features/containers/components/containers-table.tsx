@@ -27,11 +27,13 @@ import {
   formatCreatedDate,
   formatMemoryStats,
   formatUptime,
+  getComposeProject,
   getStateBadgeClass,
   isCoolifyManaged,
   toTitleCase,
 } from "./container-utils";
 
+import type { ComposeAction } from "../api/compose-actions";
 import type { ContainerInfo, ContainerStatsMap } from "../types";
 
 import type {
@@ -94,12 +96,14 @@ interface ContainersTableProps {
   groupedItems: GroupedContainers[] | null;
   pageItems: ContainerInfo[];
   pendingAction: { id: string; type: ContainerActionType } | null;
+  pendingComposeAction: { project: string; type: ComposeAction } | null;
   isReadOnly: boolean;
   statsMap: ContainerStatsMap;
   onStart: (container: ContainerInfo) => void;
   onStop: (container: ContainerInfo) => void;
   onRestart: (container: ContainerInfo) => void;
   onDelete: (container: ContainerInfo) => void;
+  onComposeAction: (action: ComposeAction, group: GroupedContainers) => void;
   onViewLogs: (container: ContainerInfo) => void;
   onRetry: () => void;
 }
@@ -113,12 +117,14 @@ export function ContainersTable({
   groupedItems,
   pageItems,
   pendingAction,
+  pendingComposeAction,
   isReadOnly,
   statsMap,
   onStart,
   onStop,
   onRestart,
   onDelete,
+  onComposeAction,
   onViewLogs,
   onRetry,
 }: ContainersTableProps) {
@@ -126,6 +132,20 @@ export function ContainersTable({
     pendingAction?.id === id && pendingAction.type === action;
 
   const isBusy = (id: string) => pendingAction?.id === id;
+
+  const isComposePending = (action: ContainerActionType, project: string) =>
+    pendingComposeAction?.project === project &&
+    pendingComposeAction.type === action;
+
+  const isComposeBusy = (project: string) =>
+    pendingComposeAction?.project === project;
+
+  // Only real compose groups get stack actions; the "Standalone" fallback
+  // group has no compose project label to act on.
+  const isComposeGroup = (group: GroupedContainers) =>
+    group.items.some(
+      (container) => getComposeProject(container.labels) === group.project
+    );
 
   const renderContainerRow = (container: ContainerInfo) => {
     const state = container.state.toLowerCase();
@@ -319,16 +339,51 @@ export function ContainersTable({
                         {group.project} · {group.items.length} container
                         {group.items.length === 1 ? "" : "s"}
                       </span>
-                      {group.project !== "Standalone" && (
-                        <Link
-                          to="/stacks/$project/logs"
-                          params={{ project: group.project }}
-                          className="inline-flex items-center gap-1 text-primary hover:underline"
-                        >
-                          <FileTextIcon className="size-3" />
-                          Stack logs
-                        </Link>
-                      )}
+                      <div className="flex items-center gap-3">
+                        {group.project !== "Standalone" && (
+                          <Link
+                            to="/stacks/$project/logs"
+                            params={{ project: group.project }}
+                            className="inline-flex items-center gap-1 text-primary hover:underline"
+                          >
+                            <FileTextIcon className="size-3" />
+                            Stack logs
+                          </Link>
+                        )}
+                        {isComposeGroup(group) && (
+                          <TooltipProvider>
+                            <div className="flex items-center gap-1">
+                              <ActionButton
+                                icon={PlayIcon}
+                                action="start"
+                                containerId={group.project}
+                                onClick={() => onComposeAction("start", group)}
+                                isPending={isComposePending}
+                                busy={isComposeBusy(group.project)}
+                                isReadOnly={isReadOnly}
+                              />
+                              <ActionButton
+                                icon={SquareIcon}
+                                action="stop"
+                                containerId={group.project}
+                                onClick={() => onComposeAction("stop", group)}
+                                isPending={isComposePending}
+                                busy={isComposeBusy(group.project)}
+                                isReadOnly={isReadOnly}
+                              />
+                              <ActionButton
+                                icon={RotateCwIcon}
+                                action="restart"
+                                containerId={group.project}
+                                onClick={() => onComposeAction("restart", group)}
+                                isPending={isComposePending}
+                                busy={isComposeBusy(group.project)}
+                                isReadOnly={isReadOnly}
+                              />
+                            </div>
+                          </TooltipProvider>
+                        )}
+                      </div>
                     </div>
                   </TableCell>
                 </TableRow>

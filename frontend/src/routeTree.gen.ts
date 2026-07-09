@@ -9,15 +9,27 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as VolumesRouteImport } from './routes/volumes'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as NetworksRouteImport } from './routes/networks'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as ImagesRouteImport } from './routes/images'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as StacksProjectLogsRouteImport } from './routes/stacks/$project/logs'
 import { Route as ContainersContainerIdLogsRouteImport } from './routes/containers/$containerId/logs'
 
+const VolumesRoute = VolumesRouteImport.update({
+  id: '/volumes',
+  path: '/volumes',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NetworksRoute = NetworksRouteImport.update({
+  id: '/networks',
+  path: '/networks',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -25,14 +37,14 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ImagesRoute = ImagesRouteImport.update({
+  id: '/images',
+  path: '/images',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const StacksProjectLogsRoute = StacksProjectLogsRouteImport.update({
-  id: '/stacks/$project/logs',
-  path: '/stacks/$project/logs',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ContainersContainerIdLogsRoute =
@@ -44,65 +56,93 @@ const ContainersContainerIdLogsRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/images': typeof ImagesRoute
   '/login': typeof LoginRoute
+  '/networks': typeof NetworksRoute
   '/settings': typeof SettingsRoute
+  '/volumes': typeof VolumesRoute
   '/containers/$containerId/logs': typeof ContainersContainerIdLogsRoute
-  '/stacks/$project/logs': typeof StacksProjectLogsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/images': typeof ImagesRoute
   '/login': typeof LoginRoute
+  '/networks': typeof NetworksRoute
   '/settings': typeof SettingsRoute
+  '/volumes': typeof VolumesRoute
   '/containers/$containerId/logs': typeof ContainersContainerIdLogsRoute
-  '/stacks/$project/logs': typeof StacksProjectLogsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/images': typeof ImagesRoute
   '/login': typeof LoginRoute
+  '/networks': typeof NetworksRoute
   '/settings': typeof SettingsRoute
+  '/volumes': typeof VolumesRoute
   '/containers/$containerId/logs': typeof ContainersContainerIdLogsRoute
-  '/stacks/$project/logs': typeof StacksProjectLogsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/images'
     | '/login'
+    | '/networks'
     | '/settings'
+    | '/volumes'
     | '/containers/$containerId/logs'
-    | '/stacks/$project/logs'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/images'
     | '/login'
+    | '/networks'
     | '/settings'
+    | '/volumes'
     | '/containers/$containerId/logs'
-    | '/stacks/$project/logs'
   id:
     | '__root__'
     | '/'
+    | '/images'
     | '/login'
+    | '/networks'
     | '/settings'
+    | '/volumes'
     | '/containers/$containerId/logs'
-    | '/stacks/$project/logs'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ImagesRoute: typeof ImagesRoute
   LoginRoute: typeof LoginRoute
+  NetworksRoute: typeof NetworksRoute
   SettingsRoute: typeof SettingsRoute
+  VolumesRoute: typeof VolumesRoute
   ContainersContainerIdLogsRoute: typeof ContainersContainerIdLogsRoute
-  StacksProjectLogsRoute: typeof StacksProjectLogsRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/volumes': {
+      id: '/volumes'
+      path: '/volumes'
+      fullPath: '/volumes'
+      preLoaderRoute: typeof VolumesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/networks': {
+      id: '/networks'
+      path: '/networks'
+      fullPath: '/networks'
+      preLoaderRoute: typeof NetworksRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -112,18 +152,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/images': {
+      id: '/images'
+      path: '/images'
+      fullPath: '/images'
+      preLoaderRoute: typeof ImagesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/stacks/$project/logs': {
-      id: '/stacks/$project/logs'
-      path: '/stacks/$project/logs'
-      fullPath: '/stacks/$project/logs'
-      preLoaderRoute: typeof StacksProjectLogsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/containers/$containerId/logs': {
@@ -138,10 +178,12 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ImagesRoute: ImagesRoute,
   LoginRoute: LoginRoute,
+  NetworksRoute: NetworksRoute,
   SettingsRoute: SettingsRoute,
+  VolumesRoute: VolumesRoute,
   ContainersContainerIdLogsRoute: ContainersContainerIdLogsRoute,
-  StacksProjectLogsRoute: StacksProjectLogsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
