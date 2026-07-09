@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Spinner } from "@/components/ui/spinner";
 
+import { performComposeAction } from "../api/compose-actions";
 import {
   removeContainer,
   restartContainer,
@@ -38,11 +39,13 @@ import { ContainersTable } from "./containers-table";
 import { ContainersToolbar } from "./containers-toolbar";
 
 import type { DateRange } from "react-day-picker";
+import type { ComposeAction } from "../api/compose-actions";
 import type { GetContainersResponse } from "../api/get-containers";
 import type { ContainerInfo } from "../types";
 import type {
   ContainerActionType,
   GroupByOption,
+  GroupedContainers,
   SortDirection,
 } from "./container-utils";
 
@@ -110,6 +113,10 @@ export function ContainersDashboard() {
   const [pendingAction, setPendingAction] = useState<{
     id: string;
     type: ContainerActionType;
+  } | null>(null);
+  const [pendingComposeAction, setPendingComposeAction] = useState<{
+    project: string;
+    type: ComposeAction;
   } | null>(null);
   const [confirmAction, setConfirmAction] = useState<{
     type: Extract<ContainerActionType, "stop" | "remove">;
@@ -256,6 +263,53 @@ export function ContainersDashboard() {
     } finally {
       setPendingAction(null);
     }
+  };
+
+  const executeComposeAction = async (
+    actionType: ComposeAction,
+    group: GroupedContainers
+  ) => {
+    // A UI group can theoretically span hosts; act once per distinct host.
+    const groupHosts = Array.from(
+      new Set(group.items.map((container) => container.host))
+    );
+    setPendingComposeAction({ project: group.project, type: actionType });
+    try {
+      const results = await Promise.all(
+        groupHosts.map((host) =>
+          performComposeAction(group.project, actionType, host)
+        )
+      );
+      const succeeded = results.reduce(
+        (sum, result) => sum + result.succeeded,
+        0
+      );
+      const verb =
+        actionType === "start"
+          ? "Started"
+          : actionType === "stop"
+            ? "Stopped"
+            : "Restarted";
+      toast.success(
+        `${verb} ${succeeded} container${succeeded === 1 ? "" : "s"} in ${group.project}`
+      );
+      await refetch();
+    } catch (error) {
+      if (error instanceof Error) {
+        toast.error(error.message);
+      } else {
+        toast.error("Unexpected error while performing compose action.");
+      }
+    } finally {
+      setPendingComposeAction(null);
+    }
+  };
+
+  const handleComposeAction = (
+    action: ComposeAction,
+    group: GroupedContainers
+  ) => {
+    void executeComposeAction(action, group);
   };
 
   const handleConfirmAction = async () => {
@@ -418,12 +472,14 @@ export function ContainersDashboard() {
           groupedItems={groupedItems}
           pageItems={pageItems}
           pendingAction={pendingAction}
+          pendingComposeAction={pendingComposeAction}
           isReadOnly={isReadOnly}
           statsMap={statsMap}
           onStart={handleStartContainer}
           onStop={handleStopContainer}
           onRestart={handleRestartContainer}
           onDelete={handleDeleteContainer}
+          onComposeAction={handleComposeAction}
           onViewLogs={handleViewLogs}
           onRetry={() => {
             void refetch();
