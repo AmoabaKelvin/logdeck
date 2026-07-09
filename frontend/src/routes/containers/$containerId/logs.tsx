@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -66,7 +66,6 @@ import {
 	getLogLevelBadgeColor,
 	streamContainerLogsParsed,
 } from "@/features/containers/api/get-container-logs-parsed";
-import { getContainers } from "@/features/containers/api/get-containers";
 import { CollapsibleJson } from "@/features/containers/components/collapsible-json";
 import {
 	formatContainerName,
@@ -83,6 +82,7 @@ import { SelectionActionBar } from "@/features/containers/components/selection-a
 import { Terminal } from "@/features/containers/components/terminal";
 import { useContainerLogStream } from "@/features/containers/hooks/use-container-log-stream";
 import { useContainerStats } from "@/features/containers/hooks/use-container-stats";
+import { useLiveContainersQuery } from "@/features/containers/hooks/use-live-containers-query";
 import { requireAuthIfEnabled } from "@/lib/auth-guard";
 import { isJsonString } from "@/lib/json-format";
 import { escapeRegExp } from "@/lib/utils";
@@ -155,10 +155,7 @@ function ContainerLogsPage() {
 	const containerIdentifier = decodeURIComponent(encodedContainerId);
 
 	// Fetch container info
-	const { data: containersData } = useQuery({
-		queryKey: ["containers"],
-		queryFn: getContainers,
-	});
+	const { data: containersData } = useLiveContainersQuery();
 	const { statsMap } = useContainerStats();
 
 	const containers = containersData?.containers ?? [];

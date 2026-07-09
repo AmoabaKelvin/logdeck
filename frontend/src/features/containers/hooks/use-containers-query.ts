@@ -13,8 +13,8 @@ export function useContainersQuery({
     queryKey: ["containers"],
     queryFn: getContainers,
     staleTime: 30_000,
-    // With the event stream connected, updates are pushed; polling is only a
-    // slow safety net.
-    refetchInterval: eventsConnected ? 60_000 : undefined,
+    // With the event stream connected, updates are pushed and polling is only
+    // a slow safety net; when disconnected, polling carries the updates.
+    refetchInterval: eventsConnected ? 60_000 : 30_000,
   });
 }
