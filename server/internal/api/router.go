@@ -11,6 +11,7 @@ import (
 	"github.com/AmoabaKelvin/logdeck/internal/services"
 	"github.com/AmoabaKelvin/logdeck/internal/static"
 	"github.com/go-chi/chi/v5"
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 )
 
@@ -44,6 +45,8 @@ func WriteJsonResponse(w http.ResponseWriter, status int, data interface{}) {
 }
 
 func (ar *APIRouter) Routes() *chi.Mux {
+	ar.router.Use(chimiddleware.RequestID)
+	ar.router.Use(chimiddleware.Recoverer)
 	ar.router.Use(cors.Handler(cors.Options{
 		AllowedOrigins: []string{"*"},
 		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -52,6 +55,9 @@ func (ar *APIRouter) Routes() *chi.Mux {
 
 	// API routes
 	ar.router.Route("/api/v1", func(r chi.Router) {
+		// Access logging only for API routes (static SPA routes stay quiet)
+		r.Use(middleware.AccessLog)
+
 		// System stats - publicly available
 		r.Get("/system/stats", ar.GetSystemStats)
 
