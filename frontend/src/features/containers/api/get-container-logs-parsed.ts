@@ -30,6 +30,22 @@ export interface ContainerLogsParsedResponse {
   count: number;
 }
 
+// Liveness line the server writes on quiet follow streams. Never displayed;
+// consumers use it to tell a quiet stream from a dead one.
+export interface LogStreamHeartbeat {
+  type: "heartbeat";
+}
+
+export function isLogStreamHeartbeat(
+  value: unknown
+): value is LogStreamHeartbeat {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { type?: unknown }).type === "heartbeat"
+  );
+}
+
 export interface ContainerLogsOptions {
   since?: string;
   until?: string;
@@ -114,7 +130,7 @@ export async function* streamContainerLogsParsed(
   host: string,
   options?: ContainerLogsOptions,
   signal?: AbortSignal
-): AsyncGenerator<LogEntry, void, unknown> {
+): AsyncGenerator<LogEntry | LogStreamHeartbeat, void, unknown> {
   const streamOptions = { ...options, follow: true };
   const response = await authenticatedFetch(buildLogsUrl(id, host, streamOptions), {
     headers: {
@@ -134,7 +150,7 @@ export async function* streamContainerLogsParsed(
     throw new Error("Streaming is not supported in this environment.");
   }
 
-  for await (const entry of iterateNDJSONStream<LogEntry>(
+  for await (const entry of iterateNDJSONStream<LogEntry | LogStreamHeartbeat>(
     response.body,
     signal
   )) {

@@ -190,6 +190,7 @@ export function LogViewer({
 		droppedCount,
 		fetchLogs,
 		isLoadingLogs,
+		isReconnecting,
 		isStreamPaused,
 		isStreaming,
 		logs: rawLogs,
@@ -883,6 +884,11 @@ export function LogViewer({
 						className="h-8 w-20 text-xs"
 					/>
 				</div>
+				{isReconnecting && (
+					<span className="shrink-0 text-xs text-muted-foreground animate-pulse">
+						Reconnecting…
+					</span>
+				)}
 				<Button
 					variant="outline"
 					size="sm"
@@ -1070,6 +1076,11 @@ export function LogViewer({
 
 				{/* Controls: log level, time range, stream, auto-scroll, overflow */}
 				<div className="flex items-center gap-1 shrink-0">
+					{isReconnecting && (
+						<span className="shrink-0 text-xs text-muted-foreground animate-pulse">
+							Reconnecting…
+						</span>
+					)}
 					{levelFilterPopover}
 
 					<TimeRangeControl

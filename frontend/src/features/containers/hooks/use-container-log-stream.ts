@@ -1,9 +1,32 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { ContainerLogsOptions } from "@/features/containers/api/get-container-logs-parsed";
+import {
+  type ContainerLogsOptions,
+  isLogStreamHeartbeat,
+  type LogStreamHeartbeat,
+} from "@/features/containers/api/get-container-logs-parsed";
 
 export const DEFAULT_MAX_LOG_LINES = 10000;
 const STREAM_FLUSH_INTERVAL_MS = 100;
+// A live stream silent past this (no entries, no server heartbeats) is
+// presumed dead and gets aborted so the stream loop reconnects. The server
+// heartbeats every ~15s, so a healthy-but-quiet stream never trips this.
+const STREAM_IDLE_TIMEOUT_MS = 45_000;
+const RECONNECT_MIN_DELAY_MS = 1_000;
+const RECONNECT_MAX_DELAY_MS = 30_000;
+
+// Resolves after ms, or immediately when the signal aborts.
+function waitWithSignal(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(onDone, ms);
+    function onDone() {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", onDone);
+      resolve();
+    }
+    signal.addEventListener("abort", onDone);
+  });
+}
 
 interface UseContainerLogStreamOptions<TLogEntry> {
   containerId?: string;
@@ -25,7 +48,7 @@ interface UseContainerLogStreamOptions<TLogEntry> {
     host: string,
     options: ContainerLogsOptions,
     signal: AbortSignal
-  ) => AsyncGenerator<TLogEntry, void, unknown>;
+  ) => AsyncGenerator<TLogEntry | LogStreamHeartbeat, void, unknown>;
   scrollToBottom: (behavior?: ScrollBehavior) => void;
   onResetState?: () => void;
   onFetchError?: (error: Error) => void;
@@ -50,6 +73,7 @@ export function useContainerLogStream<TLogEntry>({
   const [logs, setLogs] = useState<TLogEntry[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
   const [isStreamPaused, setIsStreamPaused] = useState(false);
   const [bufferedCount, setBufferedCount] = useState(0);
   const [droppedCount, setDroppedCount] = useState(0);
@@ -60,6 +84,8 @@ export function useContainerLogStream<TLogEntry>({
   } | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const stopRequestedRef = useRef(false);
+  const lastActivityRef = useRef(0);
   const isStreamPausedRef = useRef(false);
   const bufferedLogsRef = useRef<TLogEntry[]>([]);
   const pendingLogsRef = useRef<TLogEntry[]>([]);
@@ -212,6 +238,15 @@ export function useContainerLogStream<TLogEntry>({
   }, [recordBufferedDroppedLines]);
 
   const handleFlushTick = useCallback(() => {
+    // Idle watchdog: abort a stream that has gone silent past the timeout so
+    // the loop in startStreaming reconnects. Aborting an already-aborted
+    // controller is a no-op.
+    if (
+      abortControllerRef.current &&
+      Date.now() - lastActivityRef.current > STREAM_IDLE_TIMEOUT_MS
+    ) {
+      abortControllerRef.current.abort();
+    }
     if (isStreamPausedRef.current) {
       syncBufferedLogs();
       return;
@@ -284,12 +319,14 @@ export function useContainerLogStream<TLogEntry>({
   ]);
 
   const stopStreaming = useCallback(() => {
+    stopRequestedRef.current = true;
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
     resetPauseAndBuffer();
     setIsStreaming(false);
+    setIsReconnecting(false);
   }, [resetPauseAndBuffer]);
 
   const startStreaming = useCallback(async () => {
@@ -304,45 +341,86 @@ export function useContainerLogStream<TLogEntry>({
     logsLengthRef.current = 0;
     pendingLogsRef.current = [];
 
+    stopRequestedRef.current = false;
+    let abortController: AbortController | null = null;
+    let hasReceivedFirstEntry = false;
+
+    stopFlushInterval();
+    flushIntervalRef.current = setInterval(handleFlushTick, STREAM_FLUSH_INTERVAL_MS);
+
     try {
-      const abortController = new AbortController();
-      abortControllerRef.current = abortController;
+      // One iteration per connection. A session that ends or errors without
+      // the user stopping it is retried with capped exponential backoff;
+      // receiving anything (entry or heartbeat) resets the backoff.
+      for (let attempt = 0; ; attempt++) {
+        abortController = new AbortController();
+        abortControllerRef.current = abortController;
+        lastActivityRef.current = Date.now();
 
-      const stream = streamLogsRef.current(
-        containerId,
-        host,
-        { tail, search },
-        abortController.signal
-      );
-      let hasReceivedFirstEntry = false;
+        if (attempt > 0) {
+          setIsReconnecting(true);
+          await waitWithSignal(
+            Math.min(RECONNECT_MIN_DELAY_MS * 2 ** (attempt - 1), RECONNECT_MAX_DELAY_MS),
+            abortController.signal
+          );
+          if (stopRequestedRef.current || abortController.signal.aborted) {
+            break;
+          }
+        }
 
-      stopFlushInterval();
-      flushIntervalRef.current = setInterval(handleFlushTick, STREAM_FLUSH_INTERVAL_MS);
+        try {
+          const stream = streamLogsRef.current(
+            containerId,
+            host,
+            // Reconnects follow from "now" so lines already on screen are
+            // not re-fetched and duplicated.
+            { tail: attempt === 0 ? tail : 0, search },
+            abortController.signal
+          );
 
-      for await (const entry of stream) {
-        if (abortController.signal.aborted) {
+          for await (const item of stream) {
+            if (abortController.signal.aborted) {
+              break;
+            }
+
+            lastActivityRef.current = Date.now();
+            attempt = 0;
+            setIsReconnecting(false);
+
+            if (!hasReceivedFirstEntry) {
+              hasReceivedFirstEntry = true;
+              setIsLoadingLogs(false);
+            }
+
+            if (isLogStreamHeartbeat(item)) {
+              continue;
+            }
+            const entry = item as TLogEntry;
+
+            if (isStreamPausedRef.current) {
+              bufferedLogsRef.current.push(entry);
+              continue;
+            }
+
+            pendingLogsRef.current.push(entry);
+          }
+        } catch (error) {
+          if (error instanceof Error) {
+            const message = error.message.toLowerCase();
+            const isAbort =
+              error.name === "AbortError" || message.includes("aborted");
+            // Reconnect attempts fail quietly; isReconnecting is the signal.
+            if (!isAbort && attempt === 0) {
+              onStreamErrorRef.current?.(error);
+            }
+          }
+        }
+
+        if (
+          stopRequestedRef.current ||
+          abortControllerRef.current !== abortController
+        ) {
           break;
-        }
-
-        if (!hasReceivedFirstEntry) {
-          hasReceivedFirstEntry = true;
-          setIsLoadingLogs(false);
-        }
-
-        if (isStreamPausedRef.current) {
-          bufferedLogsRef.current.push(entry);
-          continue;
-        }
-
-        pendingLogsRef.current.push(entry);
-      }
-    } catch (error) {
-      if (error instanceof Error) {
-        const message = error.message.toLowerCase();
-        const isAbort =
-          error.name === "AbortError" || message.includes("aborted");
-        if (!isAbort) {
-          onStreamErrorRef.current?.(error);
         }
       }
     } finally {
@@ -350,7 +428,10 @@ export function useContainerLogStream<TLogEntry>({
       flushPendingLogs();
       setIsLoadingLogs(false);
       setIsStreaming(false);
-      abortControllerRef.current = null;
+      setIsReconnecting(false);
+      if (abortControllerRef.current === abortController) {
+        abortControllerRef.current = null;
+      }
     }
   }, [
     containerId,
@@ -410,6 +491,7 @@ export function useContainerLogStream<TLogEntry>({
     droppedCount,
     fetchLogs,
     isLoadingLogs,
+    isReconnecting,
     isStreamPaused,
     isStreaming,
     logs,

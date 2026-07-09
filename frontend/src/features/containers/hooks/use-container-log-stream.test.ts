@@ -1,6 +1,8 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { LogStreamHeartbeat } from "@/features/containers/api/get-container-logs-parsed";
+
 import { useContainerLogStream } from "./use-container-log-stream";
 
 interface TestEntry {
@@ -9,14 +11,16 @@ interface TestEntry {
 }
 
 const entry = (id: number): TestEntry => ({ id, message: `line ${id}` });
+const heartbeat = (): LogStreamHeartbeat => ({ type: "heartbeat" });
 
-// A push-controlled async generator standing in for the NDJSON stream.
+// A push-controlled async generator standing in for the NDJSON stream. Like a
+// real fetch stream, a pending read ends when the signal aborts.
 function createControlledStream() {
-	const queue: TestEntry[] = [];
+	const queue: (TestEntry | LogStreamHeartbeat)[] = [];
 	let notify: (() => void) | null = null;
 	let ended = false;
 
-	const push = (...entries: TestEntry[]) => {
+	const push = (...entries: (TestEntry | LogStreamHeartbeat)[]) => {
 		queue.push(...entries);
 		notify?.();
 		notify = null;
@@ -28,16 +32,20 @@ function createControlledStream() {
 		notify = null;
 	};
 
-	async function* stream(): AsyncGenerator<TestEntry, void, unknown> {
+	async function* stream(
+		signal?: AbortSignal
+	): AsyncGenerator<TestEntry | LogStreamHeartbeat, void, unknown> {
 		while (true) {
 			while (queue.length > 0) {
 				const next = queue.shift();
 				if (next) yield next;
 			}
-			if (ended) return;
+			if (ended || signal?.aborted) return;
 			await new Promise<void>((resolve) => {
 				notify = resolve;
+				signal?.addEventListener("abort", () => resolve(), { once: true });
 			});
+			if (signal?.aborted) return;
 		}
 	}
 
@@ -56,6 +64,14 @@ function setup(options?: { maxLogLines?: number }) {
 	const controlled = createControlledStream();
 	const scrollToBottom = vi.fn();
 	const renderCount = { current: 0 };
+	const streamLogs = vi.fn(
+		(
+			_id: string,
+			_host: string,
+			_options: unknown,
+			signal: AbortSignal
+		) => controlled.stream(signal)
+	);
 
 	const hook = renderHook(() => {
 		renderCount.current += 1;
@@ -65,12 +81,12 @@ function setup(options?: { maxLogLines?: number }) {
 			tail: 100,
 			maxLogLines: options?.maxLogLines,
 			getLogs: vi.fn().mockResolvedValue([]),
-			streamLogs: () => controlled.stream(),
+			streamLogs,
 			scrollToBottom,
 		});
 	});
 
-	return { ...hook, controlled, scrollToBottom, renderCount };
+	return { ...hook, controlled, scrollToBottom, renderCount, streamLogs };
 }
 
 describe("useContainerLogStream", () => {
@@ -236,5 +252,85 @@ describe("useContainerLogStream", () => {
 		expect(result.current.isStreamPaused).toBe(false);
 		expect(result.current.bufferedCount).toBe(0);
 		expect(result.current.logs.map((e) => e.id)).toEqual([1, 2, 3, 4, 5]);
+	});
+
+	it("aborts a silent stream after the idle timeout and reconnects with backoff", async () => {
+		const { result, controlled, streamLogs } = setup();
+
+		await act(async () => {
+			void result.current.startStreaming();
+			controlled.push(entry(1));
+			await drainMicrotasks();
+		});
+		await act(async () => {
+			vi.advanceTimersByTime(100);
+		});
+		expect(result.current.logs.map((e) => e.id)).toEqual([1]);
+		expect(streamLogs).toHaveBeenCalledTimes(1);
+
+		// Silence past the 45s idle timeout: the watchdog aborts the session
+		// and schedules a reconnect.
+		await act(async () => {
+			vi.advanceTimersByTime(45_100);
+			await drainMicrotasks();
+		});
+		expect(result.current.isReconnecting).toBe(true);
+		expect(result.current.isStreaming).toBe(true);
+		expect(streamLogs).toHaveBeenCalledTimes(1); // still in the 1s backoff
+
+		await act(async () => {
+			vi.advanceTimersByTime(1_000);
+			await drainMicrotasks();
+		});
+		expect(streamLogs).toHaveBeenCalledTimes(2);
+
+		// Data on the new session clears the reconnecting state and appends
+		// without wiping what was already displayed.
+		await act(async () => {
+			controlled.push(entry(2));
+			await drainMicrotasks();
+		});
+		await act(async () => {
+			vi.advanceTimersByTime(100);
+		});
+		expect(result.current.isReconnecting).toBe(false);
+		expect(result.current.logs.map((e) => e.id)).toEqual([1, 2]);
+
+		act(() => {
+			result.current.stopStreaming();
+		});
+		expect(result.current.isStreaming).toBe(false);
+	});
+
+	it("skips heartbeats as log rows while they reset the idle timer", async () => {
+		const { result, controlled, streamLogs } = setup();
+
+		await act(async () => {
+			void result.current.startStreaming();
+			controlled.push(entry(1));
+			await drainMicrotasks();
+		});
+		await act(async () => {
+			vi.advanceTimersByTime(100);
+		});
+		expect(result.current.logs.map((e) => e.id)).toEqual([1]);
+
+		// 30s of silence, then a heartbeat, then 30s more: 60s total without
+		// entries, but the heartbeat keeps the stream alive.
+		await act(async () => {
+			vi.advanceTimersByTime(30_000);
+			controlled.push(heartbeat());
+			await drainMicrotasks();
+		});
+		await act(async () => {
+			vi.advanceTimersByTime(30_000);
+			await drainMicrotasks();
+		});
+
+		expect(streamLogs).toHaveBeenCalledTimes(1); // no reconnect happened
+		expect(result.current.isReconnecting).toBe(false);
+		expect(result.current.isStreaming).toBe(true);
+		// The heartbeat never shows up as a rendered row.
+		expect(result.current.logs.map((e) => e.id)).toEqual([1]);
 	});
 });
