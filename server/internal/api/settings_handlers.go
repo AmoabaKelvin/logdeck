@@ -325,11 +325,19 @@ func (ar *APIRouter) TestDockerHost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	WriteJsonResponse(w, http.StatusOK, map[string]any{
+	response := map[string]any{
 		"success":       true,
 		"message":       "Connection successful",
 		"dockerVersion": ping.APIVersion,
-	})
+	}
+	// Identify the engine (Docker or Podman) so the UI can say what it
+	// actually connected to. Best-effort: the connection test already passed.
+	if engine, version, err := tempClient.EngineInfo(ctx, "test"); err == nil {
+		response["engine"] = engine
+		response["engineVersion"] = version
+	}
+
+	WriteJsonResponse(w, http.StatusOK, response)
 }
 
 // TestCoolifyHost handles POST /api/v1/settings/test/coolify-host.

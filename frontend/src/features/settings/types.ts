@@ -45,4 +45,7 @@ export interface TestConnectionResult {
   success: boolean;
   message: string;
   dockerVersion?: string;
+  /** "Docker" or "Podman", when the server could identify the engine. */
+  engine?: string;
+  engineVersion?: string;
 }
