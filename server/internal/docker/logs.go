@@ -47,6 +47,11 @@ func parseDockerLogs(reader io.Reader, levelFilter string, searchRegex *regexp.R
 	return filtered, nil
 }
 
+// maxLineBufferSize caps the pending (newline-less) line buffer in the log
+// writers. An oversized chunk is flushed as its own log entry so a single
+// line without a newline cannot grow without bound.
+const maxLineBufferSize = 1 << 20 // 1 MiB
+
 // logWriter implements io.Writer and parses log lines
 type logWriter struct {
 	stream  string
@@ -78,6 +83,10 @@ func (w *logWriter) Write(p []byte) (n int, err error) {
 			entry := models.ParseLogLine(line, w.stream)
 			*w.entries = append(*w.entries, entry)
 		}
+	}
+
+	if len(w.buffer) > maxLineBufferSize {
+		w.Flush()
 	}
 
 	return len(p), nil
@@ -129,6 +138,14 @@ func (w *streamingLogWriter) Write(p []byte) (n int, err error) {
 			if encodeErr := w.emit(line); encodeErr != nil {
 				return 0, encodeErr
 			}
+		}
+	}
+
+	if len(w.buffer) > maxLineBufferSize {
+		line := strings.TrimSuffix(string(w.buffer), "\r")
+		w.buffer = nil
+		if encodeErr := w.emit(line); encodeErr != nil {
+			return 0, encodeErr
 		}
 	}
 

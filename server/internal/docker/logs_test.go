@@ -2,7 +2,10 @@ package docker
 
 import (
 	"bytes"
+	"encoding/json"
+	"io"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/AmoabaKelvin/logdeck/internal/models"
@@ -38,5 +41,95 @@ func TestParseDockerLogsGroupsStructuredContinuationLines(t *testing.T) {
 	}
 	if !strings.Contains(entries[0].Message, "Request received\nservice: \"api\"\nrequestId:") {
 		t.Fatalf("expected grouped message to include continuation fields, got %q", entries[0].Message)
+	}
+}
+
+func TestLogWriterLineBufferCap(t *testing.T) {
+	tests := []struct {
+		name        string
+		writes      []string
+		wantEntries int
+	}{
+		{
+			name:        "line under cap stays buffered until flush",
+			writes:      []string{strings.Repeat("a", 1024)},
+			wantEntries: 0,
+		},
+		{
+			name:        "oversized line flushed as its own entry",
+			writes:      []string{strings.Repeat("a", maxLineBufferSize+1)},
+			wantEntries: 1,
+		},
+		{
+			name:        "oversized line accumulated across writes",
+			writes:      []string{strings.Repeat("a", maxLineBufferSize), strings.Repeat("b", 10)},
+			wantEntries: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var entries []models.LogEntry
+			w := &logWriter{stream: "stdout", entries: &entries}
+			for _, chunk := range tt.writes {
+				if _, err := w.Write([]byte(chunk)); err != nil {
+					t.Fatalf("write failed: %v", err)
+				}
+			}
+			if len(entries) != tt.wantEntries {
+				t.Fatalf("expected %d entries, got %d", tt.wantEntries, len(entries))
+			}
+			if len(w.buffer) > maxLineBufferSize {
+				t.Fatalf("buffer exceeds cap: %d bytes", len(w.buffer))
+			}
+		})
+	}
+}
+
+func TestStreamingLogWriterLineBufferCap(t *testing.T) {
+	tests := []struct {
+		name        string
+		writes      []string
+		wantEntries int
+	}{
+		{
+			name:        "line under cap stays buffered until flush",
+			writes:      []string{strings.Repeat("a", 1024)},
+			wantEntries: 0,
+		},
+		{
+			name:        "oversized line emitted as its own entry",
+			writes:      []string{strings.Repeat("a", maxLineBufferSize+1)},
+			wantEntries: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			var mu sync.Mutex
+			_, pipeWriter := io.Pipe()
+			w := &streamingLogWriter{
+				stream:     "stdout",
+				encoder:    json.NewEncoder(&out),
+				encoderMu:  &mu,
+				pipeWriter: pipeWriter,
+			}
+			for _, chunk := range tt.writes {
+				if _, err := w.Write([]byte(chunk)); err != nil {
+					t.Fatalf("write failed: %v", err)
+				}
+			}
+			got := 0
+			if out.Len() > 0 {
+				got = strings.Count(strings.TrimRight(out.String(), "\n"), "\n") + 1
+			}
+			if got != tt.wantEntries {
+				t.Fatalf("expected %d emitted entries, got %d", tt.wantEntries, got)
+			}
+			if len(w.buffer) > maxLineBufferSize {
+				t.Fatalf("buffer exceeds cap: %d bytes", len(w.buffer))
+			}
+		})
 	}
 }

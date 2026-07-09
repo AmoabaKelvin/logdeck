@@ -263,7 +263,7 @@ func parseLogOptions(r *http.Request) models.LogOptions {
 	}
 
 	if tail := query.Get("tail"); tail != "" {
-		options.Tail = tail
+		options.Tail = clampTail(tail)
 	}
 
 	if details := query.Get("details"); details != "" {
@@ -283,6 +283,18 @@ func parseLogOptions(r *http.Request) models.LogOptions {
 	}
 
 	return options
+}
+
+// maxTailLines bounds how many log lines a single request can pull into
+// memory. "all" (and any other non-numeric value) is treated as the max.
+const maxTailLines = 10000
+
+func clampTail(tail string) string {
+	n, err := strconv.Atoi(tail)
+	if err != nil || n < 0 || n > maxTailLines {
+		return strconv.Itoa(maxTailLines)
+	}
+	return tail
 }
 
 func (ar *APIRouter) GetEnvVariables(w http.ResponseWriter, r *http.Request) {
