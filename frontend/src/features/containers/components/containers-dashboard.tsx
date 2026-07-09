@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Spinner } from "@/components/ui/spinner";
 
+import { ResourceNav } from "@/features/resources/components/resource-nav";
+
 import {
   removeContainer,
   restartContainer,
@@ -382,6 +384,7 @@ export function ContainersDashboard() {
 
   return (
     <div className="w-full space-y-8">
+      <ResourceNav />
       <ContainersSummaryCards
         totalContainers={containers.length}
         hostInfo={hostInfo}
