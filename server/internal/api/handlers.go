@@ -315,6 +315,10 @@ func parseLogOptions(r *http.Request) models.LogOptions {
 		options.Search = search
 	}
 
+	if level := query.Get("level"); level != "" {
+		options.Level = level
+	}
+
 	return options
 }
 
