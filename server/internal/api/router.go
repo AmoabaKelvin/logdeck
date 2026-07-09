@@ -67,6 +67,10 @@ func (ar *APIRouter) Routes() *chi.Mux {
 		// System stats - publicly available
 		r.Get("/system/stats", ar.GetSystemStats)
 
+		// Auth config - publicly available so the frontend can tell whether
+		// auth is enabled without probing the login endpoint
+		r.Get("/auth/config", ar.handleAuthConfig)
+
 		// Auth endpoints (always registered, dynamic behavior)
 		r.With(loginRateLimiter.middleware).Post("/auth/login", ar.handleLogin)
 
@@ -132,6 +136,13 @@ func (ar *APIRouter) registerSettingsRoutes(r chi.Router) {
 		r.Put("/auth", ar.UpdateAuth)
 		r.Post("/test/docker-host", ar.TestDockerHost)
 		r.Post("/test/coolify-host", ar.TestCoolifyHost)
+	})
+}
+
+// handleAuthConfig reports whether authentication is enabled. Public, no auth.
+func (ar *APIRouter) handleAuthConfig(w http.ResponseWriter, r *http.Request) {
+	WriteJsonResponse(w, http.StatusOK, map[string]bool{
+		"authEnabled": ar.registry.Auth() != nil,
 	})
 }
 
