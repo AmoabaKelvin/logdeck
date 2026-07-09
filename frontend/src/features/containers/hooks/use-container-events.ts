@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
 import {
-  type ContainerEvent,
-  streamContainerEvents,
+	type ContainerEvent,
+	streamContainerEvents,
 } from "../api/get-container-events";
 
 import { useDocumentVisible } from "./use-document-visible";
@@ -16,51 +16,51 @@ const MAX_RETRY_DELAY_MS = 30_000;
  * paused entirely while the document is hidden and resumed on visibility.
  */
 export function useContainerEvents(onEvent: (event: ContainerEvent) => void) {
-  const [isConnected, setIsConnected] = useState(false);
-  const isVisible = useDocumentVisible();
-  const onEventRef = useRef(onEvent);
+	const [isConnected, setIsConnected] = useState(false);
+	const isVisible = useDocumentVisible();
+	const onEventRef = useRef(onEvent);
 
-  useEffect(() => {
-    onEventRef.current = onEvent;
-  }, [onEvent]);
+	useEffect(() => {
+		onEventRef.current = onEvent;
+	}, [onEvent]);
 
-  useEffect(() => {
-    if (!isVisible) return;
+	useEffect(() => {
+		if (!isVisible) return;
 
-    const abortController = new AbortController();
-    let retryDelay = INITIAL_RETRY_DELAY_MS;
-    let retryTimeout: ReturnType<typeof setTimeout> | null = null;
+		const abortController = new AbortController();
+		let retryDelay = INITIAL_RETRY_DELAY_MS;
+		let retryTimeout: ReturnType<typeof setTimeout> | null = null;
 
-    const subscribe = async () => {
-      try {
-        const stream = streamContainerEvents(abortController.signal, () => {
-          setIsConnected(true);
-          retryDelay = INITIAL_RETRY_DELAY_MS;
-        });
-        for await (const event of stream) {
-          onEventRef.current(event);
-        }
-      } catch {}
+		const subscribe = async () => {
+			try {
+				const stream = streamContainerEvents(abortController.signal, () => {
+					setIsConnected(true);
+					retryDelay = INITIAL_RETRY_DELAY_MS;
+				});
+				for await (const event of stream) {
+					onEventRef.current(event);
+				}
+			} catch {}
 
-      setIsConnected(false);
-      if (abortController.signal.aborted) return;
+			setIsConnected(false);
+			if (abortController.signal.aborted) return;
 
-      retryTimeout = setTimeout(() => {
-        void subscribe();
-      }, retryDelay);
-      retryDelay = Math.min(retryDelay * 2, MAX_RETRY_DELAY_MS);
-    };
+			retryTimeout = setTimeout(() => {
+				void subscribe();
+			}, retryDelay);
+			retryDelay = Math.min(retryDelay * 2, MAX_RETRY_DELAY_MS);
+		};
 
-    void subscribe();
+		void subscribe();
 
-    return () => {
-      abortController.abort();
-      if (retryTimeout) {
-        clearTimeout(retryTimeout);
-      }
-      setIsConnected(false);
-    };
-  }, [isVisible]);
+		return () => {
+			abortController.abort();
+			if (retryTimeout) {
+				clearTimeout(retryTimeout);
+			}
+			setIsConnected(false);
+		};
+	}, [isVisible]);
 
-  return { isConnected };
+	return { isConnected };
 }

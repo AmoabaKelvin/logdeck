@@ -12,31 +12,31 @@ const EVENT_INVALIDATE_DEBOUNCE_MS = 300;
  * refetches), with polling as fallback while the stream is disconnected.
  */
 export function useLiveContainersQuery() {
-  const queryClient = useQueryClient();
-  const invalidateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  );
+	const queryClient = useQueryClient();
+	const invalidateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+		null,
+	);
 
-  const handleContainerEvent = useCallback(() => {
-    if (invalidateTimeoutRef.current !== null) return;
-    invalidateTimeoutRef.current = setTimeout(() => {
-      invalidateTimeoutRef.current = null;
-      void queryClient.invalidateQueries({
-        queryKey: ["containers"],
-        exact: true,
-      });
-    }, EVENT_INVALIDATE_DEBOUNCE_MS);
-  }, [queryClient]);
+	const handleContainerEvent = useCallback(() => {
+		if (invalidateTimeoutRef.current !== null) return;
+		invalidateTimeoutRef.current = setTimeout(() => {
+			invalidateTimeoutRef.current = null;
+			void queryClient.invalidateQueries({
+				queryKey: ["containers"],
+				exact: true,
+			});
+		}, EVENT_INVALIDATE_DEBOUNCE_MS);
+	}, [queryClient]);
 
-  useEffect(() => {
-    return () => {
-      if (invalidateTimeoutRef.current !== null) {
-        clearTimeout(invalidateTimeoutRef.current);
-      }
-    };
-  }, []);
+	useEffect(() => {
+		return () => {
+			if (invalidateTimeoutRef.current !== null) {
+				clearTimeout(invalidateTimeoutRef.current);
+			}
+		};
+	}, []);
 
-  const { isConnected } = useContainerEvents(handleContainerEvent);
+	const { isConnected } = useContainerEvents(handleContainerEvent);
 
-  return useContainersQuery({ eventsConnected: isConnected });
+	return useContainersQuery({ eventsConnected: isConnected });
 }
