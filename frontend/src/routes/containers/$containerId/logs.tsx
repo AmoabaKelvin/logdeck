@@ -1,5 +1,10 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import {
+	createFileRoute,
+	useCanGoBack,
+	useNavigate,
+	useRouter,
+} from "@tanstack/react-router";
 import { ArrowLeftIcon, ChevronDownIcon, TerminalIcon } from "lucide-react";
 import { useRef, useState } from "react";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -41,6 +46,8 @@ export const Route = createFileRoute("/containers/$containerId/logs")({
 function ContainerLogsPage() {
 	const { containerId: encodedContainerId } = Route.useParams();
 	const navigate = useNavigate();
+	const router = useRouter();
+	const canGoBack = useCanGoBack();
 	const queryClient = useQueryClient();
 
 	const [showLabels, setShowLabels] = useState(false);
@@ -94,9 +101,9 @@ function ContainerLogsPage() {
 									variant="ghost"
 									size="icon"
 									onClick={() =>
-										navigate({
-											to: "/",
-										})
+										canGoBack
+											? router.history.back()
+											: navigate({ to: "/" })
 									}
 								>
 									<ArrowLeftIcon className="size-4" />

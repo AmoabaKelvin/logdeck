@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { useCanGoBack, useNavigate, useRouter } from "@tanstack/react-router";
 import { ArrowLeftIcon, RefreshCcwIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
@@ -46,6 +46,9 @@ export function ResourcePage<T>({
 	filterText,
 }: ResourcePageProps<T>) {
 	const [filter, setFilter] = useState("");
+	const navigate = useNavigate();
+	const router = useRouter();
+	const canGoBack = useCanGoBack();
 
 	const filtered = useMemo(() => {
 		const query = filter.trim().toLowerCase();
@@ -59,10 +62,16 @@ export function ResourcePage<T>({
 		<div className="w-full space-y-4">
 			<div className="flex items-center justify-between gap-4">
 				<div className="flex items-center gap-2">
-					<Button variant="ghost" size="sm" className="h-9 shrink-0" asChild>
-						<Link to="/" aria-label="Back to dashboard">
-							<ArrowLeftIcon className="size-4" />
-						</Link>
+					<Button
+						variant="ghost"
+						size="sm"
+						className="h-9 shrink-0"
+						aria-label="Back to dashboard"
+						onClick={() =>
+							canGoBack ? router.history.back() : navigate({ to: "/" })
+						}
+					>
+						<ArrowLeftIcon className="size-4" />
 					</Button>
 					<h1 className="text-2xl font-bold tracking-tight">{title}</h1>
 				</div>

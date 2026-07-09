@@ -29,33 +29,60 @@ export function appendSamples(
 	return next;
 }
 
+// Buffers live at module scope so history survives route changes (component
+// unmounts) within one page load; only a reload resets them. The last-appended
+// reference guards against double-appending when several mounted components
+// receive the same react-query data.
+let containerHistory: StatsHistoryMap = {};
+let lastContainerStats: ContainerStats[] | undefined;
+
 /**
  * In-memory ring buffer of recent stats per container, fed from the stats
- * query data. History resets on page reload; that's fine.
+ * query data.
  */
 export function useContainerStatsHistory(
 	stats: ContainerStats[] | undefined,
 ): StatsHistoryMap {
-	const [history, setHistory] = useState<StatsHistoryMap>({});
+	const [history, setHistory] = useState<StatsHistoryMap>(
+		() => containerHistory,
+	);
 
 	useEffect(() => {
-		if (stats) setHistory((prev) => appendSamples(prev, stats));
+		if (stats && stats !== lastContainerStats) {
+			lastContainerStats = stats;
+			containerHistory = appendSamples(containerHistory, stats);
+		}
+		setHistory(containerHistory);
 	}, [stats]);
 
 	return history;
 }
 
+export interface SystemUsageSample {
+	cpuPercent: number;
+	memoryPercent: number;
+}
+
+let systemHistory: SystemUsageSample[] = [];
+let lastSystemSample: SystemUsageSample | undefined;
+
 /**
- * In-memory ring buffer of a single sampled reading (e.g. system usage).
- * Appends whenever the sample reference changes, capped at MAX_SAMPLES.
+ * In-memory ring buffer of system usage readings, appended whenever the
+ * sample reference changes, capped at MAX_SAMPLES.
  */
-export function useSampleHistory<T>(sample: T | undefined): T[] {
-	const [history, setHistory] = useState<T[]>([]);
+export function useSystemUsageHistory(
+	sample: SystemUsageSample | undefined,
+): SystemUsageSample[] {
+	const [history, setHistory] = useState<SystemUsageSample[]>(
+		() => systemHistory,
+	);
 
 	useEffect(() => {
-		if (sample !== undefined) {
-			setHistory((prev) => [...prev, sample].slice(-MAX_SAMPLES));
+		if (sample && sample !== lastSystemSample) {
+			lastSystemSample = sample;
+			systemHistory = [...systemHistory, sample].slice(-MAX_SAMPLES);
 		}
+		setHistory(systemHistory);
 	}, [sample]);
 
 	return history;
