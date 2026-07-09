@@ -7,6 +7,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/docker/docker/api/types"
 	"github.com/go-chi/chi/v5"
@@ -14,9 +16,22 @@ import (
 )
 
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins for now, similar to CORS
-	},
+	CheckOrigin: checkWebSocketOrigin,
+}
+
+// checkWebSocketOrigin allows non-browser clients (no Origin header) and
+// browser requests whose Origin host matches the request Host, preventing
+// cross-site WebSocket hijacking.
+func checkWebSocketOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(u.Host, r.Host)
 }
 
 type ResizeMessage struct {
@@ -55,12 +70,23 @@ func (ar *APIRouter) HandleTerminal(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Close()
 
-	done := make(chan struct{})
+	outputDone := make(chan struct{})
+	inputDone := make(chan struct{})
 
-	go streamContainerOutput(resp.Reader, ws, done)
-	go ar.forwardClientInput(ctx, host, execID, resp.Conn, io.NopCloser(resp.Conn), ws)
+	go streamContainerOutput(resp.Reader, ws, outputDone)
+	go func() {
+		defer close(inputDone)
+		// resp.Conn doubles as the closer: closing it on client disconnect
+		// tears down the container stream and unblocks resp.Reader.
+		ar.forwardClientInput(ctx, host, execID, resp.Conn, resp.Conn, ws)
+	}()
 
-	<-done
+	// Return when either direction finishes; the deferred ws.Close and
+	// resp.Close tear down the other side.
+	select {
+	case <-outputDone:
+	case <-inputDone:
+	}
 }
 
 func (ar *APIRouter) startExecSession(ctx context.Context, host, containerID string) (string, *types.HijackedResponse, error) {
