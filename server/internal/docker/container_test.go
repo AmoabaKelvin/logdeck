@@ -13,23 +13,27 @@ import (
 )
 
 type fakeRecreateAPI struct {
-	calls      []string
-	createErr  error
-	startErrOn string // container ID whose start should fail
+	calls         []string
+	stopErr       error
+	renameErr     error
+	createErr     error
+	startErrOn    string   // container ID whose start should fail
+	lastCreateEnv []string // env passed to the last ContainerCreate call
 }
 
 func (f *fakeRecreateAPI) ContainerStop(ctx context.Context, containerID string, options container.StopOptions) error {
 	f.calls = append(f.calls, "stop "+containerID)
-	return nil
+	return f.stopErr
 }
 
 func (f *fakeRecreateAPI) ContainerRename(ctx context.Context, containerID, newContainerName string) error {
 	f.calls = append(f.calls, "rename "+containerID+" "+newContainerName)
-	return nil
+	return f.renameErr
 }
 
 func (f *fakeRecreateAPI) ContainerCreate(ctx context.Context, config *container.Config, hostConfig *container.HostConfig, networkingConfig *network.NetworkingConfig, platform *ocispec.Platform, containerName string) (container.CreateResponse, error) {
 	f.calls = append(f.calls, "create "+containerName)
+	f.lastCreateEnv = config.Env
 	if f.createErr != nil {
 		return container.CreateResponse{}, f.createErr
 	}
@@ -86,6 +90,38 @@ func TestRecreateContainerWithEnv(t *testing.T) {
 			},
 		},
 		{
+			name:    "success on stopped container leaves replacement stopped",
+			api:     &fakeRecreateAPI{},
+			running: false,
+			wantID:  "new-container-id",
+			wantCalls: []string{
+				"stop abcdef1234567890",
+				"rename abcdef1234567890 " + tempName,
+				"create web",
+				"remove abcdef1234567890 force=false",
+			},
+		},
+		{
+			name:    "stop failure returns immediately with no rollback",
+			api:     &fakeRecreateAPI{stopErr: errors.New("stop failed")},
+			running: true,
+			wantErr: true,
+			wantCalls: []string{
+				"stop abcdef1234567890",
+			},
+		},
+		{
+			name:    "rename failure restarts the running original",
+			api:     &fakeRecreateAPI{renameErr: errors.New("rename failed")},
+			running: true,
+			wantErr: true,
+			wantCalls: []string{
+				"stop abcdef1234567890",
+				"rename abcdef1234567890 " + tempName,
+				"start abcdef1234567890",
+			},
+		},
+		{
 			name:    "create failure renames original back and restarts it",
 			api:     &fakeRecreateAPI{createErr: errors.New("create failed")},
 			running: true,
@@ -138,6 +174,9 @@ func TestRecreateContainerWithEnv(t *testing.T) {
 			}
 			if !reflect.DeepEqual(tt.api.calls, tt.wantCalls) {
 				t.Fatalf("call sequence mismatch:\ngot:  %v\nwant: %v", tt.api.calls, tt.wantCalls)
+			}
+			if tt.wantID != "" && !reflect.DeepEqual(tt.api.lastCreateEnv, []string{"A=2"}) {
+				t.Fatalf("expected replacement created with env [A=2], got %v", tt.api.lastCreateEnv)
 			}
 		})
 	}

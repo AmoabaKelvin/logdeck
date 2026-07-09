@@ -225,9 +225,13 @@ func recreateContainerWithEnv(ctx context.Context, apiClient containerRecreateAP
 		return "", err
 	}
 
-	if err := apiClient.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
-		rollback(resp.ID)
-		return "", err
+	// Only start the replacement if the original was running, so editing
+	// env vars on a stopped container leaves it stopped.
+	if wasRunning {
+		if err := apiClient.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+			rollback(resp.ID)
+			return "", err
+		}
 	}
 
 	// Replacement is running; removing the renamed original is best-effort.

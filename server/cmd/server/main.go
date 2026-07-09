@@ -97,11 +97,14 @@ func main() {
 	apiRouter := api.NewRouter(registry, manager, version)
 
 	// No WriteTimeout/IdleTimeout: log streaming and terminal WebSockets are
-	// long-lived connections and would be killed by them.
+	// long-lived connections and would be killed by them. ReadTimeout only
+	// bounds reading the request (headers + body), so hijacked WebSockets
+	// (unaffected after upgrade) and streaming responses (write-side) are safe.
 	server := &http.Server{
 		Addr:              ":8080",
 		Handler:           apiRouter,
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

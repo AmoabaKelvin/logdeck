@@ -14,13 +14,17 @@ func AccessLog(next http.Handler) http.Handler {
 		start := time.Now()
 		ww := chimiddleware.NewWrapResponseWriter(w, r.ProtoMajor)
 
-		next.ServeHTTP(ww, r)
+		// Deferred so panicked requests are still logged (their status reads
+		// 0 here; Recoverer above writes the actual 500 response).
+		defer func() {
+			slog.Info("request",
+				"method", r.Method,
+				"path", r.URL.Path,
+				"status", ww.Status(),
+				"duration", time.Since(start),
+			)
+		}()
 
-		slog.Info("request",
-			"method", r.Method,
-			"path", r.URL.Path,
-			"status", ww.Status(),
-			"duration", time.Since(start),
-		)
+		next.ServeHTTP(ww, r)
 	})
 }
