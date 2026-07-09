@@ -28,9 +28,9 @@ func NewConfig() *Config {
 	dockerHosts := parseDockerHosts()
 
 	// if we don't have any docker hosts, we should default back to
-	// the unix socket on the machine running logdeck.
+	// the local Docker or Podman socket on the machine running logdeck.
 	if len(dockerHosts) == 0 {
-		dockerHosts = []DockerHost{{Name: "local", Host: "unix:///var/run/docker.sock"}}
+		dockerHosts = []DockerHost{DefaultLocalHost()}
 	}
 
 	coolifyHosts := parseCoolifyHostConfigs()

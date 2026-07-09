@@ -143,12 +143,16 @@ export function DockerHostsSection({ config }: DockerHostsSectionProps) {
       { name: key, host: hostUrl },
       {
         onSuccess: (result) => {
+          const engineLabel =
+            result.engine && result.engineVersion
+              ? `${result.engine} ${result.engineVersion}`
+              : `Docker ${result.dockerVersion ?? ""}`;
           setTestResults((prev) => ({
             ...prev,
             [key]: {
               success: result.success,
               message: result.success
-                ? `Connected (Docker ${result.dockerVersion ?? ""})`
+                ? `Connected (${engineLabel})`
                 : result.message,
             },
           }));
@@ -277,7 +281,8 @@ export function DockerHostsSection({ config }: DockerHostsSectionProps) {
       <CardHeader>
         <CardTitle>Docker Hosts</CardTitle>
         <CardDescription>
-          Configure which Docker daemon sockets or remote hosts to connect to.
+          Configure which Docker or Podman sockets and remote hosts to connect
+          to.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

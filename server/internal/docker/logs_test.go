@@ -197,7 +197,7 @@ func TestFollowMonitorHeartbeatsOnlyWhenIdleAndStopsAfterClose(t *testing.T) {
 	go func() {
 		stdw := stdcopy.NewStdWriter(rawWriter, stdcopy.Stdout)
 		if _, err := stdw.Write([]byte("hello world\n")); err != nil {
-			t.Errorf("write log entry: %v", err)
+			t.Errorf("failed to write log entry: %v", err)
 		}
 	}()
 	line, err := reader.ReadString('\n')
