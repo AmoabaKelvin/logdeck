@@ -136,7 +136,7 @@ export function DockerHostsSection({ config }: DockerHostsSectionProps) {
 		setTestResults({});
 	}
 
-	function handleTest(key: string, hostUrl: string) {
+	function handleTest(key: string, name: string, hostUrl: string) {
 		setTestingKey(key);
 		setTestResults((prev) => {
 			const next = { ...prev };
@@ -144,7 +144,7 @@ export function DockerHostsSection({ config }: DockerHostsSectionProps) {
 			return next;
 		});
 		testMutation.mutate(
-			{ name: key, host: hostUrl },
+			{ name, host: hostUrl },
 			{
 				onSuccess: (result) => {
 					const engineLabel =
@@ -244,7 +244,7 @@ export function DockerHostsSection({ config }: DockerHostsSectionProps) {
 							variant="ghost"
 							size="sm"
 							disabled={testingKey === testKey}
-							onClick={() => handleTest(testKey, h.host)}
+							onClick={() => handleTest(testKey, h.name, h.host)}
 						>
 							{testingKey === testKey ? <Spinner className="size-3" /> : "Test"}
 						</Button>
