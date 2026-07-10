@@ -112,7 +112,8 @@ func (ar *APIRouter) registerContainerRoutes(r chi.Router) {
 		// Read-only routes (always available)
 		r.Get("/", ar.GetContainer)
 		r.Get("/logs/parsed", ar.GetContainerLogsParsed)
-		r.Get("/env", ar.GetEnvVariables)
+		// Env vars expose secrets, so read-scoped tokens are denied
+		r.With(auth.DenyReadScope).Get("/env", ar.GetEnvVariables)
 		r.Get("/resources", ar.GetContainerResources)
 
 		// Mutating routes (blocked in read-only mode)
@@ -126,7 +127,9 @@ func (ar *APIRouter) registerContainerRoutes(r chi.Router) {
 			mutating.Post("/remove", ar.RemoveContainer)
 			mutating.Put("/env", ar.UpdateEnvVariables)
 			mutating.Put("/resources", ar.UpdateContainerResources)
-			mutating.Get("/exec", ar.HandleTerminal)
+			// Exec is GET (websocket upgrade) but spawns a shell, so
+			// read-scoped tokens are denied explicitly
+			mutating.With(auth.DenyReadScope).Get("/exec", ar.HandleTerminal)
 		})
 	})
 }
@@ -135,6 +138,9 @@ func (ar *APIRouter) registerSettingsRoutes(r chi.Router) {
 	r.Route("/settings", func(r chi.Router) {
 		// Settings follow the same auth pattern — protected when auth is enabled
 		r.Use(auth.DynamicMiddleware(ar.registry.Auth, ar.lookupAPIToken))
+		// Settings expose host topology and token inventory, so read-scoped
+		// tokens are denied for the whole group
+		r.Use(auth.DenyReadScope)
 
 		r.Get("/", ar.GetSettings)
 		r.Put("/docker-hosts", ar.UpdateDockerHosts)

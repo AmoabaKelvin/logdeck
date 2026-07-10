@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -100,7 +101,9 @@ func TestDynamicMiddlewareReadScopeToken(t *testing.T) {
 		{"POST denied", "POST", "/api/v1/containers/abc/restart", http.StatusForbidden},
 		{"PUT denied", "PUT", "/api/v1/containers/abc/env", http.StatusForbidden},
 		{"DELETE denied", "DELETE", "/api/v1/settings/api-tokens/ldk_abcd1234", http.StatusForbidden},
-		{"exec websocket denied despite GET", "GET", "/api/v1/containers/abc/exec", http.StatusForbidden},
+		// Exec denial is route-scoped (DenyReadScope), not path-based, so a
+		// container legitimately named "exec" passes the auth middleware.
+		{"GET on container named exec allowed", "GET", "/api/v1/containers/exec", http.StatusOK},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -117,6 +120,56 @@ func TestDynamicMiddlewareReadScopeToken(t *testing.T) {
 			}
 			if tc.wantCode == http.StatusOK && gotUser.Role != APITokenScopeRead {
 				t.Errorf("expected role %q, got %q", APITokenScopeRead, gotUser.Role)
+			}
+		})
+	}
+}
+
+func TestDynamicMiddlewareUnknownScopeFailsClosed(t *testing.T) {
+	svc := testService(t)
+	// A hand-edited config with an unrecognized scope must not grant admin.
+	lookup := func(string) (string, string, bool) { return "typo", "readonly", true }
+
+	var gotUser models.User
+	handler := DynamicMiddleware(func() *Service { return svc }, lookup)(echoUserHandler(&gotUser))
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/v1/containers/abc/restart", nil)
+	r.Header.Set("Authorization", "Bearer "+APITokenPrefix+"typo-token")
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for unknown-scope token on mutating route, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDenyReadScope(t *testing.T) {
+	cases := []struct {
+		name     string
+		user     *models.User
+		wantCode int
+	}{
+		{"read token denied", &models.User{Username: "token:agent", Role: APITokenScopeRead}, http.StatusForbidden},
+		{"admin token allowed", &models.User{Username: "token:ci", Role: APITokenScopeAdmin}, http.StatusOK},
+		{"jwt session user allowed", &models.User{Username: "admin", Role: "admin"}, http.StatusOK},
+		{"no user (auth disabled) allowed", nil, http.StatusOK},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := DenyReadScope(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}))
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest("GET", "/api/v1/containers/abc/exec", nil)
+			if tc.user != nil {
+				ctx := context.WithValue(r.Context(), UserContextKey, *tc.user)
+				r = r.WithContext(ctx)
+			}
+			handler.ServeHTTP(w, r)
+
+			if w.Code != tc.wantCode {
+				t.Fatalf("expected %d, got %d: %s", tc.wantCode, w.Code, w.Body.String())
 			}
 		})
 	}

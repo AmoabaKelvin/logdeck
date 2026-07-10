@@ -23,11 +23,15 @@ const (
 
 // NormalizeAPITokenScope maps a stored scope to its effective value. Tokens
 // created before scopes existed have an empty scope and are treated as admin.
+// Any other unrecognized value (e.g. a hand-edited config) fails closed to
+// read so a typo never silently grants admin access.
 func NormalizeAPITokenScope(scope string) string {
-	if scope == APITokenScopeRead {
+	switch scope {
+	case "", APITokenScopeAdmin:
+		return APITokenScopeAdmin
+	default:
 		return APITokenScopeRead
 	}
-	return APITokenScopeAdmin
 }
 
 // GenerateAPIToken creates a new API token from 32 random bytes.

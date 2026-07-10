@@ -276,13 +276,23 @@ func TestReadScopeAPITokenEnforcement(t *testing.T) {
 		t.Fatalf("failed to parse create response: %v", err)
 	}
 
-	// Read routes are allowed.
+	// Plain read routes are allowed.
 	w = httptest.NewRecorder()
-	r = httptest.NewRequest("GET", "/api/v1/settings/api-tokens", nil)
+	r = httptest.NewRequest("GET", "/api/v1/auth/me", nil)
 	r.Header.Set("Authorization", "Bearer "+created.Token)
 	router.ServeHTTP(w, r)
 	if w.Code != http.StatusOK {
 		t.Errorf("expected 200 on read route with read token, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// A container that happens to be named "exec" is a plain read: the
+	// request passes auth and fails on the missing host param (400), not 403.
+	w = httptest.NewRecorder()
+	r = httptest.NewRequest("GET", "/api/v1/containers/exec", nil)
+	r.Header.Set("Authorization", "Bearer "+created.Token)
+	router.ServeHTTP(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 on container named exec with read token, got %d: %s", w.Code, w.Body.String())
 	}
 
 	// Mutating routes are denied.
@@ -295,13 +305,43 @@ func TestReadScopeAPITokenEnforcement(t *testing.T) {
 		t.Errorf("expected 403 on mutating route with read token, got %d: %s", w.Code, w.Body.String())
 	}
 
-	// The exec websocket endpoint is GET but mutating, so it is denied.
-	w = httptest.NewRecorder()
-	r = httptest.NewRequest("GET", "/api/v1/containers/abc123/exec", nil)
-	r.Header.Set("Authorization", "Bearer "+created.Token)
-	router.ServeHTTP(w, r)
-	if w.Code != http.StatusForbidden {
-		t.Errorf("expected 403 on exec endpoint with read token, got %d: %s", w.Code, w.Body.String())
+	// GET routes that are sensitive or mutating are denied too.
+	deniedReads := []string{
+		"/api/v1/containers/abc123/exec",
+		"/api/v1/containers/abc123/env",
+		"/api/v1/settings",
+		"/api/v1/settings/api-tokens",
+	}
+	for _, path := range deniedReads {
+		w = httptest.NewRecorder()
+		r = httptest.NewRequest("GET", path, nil)
+		r.Header.Set("Authorization", "Bearer "+created.Token)
+		router.ServeHTTP(w, r)
+		if w.Code != http.StatusForbidden {
+			t.Errorf("GET %s: expected 403 with read token, got %d: %s", path, w.Code, w.Body.String())
+		}
+	}
+
+	// Admin credentials (JWT session and admin token) are unaffected on the
+	// routes denied to read tokens.
+	adminToken := createToken(t, router, jwt, "full-access")
+	for _, bearer := range []string{jwt, adminToken.Token} {
+		w = httptest.NewRecorder()
+		r = httptest.NewRequest("GET", "/api/v1/settings", nil)
+		r.Header.Set("Authorization", "Bearer "+bearer)
+		router.ServeHTTP(w, r)
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200 on settings with admin credentials, got %d: %s", w.Code, w.Body.String())
+		}
+
+		// Passes auth; fails on the missing host param, not authorization.
+		w = httptest.NewRecorder()
+		r = httptest.NewRequest("GET", "/api/v1/containers/abc123/env", nil)
+		r.Header.Set("Authorization", "Bearer "+bearer)
+		router.ServeHTTP(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400 on env route with admin credentials, got %d: %s", w.Code, w.Body.String())
+		}
 	}
 }
 

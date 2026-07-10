@@ -35,6 +35,11 @@ func TestNormalizeAPITokenScope(t *testing.T) {
 		"":                 APITokenScopeAdmin, // legacy tokens without a scope are admin
 		APITokenScopeAdmin: APITokenScopeAdmin,
 		APITokenScopeRead:  APITokenScopeRead,
+		// Unknown values fail closed to read, never admin.
+		"readonly":  APITokenScopeRead,
+		"Read":      APITokenScopeRead,
+		"Admin":     APITokenScopeRead,
+		"superuser": APITokenScopeRead,
 	}
 	for in, want := range cases {
 		if got := NormalizeAPITokenScope(in); got != want {

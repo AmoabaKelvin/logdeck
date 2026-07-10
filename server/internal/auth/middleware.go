@@ -90,13 +90,27 @@ func validateAndServe(svc *Service, lookupAPIToken APITokenLookup, next http.Han
 	next.ServeHTTP(w, r.WithContext(ctx))
 }
 
-// isMutatingRequest reports whether a request mutates state. Anything other
-// than GET/HEAD/OPTIONS mutates; the container exec endpoint is GET because
-// it upgrades to a websocket, but it spawns a shell so it also mutates.
+// isMutatingRequest reports whether a request mutates state: anything other
+// than GET/HEAD/OPTIONS. GET routes that are nonetheless off-limits to read
+// tokens (exec, container env, settings) attach DenyReadScope explicitly.
 func isMutatingRequest(r *http.Request) bool {
 	switch r.Method {
 	case http.MethodGet, http.MethodHead, http.MethodOptions:
-		return strings.HasSuffix(r.URL.Path, "/exec")
+		return false
 	}
 	return true
+}
+
+// DenyReadScope is a route middleware that rejects requests authenticated by
+// a read-scoped API token. Attach it to routes that are read-shaped but
+// sensitive or mutating (exec, container env, settings). JWT session users
+// always carry the admin role, so they pass through unaffected.
+func DenyReadScope(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if user, ok := r.Context().Value(UserContextKey).(models.User); ok && user.Role == APITokenScopeRead {
+			http.Error(w, "This API token is read-only and cannot perform this operation", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }

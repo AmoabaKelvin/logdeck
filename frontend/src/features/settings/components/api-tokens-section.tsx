@@ -256,6 +256,7 @@ export function ApiTokensSection() {
 								onClick={() => {
 									setIsCreating(false);
 									setNewName("");
+									setNewScope("admin");
 								}}
 							>
 								Cancel
