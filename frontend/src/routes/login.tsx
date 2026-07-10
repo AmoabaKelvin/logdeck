@@ -27,7 +27,6 @@ function LoginPage() {
 
 		try {
 			await login(username, password);
-			// Redirect to home page on successful login
 			navigate({ to: "/" });
 		} catch (err) {
 			setError(

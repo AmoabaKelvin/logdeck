@@ -1,5 +1,6 @@
 import { redirect } from "@tanstack/react-router";
 
+import { getAuthToken } from "@/lib/api-client";
 import { isAuthEnabled } from "@/lib/auth-config";
 
 /**
@@ -13,7 +14,7 @@ import { isAuthEnabled } from "@/lib/auth-config";
  * and re-fetches the status (failures are not cached).
  */
 export async function requireAuthIfEnabled(): Promise<void> {
-	const token = localStorage.getItem("logdeck_auth_token");
+	const token = getAuthToken();
 	if (token) {
 		return;
 	}

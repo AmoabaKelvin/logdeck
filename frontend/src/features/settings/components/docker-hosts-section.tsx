@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,8 @@ import {
 import { useTestDockerHost, useUpdateDockerHosts } from "../hooks/use-settings";
 import type { DockerHostsConfig } from "../types";
 import { EnvBadge } from "./env-badge";
+import { showResultToast } from "./mutation-toast";
+import { SaveButton } from "./save-button";
 
 interface DockerHostsSectionProps {
 	config: DockerHostsConfig;
@@ -34,23 +36,19 @@ interface EditingHost {
 	host: string;
 }
 
+const EMPTY_HOST: EditingHost = { name: "", host: "" };
+
 export function DockerHostsSection({ config }: DockerHostsSectionProps) {
 	const envHosts = config.hosts.filter((h) => h.source === "env");
-	const [fileHosts, setFileHosts] = useState<EditingHost[]>(
-		config.hosts
-			.filter((h) => h.source !== "env")
-			.map(({ name, host }) => ({ name, host })),
-	);
+	const originalFileHosts = config.hosts
+		.filter((h) => h.source !== "env")
+		.map(({ name, host }) => ({ name, host }));
+
+	const [fileHosts, setFileHosts] = useState<EditingHost[]>(originalFileHosts);
 	const [editingIndex, setEditingIndex] = useState<number | null>(null);
-	const [editingHost, setEditingHost] = useState<EditingHost>({
-		name: "",
-		host: "",
-	});
+	const [editingHost, setEditingHost] = useState<EditingHost>(EMPTY_HOST);
 	const [isAdding, setIsAdding] = useState(false);
-	const [newHost, setNewHost] = useState<EditingHost>({
-		name: "",
-		host: "",
-	});
+	const [newHost, setNewHost] = useState<EditingHost>(EMPTY_HOST);
 	const [testResults, setTestResults] = useState<
 		Record<string, { success: boolean; message: string }>
 	>({});
@@ -59,13 +57,6 @@ export function DockerHostsSection({ config }: DockerHostsSectionProps) {
 	const updateMutation = useUpdateDockerHosts();
 	const testMutation = useTestDockerHost();
 
-	const originalFileHosts = useMemo(
-		() =>
-			config.hosts
-				.filter((h) => h.source !== "env")
-				.map(({ name, host }) => ({ name, host })),
-		[config.hosts],
-	);
 	const hasChanges =
 		fileHosts.length !== originalFileHosts.length ||
 		fileHosts.some(
@@ -75,13 +66,7 @@ export function DockerHostsSection({ config }: DockerHostsSectionProps) {
 		);
 
 	function handleSave() {
-		updateMutation.mutate(
-			fileHosts.map(({ name, host }) => ({ name, host })),
-			{
-				onSuccess: (msg) => toast.success(msg),
-				onError: (err) => toast.error(err.message),
-			},
-		);
+		updateMutation.mutate(fileHosts, showResultToast);
 	}
 
 	function handleRemove(index: number) {
@@ -96,7 +81,7 @@ export function DockerHostsSection({ config }: DockerHostsSectionProps) {
 
 	function handleCancelEdit() {
 		setEditingIndex(null);
-		setEditingHost({ name: "", host: "" });
+		setEditingHost(EMPTY_HOST);
 	}
 
 	function handleSaveEdit() {
@@ -122,7 +107,7 @@ export function DockerHostsSection({ config }: DockerHostsSectionProps) {
 		next[editingIndex] = { ...editingHost };
 		setFileHosts(next);
 		setEditingIndex(null);
-		setEditingHost({ name: "", host: "" });
+		setEditingHost(EMPTY_HOST);
 		setTestResults({});
 	}
 
@@ -146,7 +131,7 @@ export function DockerHostsSection({ config }: DockerHostsSectionProps) {
 			...fileHosts,
 			{ name: trimmedName, host: newHost.host.trim() },
 		]);
-		setNewHost({ name: "", host: "" });
+		setNewHost(EMPTY_HOST);
 		setIsAdding(false);
 		setTestResults({});
 	}
@@ -322,11 +307,7 @@ export function DockerHostsSection({ config }: DockerHostsSectionProps) {
 						</TableHeader>
 						<TableBody>
 							{allHosts.map((h) =>
-								renderRow(
-									{ name: h.name, host: h.host },
-									h.isEnv,
-									h.isEnv ? undefined : h.fileIndex,
-								),
+								renderRow(h, h.isEnv, h.isEnv ? undefined : h.fileIndex),
 							)}
 						</TableBody>
 					</Table>
@@ -373,7 +354,7 @@ export function DockerHostsSection({ config }: DockerHostsSectionProps) {
 								variant="ghost"
 								onClick={() => {
 									setIsAdding(false);
-									setNewHost({ name: "", host: "" });
+									setNewHost(EMPTY_HOST);
 								}}
 							>
 								Cancel
@@ -393,20 +374,10 @@ export function DockerHostsSection({ config }: DockerHostsSectionProps) {
 						</Button>
 					)}
 					{hasChanges && (
-						<Button
-							size="sm"
-							disabled={updateMutation.isPending}
+						<SaveButton
+							isPending={updateMutation.isPending}
 							onClick={handleSave}
-						>
-							{updateMutation.isPending ? (
-								<>
-									<Spinner className="size-3" />
-									Saving...
-								</>
-							) : (
-								"Save changes"
-							)}
-						</Button>
+						/>
 					)}
 				</div>
 			</CardContent>

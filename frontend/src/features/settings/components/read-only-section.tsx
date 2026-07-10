@@ -1,5 +1,3 @@
-import { toast } from "sonner";
-
 import {
 	Card,
 	CardContent,
@@ -13,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { useUpdateReadOnly } from "../hooks/use-settings";
 import type { ReadOnlyConfig } from "../types";
 import { EnvBadge } from "./env-badge";
+import { showResultToast } from "./mutation-toast";
 
 interface ReadOnlySectionProps {
 	config: ReadOnlyConfig;
@@ -23,10 +22,7 @@ export function ReadOnlySection({ config }: ReadOnlySectionProps) {
 	const mutation = useUpdateReadOnly();
 
 	function handleToggle(checked: boolean) {
-		mutation.mutate(checked, {
-			onSuccess: (msg) => toast.success(msg),
-			onError: (err) => toast.error(err.message),
-		});
+		mutation.mutate(checked, showResultToast);
 	}
 
 	return (

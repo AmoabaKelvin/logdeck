@@ -1,5 +1,3 @@
-import { useMemo } from "react";
-
 import { useNetworksQuery } from "../hooks/use-resources";
 import type { NetworkInfo } from "../types";
 import type { ResourceColumn } from "./resource-page";
@@ -10,10 +8,7 @@ export function NetworksPage() {
 	const items = data?.items ?? [];
 	const hostErrors = data?.hostErrors ?? [];
 
-	const showHost = useMemo(
-		() => new Set(items.map((item) => item.host)).size > 1,
-		[items],
-	);
+	const showHost = new Set(items.map((item) => item.host)).size > 1;
 
 	const columns: ResourceColumn<NetworkInfo>[] = [
 		{ header: "Name", cell: (network) => network.name },
