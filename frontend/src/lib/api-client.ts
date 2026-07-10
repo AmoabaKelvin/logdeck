@@ -42,23 +42,14 @@ export async function authenticatedFetch(
 	return response;
 }
 
-/**
- * Helper to get the current auth token
- */
 export function getAuthToken(): string | null {
 	return localStorage.getItem(TOKEN_KEY);
 }
 
-/**
- * Helper to set the auth token
- */
 export function setAuthToken(token: string): void {
 	localStorage.setItem(TOKEN_KEY, token);
 }
 
-/**
- * Helper to remove the auth token
- */
 export function removeAuthToken(): void {
 	localStorage.removeItem(TOKEN_KEY);
 }

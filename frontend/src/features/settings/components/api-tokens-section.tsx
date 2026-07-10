@@ -38,6 +38,7 @@ import {
 	useDeleteApiToken,
 } from "../hooks/use-settings";
 import type { APIToken, CreatedAPIToken } from "../types";
+import { showResultToast } from "./mutation-toast";
 
 export function ApiTokensSection() {
 	const { data, isLoading, error } = useApiTokens();
@@ -85,10 +86,7 @@ export function ApiTokensSection() {
 
 	function handleRevoke() {
 		if (!tokenToRevoke) return;
-		deleteMutation.mutate(tokenToRevoke.prefix, {
-			onSuccess: (msg) => toast.success(msg),
-			onError: (err) => toast.error(err.message),
-		});
+		deleteMutation.mutate(tokenToRevoke.prefix, showResultToast);
 		setTokenToRevoke(null);
 	}
 

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
 import {
 	Card,
 	CardContent,
@@ -11,12 +10,12 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 
 import { useUpdateAuth } from "../hooks/use-settings";
 import type { AuthConfig } from "../types";
 import { EnvBadge } from "./env-badge";
+import { SaveButton } from "./save-button";
 
 interface AuthSectionProps {
 	config: AuthConfig;
@@ -123,16 +122,7 @@ export function AuthSection({ config }: AuthSectionProps) {
 				)}
 
 				{hasChanges && !isEnv && (
-					<Button size="sm" disabled={mutation.isPending} onClick={handleSave}>
-						{mutation.isPending ? (
-							<>
-								<Spinner className="size-3" />
-								Saving...
-							</>
-						) : (
-							"Save changes"
-						)}
-					</Button>
+					<SaveButton isPending={mutation.isPending} onClick={handleSave} />
 				)}
 			</CardContent>
 		</Card>

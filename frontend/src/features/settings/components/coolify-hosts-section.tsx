@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,8 @@ import {
 } from "../hooks/use-settings";
 import type { CoolifyHostsConfig } from "../types";
 import { EnvBadge } from "./env-badge";
+import { showResultToast } from "./mutation-toast";
+import { SaveButton } from "./save-button";
 
 interface CoolifyHostsSectionProps {
 	config: CoolifyHostsConfig;
@@ -42,15 +44,15 @@ const EMPTY_HOST: EditingHost = { hostName: "", apiURL: "", apiToken: "" };
 
 export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
 	const envHosts = config.hosts.filter((h) => h.source === "env");
-	const [fileHosts, setFileHosts] = useState<EditingHost[]>(
-		config.hosts
-			.filter((h) => h.source !== "env")
-			.map(({ hostName, apiURL, apiToken }) => ({
-				hostName,
-				apiURL,
-				apiToken,
-			})),
-	);
+	const originalFileHosts = config.hosts
+		.filter((h) => h.source !== "env")
+		.map(({ hostName, apiURL, apiToken }) => ({
+			hostName,
+			apiURL,
+			apiToken,
+		}));
+
+	const [fileHosts, setFileHosts] = useState<EditingHost[]>(originalFileHosts);
 	const [editingIndex, setEditingIndex] = useState<number | null>(null);
 	const [editingHost, setEditingHost] = useState<EditingHost>(EMPTY_HOST);
 	const [isAdding, setIsAdding] = useState(false);
@@ -63,17 +65,6 @@ export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
 	const updateMutation = useUpdateCoolifyHosts();
 	const testMutation = useTestCoolifyHost();
 
-	const originalFileHosts = useMemo(
-		() =>
-			config.hosts
-				.filter((h) => h.source !== "env")
-				.map(({ hostName, apiURL, apiToken }) => ({
-					hostName,
-					apiURL,
-					apiToken,
-				})),
-		[config.hosts],
-	);
 	const hasChanges =
 		fileHosts.length !== originalFileHosts.length ||
 		fileHosts.some(
@@ -84,10 +75,7 @@ export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
 		);
 
 	function handleSave() {
-		updateMutation.mutate(fileHosts, {
-			onSuccess: (msg) => toast.success(msg),
-			onError: (err) => toast.error(err.message),
-		});
+		updateMutation.mutate(fileHosts, showResultToast);
 	}
 
 	function handleRemove(index: number) {
@@ -348,15 +336,7 @@ export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
 						</TableHeader>
 						<TableBody>
 							{allHosts.map((h) =>
-								renderRow(
-									{
-										hostName: h.hostName,
-										apiURL: h.apiURL,
-										apiToken: h.apiToken,
-									},
-									h.isEnv,
-									h.isEnv ? undefined : h.fileIndex,
-								),
+								renderRow(h, h.isEnv, h.isEnv ? undefined : h.fileIndex),
 							)}
 						</TableBody>
 					</Table>
@@ -436,19 +416,10 @@ export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
 						</Button>
 					)}
 					{hasChanges && (
-						<Button
-							size="sm"
-							disabled={updateMutation.isPending}
+						<SaveButton
+							isPending={updateMutation.isPending}
 							onClick={handleSave}
-						>
-							{updateMutation.isPending ? (
-								<>
-									<Spinner className="size-3" /> Saving...
-								</>
-							) : (
-								"Save changes"
-							)}
-						</Button>
+						/>
 					)}
 				</div>
 			</CardContent>
