@@ -74,8 +74,10 @@ type HostError struct {
 }
 
 // healthFromStatus extracts the healthcheck state from a container list Status
-// string, e.g. "Up 3 hours (healthy)". Docker and Podman's compat API both
-// embed it this way. Returns "" for containers without a healthcheck.
+// string. Docker embeds "(healthy)", "(unhealthy)", or "(health: starting)" in
+// the list Status string, e.g. "Up 3 hours (healthy)"; Podman's Docker-compat
+// list API does not, so on Podman the field is absent. Returns "" when no
+// health suffix is present.
 func healthFromStatus(status string) string {
 	switch {
 	case strings.HasSuffix(status, "(healthy)"):

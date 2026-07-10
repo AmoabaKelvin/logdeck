@@ -51,7 +51,7 @@ func TestMapContainerEventSkipsNonContainerTypes(t *testing.T) {
 }
 
 func TestMapContainerEventSkipsUnwatchedActions(t *testing.T) {
-	for _, action := range []events.Action{"exec_start: bash", "attach", "health_status: healthy"} {
+	for _, action := range []events.Action{"exec_start: bash", "attach"} {
 		msg := events.Message{
 			Type:   events.ContainerEventType,
 			Action: action,
@@ -61,6 +61,26 @@ func TestMapContainerEventSkipsUnwatchedActions(t *testing.T) {
 		if _, ok := mapContainerEvent("local", msg); ok {
 			t.Fatalf("expected action %q to be skipped", action)
 		}
+	}
+}
+
+func TestMapContainerEventMapsHealthStatusActions(t *testing.T) {
+	msg := events.Message{
+		Type:   events.ContainerEventType,
+		Action: "health_status: healthy",
+		Actor: events.Actor{
+			ID:         "abc123",
+			Attributes: map[string]string{"name": "web"},
+		},
+		Time: 1700000000,
+	}
+
+	event, ok := mapContainerEvent("local", msg)
+	if !ok {
+		t.Fatal("expected health_status event to be mapped")
+	}
+	if event.Action != "health_status: healthy" {
+		t.Fatalf("expected action %q, got %q", "health_status: healthy", event.Action)
 	}
 }
 
