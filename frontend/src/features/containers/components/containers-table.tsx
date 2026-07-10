@@ -104,8 +104,8 @@ interface ContainersTableProps {
 	filteredContainers: ContainerInfo[];
 	groupedItems: GroupedContainers[] | null;
 	pageItems: ContainerInfo[];
-	pendingAction: { id: string; type: ContainerActionType } | null;
-	pendingComposeAction: { project: string; type: ComposeAction } | null;
+	pendingActions: ReadonlyMap<string, ContainerActionType>;
+	pendingComposeActions: ReadonlyMap<string, ComposeAction>;
 	isReadOnly: boolean;
 	statsMap: ContainerStatsMap;
 	statsHistory: StatsHistoryMap;
@@ -126,8 +126,8 @@ export function ContainersTable({
 	filteredContainers,
 	groupedItems,
 	pageItems,
-	pendingAction,
-	pendingComposeAction,
+	pendingActions,
+	pendingComposeActions,
 	isReadOnly,
 	statsMap,
 	statsHistory,
@@ -140,16 +140,14 @@ export function ContainersTable({
 	onRetry,
 }: ContainersTableProps) {
 	const isPending = (action: ContainerActionType, id: string) =>
-		pendingAction?.id === id && pendingAction.type === action;
+		pendingActions.get(id) === action;
 
-	const isBusy = (id: string) => pendingAction?.id === id;
+	const isBusy = (id: string) => pendingActions.has(id);
 
 	const isComposePending = (action: ContainerActionType, project: string) =>
-		pendingComposeAction?.project === project &&
-		pendingComposeAction.type === action;
+		pendingComposeActions.get(project) === action;
 
-	const isComposeBusy = (project: string) =>
-		pendingComposeAction?.project === project;
+	const isComposeBusy = (project: string) => pendingComposeActions.has(project);
 
 	// Only real compose groups get stack actions; the "Standalone" fallback
 	// group has no compose project label to act on.

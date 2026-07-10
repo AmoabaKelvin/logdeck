@@ -80,8 +80,8 @@ export function ContainersDashboard() {
 	const [isLogsSheetOpen, setIsLogsSheetOpen] = useState(false);
 
 	const {
-		pendingAction,
-		pendingComposeAction,
+		pendingActions,
+		pendingComposeActions,
 		confirmAction,
 		isConfirmActionPending,
 		startContainerAction,
@@ -268,8 +268,8 @@ export function ContainersDashboard() {
 					filteredContainers={filteredContainers}
 					groupedItems={groupedItems}
 					pageItems={pageItems}
-					pendingAction={pendingAction}
-					pendingComposeAction={pendingComposeAction}
+					pendingActions={pendingActions}
+					pendingComposeActions={pendingComposeActions}
 					isReadOnly={isReadOnly}
 					statsMap={statsMap}
 					statsHistory={statsHistory}

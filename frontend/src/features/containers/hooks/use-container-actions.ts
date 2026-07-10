@@ -33,25 +33,52 @@ const containerActionFns: Record<
 /**
  * Container and compose lifecycle actions with pending state and a
  * confirmation step for destructive actions (stop/remove).
+ *
+ * In-flight actions are tracked per key (container id or compose project)
+ * so concurrent actions on different rows don't clobber each other's
+ * pending state: an action settling on row B must not clear row A's
+ * spinner while A is still running.
  */
 export function useContainerActions(refetch: () => Promise<unknown>) {
-	const [pendingAction, setPendingAction] = useState<{
-		id: string;
-		type: ContainerActionType;
-	} | null>(null);
-	const [pendingComposeAction, setPendingComposeAction] = useState<{
-		project: string;
-		type: ComposeAction;
-	} | null>(null);
+	const [pendingActions, setPendingActions] = useState<
+		ReadonlyMap<string, ContainerActionType>
+	>(new Map());
+	const [pendingComposeActions, setPendingComposeActions] = useState<
+		ReadonlyMap<string, ComposeAction>
+	>(new Map());
 	const [confirmAction, setConfirmAction] = useState<ConfirmableAction | null>(
 		null,
 	);
+
+	const beginPending = (id: string, type: ContainerActionType) => {
+		setPendingActions((prev) => new Map(prev).set(id, type));
+	};
+
+	const endPending = (id: string) => {
+		setPendingActions((prev) => {
+			const next = new Map(prev);
+			next.delete(id);
+			return next;
+		});
+	};
+
+	const beginComposePending = (project: string, type: ComposeAction) => {
+		setPendingComposeActions((prev) => new Map(prev).set(project, type));
+	};
+
+	const endComposePending = (project: string) => {
+		setPendingComposeActions((prev) => {
+			const next = new Map(prev);
+			next.delete(project);
+			return next;
+		});
+	};
 
 	const executeAction = async (
 		actionType: ContainerActionType,
 		container: ContainerInfo,
 	) => {
-		setPendingAction({ id: container.id, type: actionType });
+		beginPending(container.id, actionType);
 		try {
 			const message = await containerActionFns[actionType](
 				container.id,
@@ -68,7 +95,7 @@ export function useContainerActions(refetch: () => Promise<unknown>) {
 				toast.error("Unexpected error while performing container action.");
 			}
 		} finally {
-			setPendingAction(null);
+			endPending(container.id);
 		}
 	};
 
@@ -80,7 +107,7 @@ export function useContainerActions(refetch: () => Promise<unknown>) {
 		const groupHosts = Array.from(
 			new Set(group.items.map((container) => container.host)),
 		);
-		setPendingComposeAction({ project: group.project, type: actionType });
+		beginComposePending(group.project, actionType);
 		try {
 			const results = await Promise.all(
 				groupHosts.map((host) =>
@@ -108,7 +135,7 @@ export function useContainerActions(refetch: () => Promise<unknown>) {
 				toast.error("Unexpected error while performing compose action.");
 			}
 		} finally {
-			setPendingComposeAction(null);
+			endComposePending(group.project);
 		}
 	};
 
@@ -147,12 +174,11 @@ export function useContainerActions(refetch: () => Promise<unknown>) {
 
 	const isConfirmActionPending =
 		!!confirmAction &&
-		pendingAction?.id === confirmAction.container.id &&
-		pendingAction?.type === confirmAction.type;
+		pendingActions.get(confirmAction.container.id) === confirmAction.type;
 
 	return {
-		pendingAction,
-		pendingComposeAction,
+		pendingActions,
+		pendingComposeActions,
 		confirmAction,
 		isConfirmActionPending,
 		startContainerAction,
