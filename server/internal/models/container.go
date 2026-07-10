@@ -10,6 +10,7 @@ type ContainerInfo struct {
 	Created int64             `json:"created"`
 	State   string            `json:"state"`
 	Status  string            `json:"status"`
+	Health  string            `json:"health,omitempty"`
 	Labels  map[string]string `json:"labels,omitempty"`
 	Host    string            `json:"host"`
 }

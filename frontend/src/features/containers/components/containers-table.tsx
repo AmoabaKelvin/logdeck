@@ -40,6 +40,7 @@ import {
 	formatCreatedDate,
 	formatMemoryStats,
 	getComposeProject,
+	getHealthBadgeClass,
 	getStateBadgeClass,
 	isCoolifyManaged,
 	toTitleCase,
@@ -175,9 +176,20 @@ export function ContainersTable({
 					{container.image}
 				</TableCell>
 				<TableCell className="h-16 px-4">
-					<Badge className={`${getStateBadgeClass(container.state)} border-0`}>
-						{toTitleCase(container.state)}
-					</Badge>
+					<div className="flex items-center gap-1.5">
+						<Badge
+							className={`${getStateBadgeClass(container.state)} border-0`}
+						>
+							{toTitleCase(container.state)}
+						</Badge>
+						{container.health && (
+							<Badge
+								className={`${getHealthBadgeClass(container.health)} border-0`}
+							>
+								{toTitleCase(container.health)}
+							</Badge>
+						)}
+					</div>
 				</TableCell>
 				<TableCell className="h-16 px-4 text-sm">
 					{state !== "running" ? (

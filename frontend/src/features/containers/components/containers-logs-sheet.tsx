@@ -22,6 +22,7 @@ import {
 	formatContainerName,
 	formatCreatedDate,
 	getContainerUrlIdentifier,
+	getHealthBadgeClass,
 	getStateBadgeClass,
 	isCoolifyManaged,
 	toTitleCase,
@@ -135,6 +136,18 @@ export function ContainersLogsSheet({
 												</Badge>
 											</span>
 										</div>
+										{container.health && (
+											<div className="grid grid-cols-3 gap-4">
+												<span className="text-muted-foreground">Health</span>
+												<span className="col-span-2">
+													<Badge
+														className={`${getHealthBadgeClass(container.health)} border-0`}
+													>
+														{toTitleCase(container.health)}
+													</Badge>
+												</span>
+											</div>
+										)}
 										<div className="grid grid-cols-3 gap-4">
 											<span className="text-muted-foreground">Status</span>
 											<span className="col-span-2 font-medium">

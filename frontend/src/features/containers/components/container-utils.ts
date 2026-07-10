@@ -73,6 +73,19 @@ export function getStateBadgeClass(state: string) {
 	}
 }
 
+export function getHealthBadgeClass(health: string) {
+	switch (health) {
+		case "healthy":
+			return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+		case "unhealthy":
+			return "bg-rose-500/10 text-rose-700 dark:text-rose-400";
+		case "starting":
+			return "bg-amber-500/10 text-amber-700 dark:text-amber-400";
+		default:
+			return "bg-muted text-muted-foreground";
+	}
+}
+
 export function groupByCompose(
 	containers: ContainerInfo[],
 ): GroupedContainers[] {
