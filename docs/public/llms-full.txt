@@ -1,0 +1,211 @@
+# LogDeck — full documentation
+
+LogDeck is an open-source (GPL-3.0), self-hosted dashboard and CLI for Docker and Podman containers. It provides real-time log streaming with search and level filters, container stats with 5-minute sparklines, multi-host management (unix socket, TCP, or SSH), Compose stack tools, live resource-limit editing, a web terminal, environment-variable editing with optional Coolify sync, optional JWT authentication with API tokens, and a read-only mode.
+
+- Website: https://logdeck.dev
+- Source: https://github.com/AmoabaKelvin/logdeck
+- Docker image: https://hub.docker.com/r/amoabakelvin/logdeck (amoabakelvin/logdeck:latest)
+- License: GPL-3.0
+- Author: Amoaba Kelvin
+
+The server is a single Go binary with the web frontend embedded. No database is required; all state comes from the Docker/Podman API.
+
+## Installation
+
+### Docker Compose (recommended)
+
+```yaml
+services:
+  logdeck:
+    image: amoabakelvin/logdeck:latest
+    container_name: logdeck
+    ports:
+      - "8123:8080"
+    environment:
+      # Optional: manage multiple Docker hosts
+      # DOCKER_HOSTS: local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.example.com
+
+      # Optional: enable authentication
+      # JWT_SECRET: your-super-secret-key-min-32-chars
+      # ADMIN_USERNAME: admin
+      # ADMIN_PASSWORD_SALT: your-random-salt-change-this
+      # ADMIN_PASSWORD: your-sha256-hash
+
+      # Optional: Coolify integration (host names must match DOCKER_HOSTS)
+      # COOLIFY_CONFIGS: local|https://your-coolify-instance.com|your-api-token
+    volumes:
+      # Docker socket for container management
+      - /var/run/docker.sock:/var/run/docker.sock
+      # /proc for system stats (CPU, memory)
+      - /proc:/host/proc:ro
+      # Mount SSH keys if you use ssh:// hosts
+      # - ~/.ssh:/root/.ssh:ro
+    restart: unless-stopped
+```
+
+Start with `docker-compose up -d`, then open http://localhost:8123.
+
+### Docker run
+
+```bash
+docker run -d \
+  --name logdeck \
+  -p 8123:8080 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /proc:/host/proc:ro \
+  --restart unless-stopped \
+  amoabakelvin/logdeck:latest
+```
+
+To update: `docker-compose pull && docker-compose up -d`, or stop/remove the container, `docker pull amoabakelvin/logdeck:latest`, and run again.
+
+Security notes: the Docker socket gives full access to the daemon — run LogDeck on trusted networks or enable authentication. If you only need log viewing, mount the socket read-only (`:ro`) and enable read-only mode. In production, put LogDeck behind a reverse proxy (Nginx, Traefik) with TLS; WebSocket upgrade headers must be forwarded.
+
+## Environment variables
+
+All configuration is via environment variables.
+
+- `DOCKER_HOSTS` (optional): comma-separated hosts to manage, `name=host` format, supporting `unix://`, `tcp://`, and `ssh://` URLs. Default: `local=unix:///var/run/docker.sock`. Example: `DOCKER_HOSTS=local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.example.com`. For `ssh://` targets, mount SSH keys or forward an SSH agent into the container. Host names appear throughout the UI and CLI.
+- `JWT_SECRET` (required for auth): secret key used to sign JWT tokens, at least 32 characters. Generate with `openssl rand -base64 32`.
+- `ADMIN_USERNAME` (required for auth): admin username for logging in.
+- `ADMIN_PASSWORD_SALT` (required for auth): random salt for password hashing. Generate with `openssl rand -hex 32`.
+- `ADMIN_PASSWORD` (required for auth): SHA256 hash of (password + salt), concatenated directly — never plain text. Generate with `echo -n "YOUR_PASSWORDYOUR_SALT" | shasum -a 256 | awk '{print $1}'`.
+- `READONLY_MODE` (optional): `true` blocks all mutating operations (start, stop, restart, remove, env and resource updates). Can also be toggled from the Settings page in the UI; when the environment variable is set it takes precedence and the UI toggle is disabled.
+- `COOLIFY_CONFIGS` (optional): per-host Coolify configuration in `hostName|apiURL|apiToken` format, comma-separated for multiple hosts. Host names must match `DOCKER_HOSTS`. When set, environment-variable changes made in LogDeck are synced to the Coolify API so they persist across redeployments. Coolify-managed containers are detected automatically via Docker labels and badged in the UI. Sync is best-effort: if the Coolify API is unreachable, the container update still succeeds.
+
+Authentication is completely optional: if the auth variables are unset, LogDeck runs without authentication (fine for local development or trusted networks).
+
+## Features
+
+- Real-time log streaming: WebSocket-based live logs with auto-scroll toggle, configurable line limits, timestamp visibility toggle, and stdout/stderr support.
+- Advanced filtering: full-text search, log-level filters (ERROR, WARN, INFO, DEBUG), regex pattern matching, date range filtering, color-coded levels.
+- Log export: download parsed or raw logs as text files with timestamps preserved.
+- Container discovery: real-time status, container details (name, image, status, uptime), host info, system resource usage, grouping by project, network, or label.
+- Multi-host management: connect to local sockets, remote TCP endpoints, or SSH hosts via `DOCKER_HOSTS`; unified container list with host badges; host-aware actions.
+- Container management: start, stop, restart, remove (with confirmation), inspect details, environment variables, volumes, ports, and labels.
+- Environment variable management: add, edit, and delete variables with live container recreation; optional Coolify sync.
+- Compose stack tools: start, stop, or restart every container in a stack; aggregated stack logs merged by timestamp with color-coded container badges; works with Docker Compose and podman-compose.
+- Stats and trends: live CPU and memory per container, sparkline trends covering the last five minutes, per-host engine stats, system stats for the LogDeck machine.
+- Resource limits and restart policies: edit memory limits, CPU limits, and restart policy live via the engine's update API — no container restart. Human-friendly inputs (512m, 1g).
+- Images, volumes, and networks: read-only listings aggregated across all hosts with text filtering.
+- Web terminal: a real shell in any running container via WebSocket, full XTerm.js emulation, 10,000-line scrollback, copy-to-clipboard.
+- CLI: the scriptable `logdeck` command-line client (see below).
+- API access tokens: create and revoke under Settings -> API Tokens; prefixed `ldk_`, shown in full only once at creation; sent as `Authorization: Bearer <token>`.
+- Optional authentication: JWT-based, salted SHA256 password hashing, can be fully disabled.
+- Read-only mode: blocks all mutating operations; toggle in Settings or pin with `READONLY_MODE`.
+- UI: dark/light mode, responsive design, keyboard shortcuts (press `?` for the cheat sheet), virtualized log lists for large volumes.
+
+Planned: log persistence and history, alerting on log patterns, custom log parsing rules.
+
+## CLI reference
+
+`logdeck` is a command-line client for a running LogDeck server. It talks to the same HTTP API as the web interface, so containers, logs, stats, events, and compose stacks are all available from the terminal. It is fully non-interactive and built for scripting and AI agents: every command supports JSON output (`-o json`), errors go to stderr, and exit codes are consistent (0 success, 1 runtime error, 2 usage error).
+
+### Install
+
+Latest release binary (macOS and Linux, amd64/arm64):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/AmoabaKelvin/logdeck/main/install.sh | sh
+```
+
+Binaries are published on GitHub Releases with checksums; the installer picks the right one and installs to `/usr/local/bin` or `~/.local/bin`. Check with `logdeck --version`. Or build from source: `cd server && go build ./cmd/logdeck`.
+
+### Connection and authentication
+
+Connect once with `logdeck login` — it verifies the connection and saves it as a named context, kubectl-style:
+
+```bash
+logdeck login --url https://logdeck.example.com --token ldk_... --name prod
+logdeck status        # now talks to prod
+```
+
+Contexts persist in `~/.config/logdeck/config.json` (respects `XDG_CONFIG_HOME`), created with `0600` permissions; the CLI never prints a saved token, only its `ldk_` prefix.
+
+```bash
+logdeck context list          # name, url, token prefix, current marker
+logdeck context use staging   # switch the current context
+logdeck context rm old        # delete a context
+logdeck logout                # remove the token from the current (or named) context, keeping its URL
+```
+
+The token is sent as `Authorization: Bearer <token>`. When the server has authentication disabled, no token is needed. On a 401 the CLI tells you to authenticate with an API token created in LogDeck Settings, via `--token` or `LOGDECK_TOKEN`.
+
+Resolution order — URL and token resolve independently from the first source that provides each:
+
+1. Explicit `--url` / `--token` flags
+2. `LOGDECK_URL` / `LOGDECK_TOKEN` environment variables
+3. The active context from the config file (`--context <name>` selects another saved context for one invocation)
+4. Default `http://localhost:8080`
+
+`logdeck status` shows which source supplied the URL and token.
+
+### Output formats
+
+Every command accepts `-o/--output`:
+
+- `table` (default): compact aligned columns for humans.
+- `json`: a single JSON document for one-shot commands; NDJSON (one JSON object per line) for streaming commands (`logs --follow`, `events`).
+
+Timestamps are RFC3339. No colors, spinners, prompts, or pagination.
+
+### Commands
+
+- `login`: verify a server connection and save it as the current context. `logdeck login --url https://logdeck.example.com --token ldk_... --name prod`
+- `context`: manage saved contexts: `list`, `use <name>`, `rm <name>`.
+- `logout`: remove the saved token from the current (or a named) context, keeping its URL.
+- `status`: server health, version, per-host summary, and where the connection settings came from (flag, env, or context). Exits nonzero if the server is unreachable.
+- `containers`: list containers across all hosts, with optional filters. `logdeck containers --state running --host prod`
+- `stacks`: list compose projects (grouped by `com.docker.compose.project` / `io.podman.compose.project` labels) with container counts and hosts.
+- `inspect`: full inspect data for one container; table mode shows key facts, `-o json` prints the complete document. `logdeck inspect web -o json`
+- `logs`: read or follow the parsed logs of a container, or a whole compose stack with `--stack`. `--since`/`--until` accept RFC3339 timestamps or relative durations (`30s`, `15m`, `2h`, `1d`). Examples: `logdeck logs web --tail 200 --level ERROR --since 1h`, `logdeck logs web --follow`, `logdeck logs --stack myapp --search "timeout" --since 30m`. Stack logs are merged by timestamp with the container name per line; following a stack is limited to its first 20 containers, one-shot stack reads batch beyond that automatically.
+- `grep`: search the recent logs of every running container across all hosts, merged by timestamp. Bounded to the last 15 minutes by default. `logdeck grep "connection refused" --since 1h --level ERROR`
+- `stats`: CPU and memory usage for all running containers, or one. `logdeck stats web`
+- `events`: stream container lifecycle events (start, stop, die, ...). Streams until interrupted, or `--for 30s` to read for a fixed duration.
+- `start` / `stop` / `restart` / `rm`: container lifecycle actions. Containers match by exact name first, then ID prefix; ambiguous matches list candidates and `--host` disambiguates. `logdeck restart web`
+- `stack`: start, stop, or restart every container of a compose project, on every host that has it unless `--host` narrows it. `logdeck stack restart myapp`
+- `env`: print a container's environment variables as `KEY=value` lines. `logdeck env web`
+- `resources`: show or update a container's resource limits and restart policy. Memory accepts human units (`512m`, `1.5g`), CPUs accept fractions. `logdeck resources set web --memory 512m --cpus 1.5 --restart on-failure --max-retries 3`
+- `images` / `volumes` / `networks`: read-only listings across all hosts, with an optional `--host` filter.
+
+### Using with AI agents
+
+A typical investigation without a browser:
+
+```bash
+# One-time setup (or use LOGDECK_URL/LOGDECK_TOKEN in CI)
+logdeck login --url https://logdeck.example.com --token ldk_...
+
+# What is running, and is the server healthy?
+logdeck status -o json
+logdeck containers -o json
+
+# Anything failing right now?
+logdeck grep "error|exception|panic" --since 15m -o json
+
+# Zoom into the suspect service
+logdeck logs api --tail 500 --level ERROR --since 1h -o json
+logdeck inspect api -o json
+logdeck stats api -o json
+
+# Act, then confirm
+logdeck restart api
+logdeck logs api --follow
+```
+
+Notes for agents:
+
+- `-o json` always emits a single JSON document on stdout for one-shot commands; streaming commands emit NDJSON.
+- Errors go to stderr as `{"error": "..."}` in JSON mode; stdout stays clean for parsing.
+- Exit codes: 0 success, 1 runtime/server error, 2 usage error.
+- `--since`/`--until` accept relative durations, so no date math is needed.
+- `logdeck grep` is the fastest way to find which container is emitting an error across an entire deployment.
+
+## API tokens
+
+API tokens give the CLI and external tools their own credentials, so the admin login never has to be shared. They are managed entirely in the UI — no environment variables involved:
+
+- Create and revoke tokens under Settings -> API Tokens.
+- Tokens are prefixed `ldk_` and shown in full only once, at creation.
+- Requests authenticate with an `Authorization: Bearer <token>` header.
+- Tokens only matter when authentication is enabled; on an open instance the API is reachable without them.

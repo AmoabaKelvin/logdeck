@@ -1,0 +1,18 @@
+# LogDeck
+
+> LogDeck is an open-source (GPL-3.0), self-hosted dashboard and CLI for Docker and Podman. It streams container logs in real time with search and level filters, shows container stats with sparklines, manages containers across multiple hosts (unix socket, TCP, or SSH), and operates on whole Compose stacks. It ships as a single Docker image (amoabakelvin/logdeck) plus a scriptable `logdeck` command-line client, with optional JWT authentication, API tokens, and a read-only mode.
+
+## Docs
+
+- [Getting started](https://logdeck.dev/docs/getting-started): What LogDeck is, why it exists, and the quickest path to a running instance.
+- [Installation](https://logdeck.dev/docs/installation): Docker Compose and docker run setups, socket mounting, updating, and troubleshooting.
+- [Features](https://logdeck.dev/docs/features): Full feature list — log streaming, filtering, stats, multi-host, stacks, terminal, tokens.
+- [CLI reference](https://logdeck.dev/docs/cli): The `logdeck` CLI — install, contexts and authentication, and every command.
+- [Configuration](https://logdeck.dev/docs/configuration): Environment variables, authentication setup, Coolify integration, read-only mode, reverse proxies.
+- [Demo](https://logdeck.dev/demo): Interactive in-browser demo of the LogDeck UI, no installation required.
+- [Full docs for LLMs](https://logdeck.dev/llms-full.txt): All essential documentation inlined in one markdown file.
+
+## Source
+
+- [GitHub repository](https://github.com/AmoabaKelvin/logdeck): Source code, issues, and releases.
+- [Docker Hub image](https://hub.docker.com/r/amoabakelvin/logdeck): The amoabakelvin/logdeck server image.

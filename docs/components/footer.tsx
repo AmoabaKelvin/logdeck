@@ -14,8 +14,7 @@ export function Footer() {
               <span className="font-bold text-lg">LogDeck</span>
             </div>
             <p className="text-sm text-muted-foreground">
-              The most intuitive tool for monitoring Docker container logs and
-              management.
+              Open-source dashboard and CLI for Docker and Podman.
             </p>
           </div>
 
@@ -45,6 +44,14 @@ export function Footer() {
                   className="hover:text-foreground transition-colors"
                 >
                   Features
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/docs/cli"
+                  className="hover:text-foreground transition-colors"
+                >
+                  CLI
                 </Link>
               </li>
               <li>

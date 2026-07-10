@@ -3,8 +3,9 @@ import { CodeBlock } from "@/components/landing/code-block"
 import { Separator } from "@/components/ui/separator"
 
 export const metadata: Metadata = {
-  title: "Getting Started",
-  description: "Learn how to get started with LogDeck, the intuitive Docker container log viewer and management tool.",
+  title: "Getting started",
+  description: "What LogDeck is and how to deploy it: a self-hosted, open-source dashboard for Docker and Podman container logs, stats, and management. Running in minutes.",
+  alternates: { canonical: "/docs/getting-started" },
 }
 
 export default function GettingStartedPage() {
@@ -35,12 +36,14 @@ export default function GettingStartedPage() {
         </p>
         <ul className="mb-8 space-y-2">
           <li><strong>Real-time log streaming</strong> - Watch your container logs update in real-time with automatic scrolling</li>
-          <li><strong>Multi-host management</strong> - Connect to multiple Docker daemons (local, TCP, or SSH) and manage them from one UI</li>
+          <li><strong>Multi-host management</strong> - Connect to multiple Docker or Podman daemons (local, TCP, or SSH) and manage them from one UI</li>
           <li><strong>Advanced filtering</strong> - Search, filter by log level, and use regex to find exactly what you need</li>
-          <li><strong>Container management</strong> - Start, stop, restart, and remove containers with a single click</li>
-          <li><strong>Beautiful UI</strong> - A modern, responsive interface that works on desktop and mobile</li>
+          <li><strong>Container management</strong> - Start, stop, restart, and remove containers, or operate on whole Compose stacks at once</li>
+          <li><strong>Stats and trends</strong> - Live CPU and memory per container, with sparklines covering recent history</li>
+          <li><strong>Live resource tuning</strong> - Edit memory limits, CPU limits, and restart policies with no container downtime</li>
+          <li><strong>A scriptable CLI</strong> - Everything the UI can see, from your terminal, with JSON output for scripts and AI agents</li>
           <li><strong>Zero configuration</strong> - Works out of the box with sensible defaults</li>
-          <li><strong>Optional authentication</strong> - Secure your instance or run it completely open</li>
+          <li><strong>Optional authentication</strong> - JWT login and API tokens, or run it completely open</li>
         </ul>
 
         <Separator className="my-12" />
@@ -89,6 +92,9 @@ export default function GettingStartedPage() {
           </li>
           <li>
             <a href="/docs/features">Features</a> - Discover all the features LogDeck offers
+          </li>
+          <li>
+            <a href="/docs/cli">CLI</a> - Install the logdeck command-line client and work from the terminal
           </li>
           <li>
             <a href="/docs/configuration">Configuration</a> - Configure authentication, environment variables, and more

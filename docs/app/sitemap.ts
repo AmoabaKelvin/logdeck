@@ -12,16 +12,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 1,
     },
     {
-      url: `${baseUrl}#features`,
+      url: `${baseUrl}/demo`,
       lastModified: currentDate,
       changeFrequency: "monthly",
-      priority: 0.9,
-    },
-    {
-      url: `${baseUrl}#installation`,
-      lastModified: currentDate,
-      changeFrequency: "monthly",
-      priority: 0.9,
+      priority: 0.8,
     },
     {
       url: `${baseUrl}/docs/getting-started`,
@@ -37,6 +31,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
     {
       url: `${baseUrl}/docs/features`,
+      lastModified: currentDate,
+      changeFrequency: "monthly",
+      priority: 0.8,
+    },
+    {
+      url: `${baseUrl}/docs/cli`,
       lastModified: currentDate,
       changeFrequency: "monthly",
       priority: 0.8,

@@ -1,7 +1,8 @@
-import { Hero } from "@/components/landing/hero"
+import { Cli } from "@/components/landing/cli"
 import { Features } from "@/components/landing/features"
-import { Screenshots } from "@/components/landing/screenshots"
+import { Hero } from "@/components/landing/hero"
 import { Installation } from "@/components/landing/installation"
+import { Screenshots } from "@/components/landing/screenshots"
 
 export default function Home() {
   return (
@@ -9,6 +10,7 @@ export default function Home() {
       <Hero />
       <Features />
       <Screenshots />
+      <Cli />
       <Installation />
     </div>
   )

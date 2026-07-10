@@ -12,7 +12,8 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Features",
   description:
-    "Explore all the features LogDeck offers for Docker container log viewing and management.",
+    "Every LogDeck feature: real-time Docker and Podman log streaming, container stats, multi-host management, Compose stack tools, web terminal, and API tokens.",
+  alternates: { canonical: "/docs/features" },
 };
 
 const features = [
@@ -142,6 +143,40 @@ const features = [
     ],
   },
   {
+    title: "Command-Line Interface",
+    description:
+      "A scriptable logdeck CLI that talks to the server's HTTP API — built for automation and AI agents.",
+    items: [
+      "List containers and stacks, inspect, read/follow/search logs, and check stats from the terminal",
+      "logdeck grep searches the recent logs of every running container across all hosts",
+      "Lifecycle actions, resource limits, and compose stack controls",
+      "Persistent named contexts with logdeck login, kubectl-style",
+      "Table output for humans, JSON/NDJSON output (-o json) for machines",
+    ],
+  },
+  {
+    title: "Interactive Terminal",
+    description:
+      "Open a real shell in any running container without leaving the browser.",
+    items: [
+      "WebSocket-based container terminal access",
+      "Full terminal emulation with XTerm.js",
+      "10,000 line scrollback history",
+      "Copy-to-clipboard support",
+    ],
+  },
+  {
+    title: "API Access Tokens",
+    description:
+      "Give the CLI and external tools their own credentials instead of sharing your login.",
+    items: [
+      "Create and revoke tokens from Settings → API Tokens",
+      "Tokens are prefixed ldk_ and shown only once at creation",
+      "Sent as an Authorization: Bearer header on the HTTP API",
+      "Work alongside JWT sessions used by the web UI",
+    ],
+  },
+  {
     title: "Optional Authentication",
     description:
       "Secure your LogDeck instance or run it completely open based on your needs.",
@@ -161,7 +196,7 @@ const features = [
       "View logs without container management capabilities",
       "Prevents start, stop, restart, and remove operations",
       "Perfect for production environments",
-      "Can be toggled via environment variable",
+      "Toggle from the Settings page, or pin it with the READONLY_MODE environment variable",
     ],
   },
 ];
@@ -243,7 +278,8 @@ export default function FeaturesPage() {
           </li>
           <li>
             <strong>Keyboard Shortcuts</strong> - Navigate and control LogDeck
-            efficiently with keyboard shortcuts
+            efficiently with keyboard shortcuts, with a built-in cheat sheet
+            overlay (press <code>?</code>)
           </li>
           <li>
             <strong>Virtualized Lists</strong> - Handle thousands of log lines
@@ -281,14 +317,8 @@ export default function FeaturesPage() {
           future releases:
         </p>
         <ul>
-          <li>
-            Multi-container log viewing (view logs from multiple containers
-            simultaneously)
-          </li>
           <li>Log persistence and history</li>
           <li>Alert system for specific log patterns</li>
-          <li>Container stats and metrics visualization</li>
-          <li>Docker Compose integration</li>
           <li>Custom log parsing rules</li>
         </ul>
 

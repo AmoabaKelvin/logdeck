@@ -13,7 +13,8 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Installation",
   description:
-    "Complete guide to installing LogDeck using Docker Compose, Docker Run, or from source.",
+    "Install the self-hosted LogDeck server with Docker Compose or docker run, mount the Docker socket, configure environment variables, and update or troubleshoot.",
+  alternates: { canonical: "/docs/installation" },
 };
 
 export default function InstallationPage() {
@@ -330,6 +331,28 @@ docker pull amoabakelvin/logdeck:latest
             language="bash"
           />
         </div>
+
+        <Separator className="my-12" />
+
+        <h2 className="mb-4 text-3xl font-bold tracking-tight">
+          Installing the CLI (Optional)
+        </h2>
+        <p className="mb-6 text-base">
+          The <code>logdeck</code> command-line client talks to your running
+          LogDeck server, so you can read logs, check stats, and manage
+          containers from the terminal or from scripts:
+        </p>
+        <div className="mb-6">
+          <CodeBlock
+            code="curl -fsSL https://raw.githubusercontent.com/AmoabaKelvin/logdeck/main/install.sh | sh"
+            language="bash"
+          />
+        </div>
+        <p className="mb-8 text-base">
+          It installs a single binary for macOS or Linux (amd64/arm64). See the{" "}
+          <a href="/docs/cli">CLI guide</a> for connecting to your server and
+          the full command reference.
+        </p>
 
         <Separator className="my-12" />
 
