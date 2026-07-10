@@ -79,7 +79,7 @@ func (ar *APIRouter) Routes() *chi.Mux {
 
 		// All other routes go through dynamic auth middleware
 		r.Group(func(protected chi.Router) {
-			protected.Use(auth.DynamicMiddleware(ar.registry.Auth))
+			protected.Use(auth.DynamicMiddleware(ar.registry.Auth, ar.lookupAPIToken))
 
 			protected.Get("/auth/me", ar.handleGetMe)
 			protected.Get("/events", ar.GetContainerEvents)
@@ -135,13 +135,16 @@ func (ar *APIRouter) registerContainerRoutes(r chi.Router) {
 func (ar *APIRouter) registerSettingsRoutes(r chi.Router) {
 	r.Route("/settings", func(r chi.Router) {
 		// Settings follow the same auth pattern — protected when auth is enabled
-		r.Use(auth.DynamicMiddleware(ar.registry.Auth))
+		r.Use(auth.DynamicMiddleware(ar.registry.Auth, ar.lookupAPIToken))
 
 		r.Get("/", ar.GetSettings)
 		r.Put("/docker-hosts", ar.UpdateDockerHosts)
 		r.Put("/coolify-hosts", ar.UpdateCoolifyHosts)
 		r.Put("/read-only", ar.UpdateReadOnly)
 		r.Put("/auth", ar.UpdateAuth)
+		r.Get("/api-tokens", ar.ListAPITokens)
+		r.Post("/api-tokens", ar.CreateAPIToken)
+		r.Delete("/api-tokens/{prefix}", ar.DeleteAPIToken)
 		r.Post("/test/docker-host", ar.TestDockerHost)
 		r.Post("/test/coolify-host", ar.TestCoolifyHost)
 	})

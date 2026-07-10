@@ -11,10 +11,20 @@ import (
 
 // FileConfig represents the JSON config file structure.
 type FileConfig struct {
-	DockerHosts  []DockerHost          `json:"dockerHosts,omitempty"`
-	CoolifyHosts []CoolifyHostConfig   `json:"coolifyHosts,omitempty"`
-	ReadOnly     *bool                 `json:"readOnly,omitempty"`
-	Auth         *FileAuthConfig       `json:"auth,omitempty"`
+	DockerHosts  []DockerHost        `json:"dockerHosts,omitempty"`
+	CoolifyHosts []CoolifyHostConfig `json:"coolifyHosts,omitempty"`
+	ReadOnly     *bool               `json:"readOnly,omitempty"`
+	Auth         *FileAuthConfig     `json:"auth,omitempty"`
+	APITokens    []APIToken          `json:"apiTokens,omitempty"`
+}
+
+// APIToken represents a stored API access token. Only the SHA256 hash of the
+// token is persisted; the raw token is shown to the user exactly once.
+type APIToken struct {
+	Name      string `json:"name"`
+	Hash      string `json:"hash"`
+	Prefix    string `json:"prefix"`
+	CreatedAt string `json:"createdAt"`
 }
 
 // FileAuthConfig represents auth settings in the config file.
@@ -49,12 +59,12 @@ type Manager struct {
 	mu          sync.RWMutex
 	filePath    string
 	envSnapshot EnvSnapshot
-	envConfig   *Config          // config derived purely from env vars
-	fileConfig  FileConfig       // config from file
-	merged      *Config          // final merged config
-	sources     ConfigSources    // per-category source tracking
-	onChange    []func(*Config)  // callbacks when config changes
-	generation  uint64           // incremented on each merge to detect stale callbacks
+	envConfig   *Config         // config derived purely from env vars
+	fileConfig  FileConfig      // config from file
+	merged      *Config         // final merged config
+	sources     ConfigSources   // per-category source tracking
+	onChange    []func(*Config) // callbacks when config changes
+	generation  uint64          // incremented on each merge to detect stale callbacks
 }
 
 // ConfigSources tracks the source of each config category.
@@ -262,6 +272,31 @@ func (m *Manager) UpdateAuth(mutate func(current *FileAuthConfig) (*FileAuthConf
 		return err
 	}
 	m.remerge() // unlocks m.mu before firing callbacks
+	return nil
+}
+
+// UpdateAPITokens applies a mutation function to the stored API tokens
+// atomically. Tokens live only in the file config (never env), so no remerge
+// is needed — readers access them through FileConfigSnapshot.
+func (m *Manager) UpdateAPITokens(mutate func(current []APIToken) ([]APIToken, error)) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Clone to prevent mutate from modifying the live config in-place.
+	current := make([]APIToken, len(m.fileConfig.APITokens))
+	copy(current, m.fileConfig.APITokens)
+
+	updated, err := mutate(current)
+	if err != nil {
+		return err
+	}
+
+	old := m.fileConfig.APITokens
+	m.fileConfig.APITokens = updated
+	if err := m.persist(); err != nil {
+		m.fileConfig.APITokens = old
+		return err
+	}
 	return nil
 }
 
