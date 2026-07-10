@@ -41,6 +41,21 @@ export interface SettingsResponse {
 	auth: AuthConfig;
 }
 
+export interface APIToken {
+	name: string;
+	prefix: string;
+	createdAt: string;
+}
+
+export interface APITokensResponse {
+	tokens: APIToken[];
+}
+
+export interface CreatedAPIToken extends APIToken {
+	/** The full token, returned exactly once at creation time. */
+	token: string;
+}
+
 export interface TestConnectionResult {
 	success: boolean;
 	message: string;

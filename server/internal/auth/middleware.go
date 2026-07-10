@@ -5,15 +5,23 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+
+	"github.com/AmoabaKelvin/logdeck/internal/models"
 )
 
 type contextKey string
 
 const UserContextKey contextKey = "user"
 
+// APITokenLookup resolves a presented API token to its name. Implementations
+// must compare against stored hashes in constant time.
+type APITokenLookup func(token string) (name string, ok bool)
+
 // DynamicMiddleware creates an auth middleware that resolves the auth service per request.
 // If getService returns nil, auth is disabled and the request passes through.
-func DynamicMiddleware(getService func() *Service) func(http.Handler) http.Handler {
+// If lookupAPIToken is non-nil, bearer tokens with the API token prefix are
+// authenticated against stored API tokens instead of as JWTs.
+func DynamicMiddleware(getService func() *Service, lookupAPIToken APITokenLookup) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			svc := getService()
@@ -21,7 +29,7 @@ func DynamicMiddleware(getService func() *Service) func(http.Handler) http.Handl
 				next.ServeHTTP(w, r)
 				return
 			}
-			validateAndServe(svc, next, w, r)
+			validateAndServe(svc, lookupAPIToken, next, w, r)
 		})
 	}
 }
@@ -30,13 +38,14 @@ func DynamicMiddleware(getService func() *Service) func(http.Handler) http.Handl
 func Middleware(authService *Service) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			validateAndServe(authService, next, w, r)
+			validateAndServe(authService, nil, next, w, r)
 		})
 	}
 }
 
-// validateAndServe extracts and validates the JWT token, then serves the request.
-func validateAndServe(svc *Service, next http.Handler, w http.ResponseWriter, r *http.Request) {
+// validateAndServe extracts and validates the bearer token (API token or JWT),
+// then serves the request.
+func validateAndServe(svc *Service, lookupAPIToken APITokenLookup, next http.Handler, w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
 	var tokenString string
 
@@ -53,6 +62,21 @@ func validateAndServe(svc *Service, next http.Handler, w http.ResponseWriter, r 
 			http.Error(w, "Authorization header or token query parameter required", http.StatusUnauthorized)
 			return
 		}
+	}
+
+	// API tokens are identified by their fixed prefix; a JWT never starts
+	// with it, so there is no fallthrough between the two schemes.
+	if strings.HasPrefix(tokenString, APITokenPrefix) {
+		if lookupAPIToken != nil {
+			if name, ok := lookupAPIToken(tokenString); ok {
+				user := models.User{Username: "token:" + name, Role: "admin"}
+				ctx := context.WithValue(r.Context(), UserContextKey, user)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+		}
+		http.Error(w, "Invalid token", http.StatusUnauthorized)
+		return
 	}
 
 	claims, err := svc.VerifyToken(tokenString)

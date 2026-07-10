@@ -1,6 +1,7 @@
 import { Spinner } from "@/components/ui/spinner";
 
 import { useSettings } from "../hooks/use-settings";
+import { ApiTokensSection } from "./api-tokens-section";
 import { AuthSection } from "./auth-section";
 import { CoolifyHostsSection } from "./coolify-hosts-section";
 import { DockerHostsSection } from "./docker-hosts-section";
@@ -52,6 +53,7 @@ export function SettingsPage() {
 				key={`${data.auth.enabled}-${data.auth.adminUsername}`}
 				config={data.auth}
 			/>
+			<ApiTokensSection />
 		</div>
 	);
 }
