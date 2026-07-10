@@ -91,19 +91,12 @@ func NewManager() *Manager {
 			os.Getenv("ADMIN_PASSWORD") != "",
 	}
 
-	// Load env-based config using existing parsers.
-	envConfig := NewConfig()
-
 	m := &Manager{
 		filePath:    filePath,
 		envSnapshot: envSnapshot,
-		envConfig:   envConfig,
+		envConfig:   NewConfig(),
 	}
-
-	// Load file config (if it exists).
 	m.fileConfig = m.loadFile()
-
-	// Merge and compute sources.
 	m.merged, m.sources = m.merge()
 
 	return m

@@ -104,7 +104,6 @@ func (ar *APIRouter) UpdateDockerHosts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate
 	seen := make(map[string]bool)
 	for _, h := range req.Hosts {
 		if !hostNameRegex.MatchString(h.Name) {
@@ -295,7 +294,6 @@ func (ar *APIRouter) TestDockerHost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create a temporary Docker client.
 	tempClient, err := docker.NewMultiHostClient([]config.DockerHost{
 		{Name: "test", Host: req.Host},
 	})

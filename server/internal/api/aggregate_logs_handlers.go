@@ -89,7 +89,7 @@ func parseAggregateTargets(r *http.Request) ([]docker.LogTarget, error) {
 }
 
 // writeNDJSONStream copies an NDJSON stream to the client, flushing per read
-// so follow mode delivers lines as they arrive. Mirrors streamParsedLogs.
+// so follow mode delivers lines as they arrive.
 func writeNDJSONStream(w http.ResponseWriter, stream io.Reader) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {

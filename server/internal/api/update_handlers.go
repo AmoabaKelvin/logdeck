@@ -6,15 +6,11 @@ import (
 
 	"github.com/AmoabaKelvin/logdeck/internal/docker"
 	"github.com/AmoabaKelvin/logdeck/internal/models"
-	"github.com/go-chi/chi/v5"
 )
 
 func (ar *APIRouter) GetContainerResources(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	host := r.URL.Query().Get("host")
-
-	if host == "" {
-		http.Error(w, "host parameter is required", http.StatusBadRequest)
+	host, id, ok := containerParams(w, r)
+	if !ok {
 		return
 	}
 
@@ -42,11 +38,8 @@ func (ar *APIRouter) GetContainerResources(w http.ResponseWriter, r *http.Reques
 }
 
 func (ar *APIRouter) UpdateContainerResources(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	host := r.URL.Query().Get("host")
-
-	if host == "" {
-		http.Error(w, "host parameter is required", http.StatusBadRequest)
+	host, id, ok := containerParams(w, r)
+	if !ok {
 		return
 	}
 

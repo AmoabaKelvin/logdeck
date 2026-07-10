@@ -34,15 +34,6 @@ func DynamicMiddleware(getService func() *Service, lookupAPIToken APITokenLookup
 	}
 }
 
-// Middleware creates a static authentication middleware for a fixed auth service.
-func Middleware(authService *Service) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			validateAndServe(authService, nil, next, w, r)
-		})
-	}
-}
-
 // validateAndServe extracts and validates the bearer token (API token or JWT),
 // then serves the request.
 func validateAndServe(svc *Service, lookupAPIToken APITokenLookup, next http.Handler, w http.ResponseWriter, r *http.Request) {
