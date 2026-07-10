@@ -39,7 +39,8 @@ export function ContainersDashboard() {
 		for (const he of hostErrors) {
 			toast.warning(`Could not reach host "${he.host}"`, {
 				id: `host-error-${he.host}`,
-				description: "Containers from this host could not be loaded.",
+				description:
+					he.message || "Containers from this host could not be loaded.",
 				duration: 8000,
 			});
 		}
