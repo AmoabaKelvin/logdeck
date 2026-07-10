@@ -40,19 +40,23 @@ func newImagesCmd(a *app) *cobra.Command {
 			now := time.Now()
 			rows := make([][]string, 0, len(filtered))
 			for _, image := range filtered {
-				tag := "<none>"
+				tags := "<none>"
 				if len(image.RepoTags) > 0 {
-					tag = image.RepoTags[0]
+					tags = strings.Join(image.RepoTags, ",")
+				}
+				size := image.Size
+				if size < 0 {
+					size = 0
 				}
 				rows = append(rows, []string{
-					tag,
+					tags,
 					shortID(image.ID),
-					humanBytes(uint64(image.Size)),
+					humanBytes(uint64(size)),
 					humanAge(time.Unix(image.Created, 0), now),
 					image.Host,
 				})
 			}
-			renderTable(os.Stdout, []string{"TAG", "ID", "SIZE", "CREATED", "HOST"}, rows)
+			renderTable(os.Stdout, []string{"TAGS", "ID", "SIZE", "CREATED", "HOST"}, rows)
 			return nil
 		}),
 	}
