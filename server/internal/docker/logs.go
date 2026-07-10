@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -77,14 +78,7 @@ func (w *logWriter) Write(p []byte) (n int, err error) {
 	w.buffer = append(w.buffer, p...)
 
 	for {
-		idx := -1
-		for i, b := range w.buffer {
-			if b == '\n' {
-				idx = i
-				break
-			}
-		}
-
+		idx := bytes.IndexByte(w.buffer, '\n')
 		if idx == -1 {
 			break
 		}
@@ -133,14 +127,7 @@ func (w *streamingLogWriter) Write(p []byte) (n int, err error) {
 	w.buffer = append(w.buffer, p...)
 
 	for {
-		idx := -1
-		for i, b := range w.buffer {
-			if b == '\n' {
-				idx = i
-				break
-			}
-		}
-
+		idx := bytes.IndexByte(w.buffer, '\n')
 		if idx == -1 {
 			break
 		}
@@ -216,7 +203,6 @@ func buildLogsOptions(options models.LogOptions, follow, timestamps bool) contai
 	}
 }
 
-// multi host client methods
 func (c *MultiHostClient) GetContainerLogsParsed(ctx context.Context, hostName, id string, options models.LogOptions) ([]models.LogEntry, error) {
 	apiClient, err := c.GetClient(hostName)
 	if err != nil {

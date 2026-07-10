@@ -31,7 +31,6 @@ const (
 	LogLevelDebug   LogLevel = "DEBUG"
 	LogLevelInfo    LogLevel = "INFO"
 	LogLevelWarn    LogLevel = "WARN"
-	LogLevelWarning LogLevel = "WARNING"
 	LogLevelError   LogLevel = "ERROR"
 	LogLevelFatal   LogLevel = "FATAL"
 	LogLevelPanic   LogLevel = "PANIC"
@@ -73,27 +72,27 @@ var keyedLevelRegex = regexp.MustCompile(`(?i)(?:^|[\s,{([])(?:level|lvl|level_?
 var prefixedLevelRegex = regexp.MustCompile(`(?i)^(?:\[|\(|<)?(trace|trc|debug|dbg|dbug|verbose|info|inf|information|notice|warn|warning|wrn|error|err|fatal|critical|crit|panic|emergency|emerg)(?:\]|\)|>|:|\s+-|\s+--|\s+)`)
 var glogPrefixRegex = regexp.MustCompile(`^([IWEF])\d{4}\s`)
 
+// levelCheckOrder ranks levels most-severe first, so a message mentioning
+// several level keywords is classified by the worst one.
+var levelCheckOrder = []LogLevel{
+	LogLevelPanic,
+	LogLevelFatal,
+	LogLevelError,
+	LogLevelWarn,
+	LogLevelInfo,
+	LogLevelDebug,
+	LogLevelTrace,
+}
+
 // DetectLogLevel analyzes a log message to determine its severity level
 func DetectLogLevel(message string) LogLevel {
 	if level, ok := ExtractExplicitLogLevel(message); ok {
 		return level
 	}
 
-	checkOrder := []LogLevel{
-		LogLevelPanic,
-		LogLevelFatal,
-		LogLevelError,
-		LogLevelWarn,
-		LogLevelInfo,
-		LogLevelDebug,
-		LogLevelTrace,
-	}
-
-	for _, level := range checkOrder {
-		if regex, exists := LogLevelRegexes[level]; exists {
-			if regex.MatchString(message) {
-				return level
-			}
+	for _, level := range levelCheckOrder {
+		if LogLevelRegexes[level].MatchString(message) {
+			return level
 		}
 	}
 
@@ -191,14 +190,6 @@ func normalizeLogLevelValue(value any, otelSeverityNumber bool) (LogLevel, bool)
 			return normalizeOtelSeverityNumber(typed.String())
 		}
 		return normalizeNumericLogLevel(typed.String())
-	case float64:
-		if typed == float64(int(typed)) {
-			if otelSeverityNumber {
-				return normalizeOtelSeverityNumber(strconv.Itoa(int(typed)))
-			}
-			return normalizeNumericLogLevel(strconv.Itoa(int(typed)))
-		}
-		return LogLevelUnknown, false
 	default:
 		return LogLevelUnknown, false
 	}
@@ -306,10 +297,7 @@ func ParseTimestamp(logLine string) (time.Time, string) {
 
 // CleanMessage removes common log formatting artifacts
 func CleanMessage(message string) string {
-	message = ansiRegex.ReplaceAllString(message, "")
-	message = strings.TrimSpace(message)
-
-	return message
+	return strings.TrimSpace(ansiRegex.ReplaceAllString(message, ""))
 }
 
 // ParseLogLine parses a Docker log line into a structured LogEntry
@@ -401,7 +389,7 @@ func parseStructuredField(message string) (string, string, bool) {
 
 func isProblemLevel(level LogLevel) bool {
 	switch level {
-	case LogLevelWarn, LogLevelWarning, LogLevelError, LogLevelFatal, LogLevelPanic:
+	case LogLevelWarn, LogLevelError, LogLevelFatal, LogLevelPanic:
 		return true
 	default:
 		return false

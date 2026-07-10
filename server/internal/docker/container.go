@@ -18,11 +18,7 @@ func (c *MultiHostClient) GetContainer(ctx context.Context, hostName, id string)
 	if err != nil {
 		return container.InspectResponse{}, err
 	}
-	result, err := apiClient.ContainerInspect(ctx, id)
-	if err != nil {
-		return container.InspectResponse{}, err
-	}
-	return result, nil
+	return apiClient.ContainerInspect(ctx, id)
 }
 
 func (c *MultiHostClient) StartContainer(ctx context.Context, hostName, id string) error {
@@ -138,14 +134,12 @@ func (c *MultiHostClient) SetEnvVariables(ctx context.Context, hostName, id stri
 		}
 	}
 
-	// Delete keys from envMap that are not present in envVariables
 	for key := range envMap {
 		if _, exists := envVariables[key]; !exists {
 			delete(envMap, key)
 		}
 	}
 
-	// Apply user-supplied values, then merge Coolify defaults back in
 	maps.Copy(envMap, envVariables)
 	maps.Copy(envMap, coolifyDefaults)
 
