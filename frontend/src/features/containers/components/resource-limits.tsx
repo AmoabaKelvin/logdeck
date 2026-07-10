@@ -141,21 +141,89 @@ export function ResourceLimits({
 	}
 
 	return (
-		<div className="space-y-3 pt-2">
-			<div className="flex items-center gap-2 justify-end border-b pb-2">
+		<div className="space-y-2 pt-2">
+			<div className="flex flex-wrap items-end gap-3">
+				<div className="space-y-1.5">
+					<Label htmlFor={memoryId} className="text-xs font-medium">
+						Memory limit
+					</Label>
+					<Input
+						id={memoryId}
+						value={memory}
+						onChange={(e) => setMemory(e.target.value)}
+						disabled={isReadOnly}
+						placeholder="e.g. 512m, 1g"
+						className="h-8 w-36 font-mono text-xs"
+					/>
+				</div>
+				<div className="space-y-1.5">
+					<Label htmlFor={cpusId} className="text-xs font-medium">
+						CPUs
+					</Label>
+					<Input
+						id={cpusId}
+						type="number"
+						min="0"
+						step="0.1"
+						value={cpus}
+						onChange={(e) => setCpus(e.target.value)}
+						disabled={isReadOnly}
+						placeholder="e.g. 1.5"
+						className="h-8 w-28 font-mono text-xs"
+					/>
+				</div>
+				<div className="space-y-1.5">
+					<Label className="text-xs font-medium">Restart policy</Label>
+					<Select
+						value={restartPolicy}
+						onValueChange={setRestartPolicy}
+						disabled={isReadOnly}
+					>
+						<SelectTrigger size="sm" className="w-40 text-xs">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{RESTART_POLICIES.map((policy) => (
+								<SelectItem key={policy.value} value={policy.value}>
+									{policy.label}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				</div>
+				{restartPolicy === "on-failure" && (
+					<div className="space-y-1.5">
+						<Label htmlFor={maxRetriesId} className="text-xs font-medium">
+							Max retries
+						</Label>
+						<Input
+							id={maxRetriesId}
+							type="number"
+							min="0"
+							step="1"
+							value={maxRetries}
+							onChange={(e) => setMaxRetries(e.target.value)}
+							disabled={isReadOnly}
+							placeholder="0"
+							className="h-8 w-28 font-mono text-xs"
+						/>
+					</div>
+				)}
 				<TooltipProvider>
 					<Tooltip>
 						<TooltipTrigger asChild>
-							<Button
-								variant="default"
-								size="sm"
-								onClick={handleSave}
-								disabled={isReadOnly || updateMutation.isPending}
-								className="h-8"
-							>
-								<Save className="mr-2 h-3.5 w-3.5" />
-								{updateMutation.isPending ? "Saving..." : "Save"}
-							</Button>
+							<span className="inline-block">
+								<Button
+									variant="default"
+									size="sm"
+									onClick={handleSave}
+									disabled={isReadOnly || updateMutation.isPending}
+									className="h-8"
+								>
+									<Save className="mr-2 h-3.5 w-3.5" />
+									{updateMutation.isPending ? "Saving..." : "Save"}
+								</Button>
+							</span>
 						</TooltipTrigger>
 						{isReadOnly && (
 							<TooltipContent>Cannot edit in read-only mode</TooltipContent>
@@ -163,77 +231,10 @@ export function ResourceLimits({
 					</Tooltip>
 				</TooltipProvider>
 			</div>
-
-			<div className="rounded-lg border p-3">
-				<div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-					<div className="space-y-1.5">
-						<Label htmlFor={memoryId} className="text-xs font-medium">
-							Memory limit
-						</Label>
-						<Input
-							id={memoryId}
-							value={memory}
-							onChange={(e) => setMemory(e.target.value)}
-							disabled={isReadOnly}
-							placeholder="e.g. 512m, 1g (empty = unlimited)"
-							className="font-mono text-xs h-8"
-						/>
-					</div>
-					<div className="space-y-1.5">
-						<Label htmlFor={cpusId} className="text-xs font-medium">
-							CPUs
-						</Label>
-						<Input
-							id={cpusId}
-							type="number"
-							min="0"
-							step="0.1"
-							value={cpus}
-							onChange={(e) => setCpus(e.target.value)}
-							disabled={isReadOnly}
-							placeholder="e.g. 1.5 (empty = unlimited)"
-							className="font-mono text-xs h-8"
-						/>
-					</div>
-					<div className="space-y-1.5">
-						<Label className="text-xs font-medium">Restart policy</Label>
-						<Select
-							value={restartPolicy}
-							onValueChange={setRestartPolicy}
-							disabled={isReadOnly}
-						>
-							<SelectTrigger className="h-8 text-xs">
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								{RESTART_POLICIES.map((policy) => (
-									<SelectItem key={policy.value} value={policy.value}>
-										{policy.label}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-					</div>
-					{restartPolicy === "on-failure" && (
-						<div className="space-y-1.5">
-							<Label htmlFor={maxRetriesId} className="text-xs font-medium">
-								Max retries
-							</Label>
-							<Input
-								id={maxRetriesId}
-								type="number"
-								min="0"
-								step="1"
-								value={maxRetries}
-								onChange={(e) => setMaxRetries(e.target.value)}
-								disabled={isReadOnly}
-								placeholder="0 = unlimited retries"
-								className="font-mono text-xs h-8"
-							/>
-						</div>
-					)}
-				</div>
-			</div>
+			<p className="text-xs text-muted-foreground">
+				Empty fields mean unlimited. Changes apply live without restarting the
+				container.
+			</p>
 		</div>
 	);
 }
