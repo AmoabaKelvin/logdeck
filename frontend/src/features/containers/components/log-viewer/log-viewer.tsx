@@ -79,6 +79,7 @@ import { SelectionActionBar } from "@/features/containers/components/selection-a
 import { useContainerLogStream } from "@/features/containers/hooks/use-container-log-stream";
 import { isJsonString } from "@/lib/json-format";
 import { mapRawRangeToGroupedRange } from "./animated-range";
+import { ShortcutHelpDialog } from "./shortcut-help";
 import { resolveTimeRange } from "./time-range";
 import { TimeRangeControl } from "./time-range-control";
 import { useLogFiltering } from "./use-log-filtering";
@@ -180,6 +181,7 @@ export function LogViewer({
 		new Set(),
 	);
 	const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
+	const [showShortcutHelp, setShowShortcutHelp] = useState(false);
 	const parentRef = useRef<HTMLDivElement>(null);
 	const searchInputRef = useRef<HTMLInputElement>(null);
 	const autoScrollRef = useRef(autoScroll);
@@ -697,6 +699,12 @@ export function LogViewer({
 				return;
 			}
 
+			if (event.key === "?") {
+				event.preventDefault();
+				setShowShortcutHelp((prev) => !prev);
+				return;
+			}
+
 			if (event.key === "/") {
 				event.preventDefault();
 				focusSearchInput();
@@ -1013,7 +1021,14 @@ export function LogViewer({
 				lines, <kbd className="font-mono">n</kbd>/
 				<kbd className="font-mono">N</kbd> matches,{" "}
 				<kbd className="font-mono">p</kbd>/<kbd className="font-mono">P</kbd>{" "}
-				pins
+				pins,{" "}
+				<button
+					type="button"
+					onClick={() => setShowShortcutHelp(true)}
+					className="underline underline-offset-2 hover:text-foreground"
+				>
+					<kbd className="font-mono">?</kbd> help
+				</button>
 			</p>
 			{/* Row 2: Options bar */}
 			<div className="flex flex-wrap items-center gap-2">
@@ -1298,12 +1313,9 @@ export function LogViewer({
 								Download as TXT
 							</DropdownMenuItem>
 							<DropdownMenuSeparator />
-							<DropdownMenuItem
-								disabled
-								className="text-[11px] text-muted-foreground"
-							>
-								<HelpCircleIcon className="size-3 mr-2" />/ search, j/k lines,
-								n/N matches
+							<DropdownMenuItem onClick={() => setShowShortcutHelp(true)}>
+								<HelpCircleIcon className="size-3.5 mr-2" />
+								Keyboard shortcuts
 							</DropdownMenuItem>
 						</DropdownMenuContent>
 					</DropdownMenu>
@@ -1457,6 +1469,12 @@ export function LogViewer({
 									role="button"
 									tabIndex={0}
 									onClick={(e) => handleLogClick(virtualRow.index, e)}
+									onMouseDown={(e) => {
+										// Suppress native text selection on shift-click so range
+										// selection doesn't highlight everything in between;
+										// normal click-drag selection stays intact.
+										if (e.shiftKey) e.preventDefault();
+									}}
 									onKeyDown={(e) => {
 										if (e.key === "Enter" || e.key === " ") {
 											e.preventDefault();
@@ -1554,11 +1572,19 @@ export function LogViewer({
 		</CardContent>
 	);
 
+	const shortcutHelpDialog = (
+		<ShortcutHelpDialog
+			open={showShortcutHelp}
+			onOpenChange={setShowShortcutHelp}
+		/>
+	);
+
 	if (variant === "page") {
 		return (
 			<Card>
 				<CardHeader>{pageToolbar}</CardHeader>
 				{logList}
+				{shortcutHelpDialog}
 			</Card>
 		);
 	}
@@ -1567,6 +1593,7 @@ export function LogViewer({
 		<div className="space-y-3">
 			{sheetToolbar}
 			<Card>{logList}</Card>
+			{shortcutHelpDialog}
 		</div>
 	);
 }
