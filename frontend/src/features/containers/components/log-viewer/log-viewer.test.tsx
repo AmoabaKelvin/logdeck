@@ -176,3 +176,43 @@ describe("LogViewer streaming lifecycle", () => {
 		expect(streamSignal?.aborted).toBe(true);
 	});
 });
+
+describe("LogViewer shortcut help overlay", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+		mocks.getLogs.mockReset().mockResolvedValue([]);
+		mocks.streamLogs.mockReset();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("toggles the overlay with ? and ignores ? typed into inputs", async () => {
+		await act(async () => {
+			render(<Harness />);
+			await drainMicrotasks();
+		});
+		expect(screen.queryByText("Keyboard shortcuts")).toBeNull();
+
+		// ? typed while focused in an input must not open the overlay.
+		await act(async () => {
+			fireEvent.keyDown(screen.getByPlaceholderText("Search logs..."), {
+				key: "?",
+				shiftKey: true,
+			});
+		});
+		expect(screen.queryByText("Keyboard shortcuts")).toBeNull();
+
+		await act(async () => {
+			fireEvent.keyDown(window, { key: "?", shiftKey: true });
+		});
+		expect(screen.getByText("Keyboard shortcuts")).toBeTruthy();
+
+		// Pressing ? again closes it.
+		await act(async () => {
+			fireEvent.keyDown(window, { key: "?", shiftKey: true });
+		});
+		expect(screen.queryByText("Keyboard shortcuts")).toBeNull();
+	});
+});
