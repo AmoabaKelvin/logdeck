@@ -12,6 +12,7 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -22,6 +23,13 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import {
 	Table,
@@ -37,7 +45,7 @@ import {
 	useCreateApiToken,
 	useDeleteApiToken,
 } from "../hooks/use-settings";
-import type { APIToken, CreatedAPIToken } from "../types";
+import type { APIToken, APITokenScope, CreatedAPIToken } from "../types";
 import { showResultToast } from "./mutation-toast";
 
 export function ApiTokensSection() {
@@ -47,6 +55,7 @@ export function ApiTokensSection() {
 
 	const [isCreating, setIsCreating] = useState(false);
 	const [newName, setNewName] = useState("");
+	const [newScope, setNewScope] = useState<APITokenScope>("admin");
 	const [createdToken, setCreatedToken] = useState<CreatedAPIToken | null>(
 		null,
 	);
@@ -61,16 +70,20 @@ export function ApiTokensSection() {
 			toast.error("Token name is required");
 			return;
 		}
-		createMutation.mutate(name, {
-			onSuccess: (token) => {
-				toast.success(`Token "${token.name}" created`);
-				setCreatedToken(token);
-				setCopied(false);
-				setNewName("");
-				setIsCreating(false);
+		createMutation.mutate(
+			{ name, scope: newScope },
+			{
+				onSuccess: (token) => {
+					toast.success(`Token "${token.name}" created`);
+					setCreatedToken(token);
+					setCopied(false);
+					setNewName("");
+					setNewScope("admin");
+					setIsCreating(false);
+				},
+				onError: (err) => toast.error(err.message),
 			},
-			onError: (err) => toast.error(err.message),
-		});
+		);
 	}
 
 	function handleCopy() {
@@ -154,6 +167,7 @@ export function ApiTokensSection() {
 							<TableRow>
 								<TableHead>Name</TableHead>
 								<TableHead>Token</TableHead>
+								<TableHead>Scope</TableHead>
 								<TableHead>Created</TableHead>
 								<TableHead className="text-right">Actions</TableHead>
 							</TableRow>
@@ -164,6 +178,11 @@ export function ApiTokensSection() {
 									<TableCell className="font-medium">{t.name}</TableCell>
 									<TableCell className="font-mono text-xs text-muted-foreground">
 										{t.prefix}…
+									</TableCell>
+									<TableCell>
+										<Badge variant="secondary" className="text-xs font-normal">
+											{t.scope === "read" ? "Read-only" : "Admin"}
+										</Badge>
 									</TableCell>
 									<TableCell className="text-xs text-muted-foreground">
 										{new Date(t.createdAt).toLocaleDateString()}
@@ -200,6 +219,21 @@ export function ApiTokensSection() {
 								className="h-8"
 								maxLength={64}
 							/>
+						</div>
+						<div className="space-y-1.5">
+							<Label htmlFor="new-token-scope">Scope</Label>
+							<Select
+								value={newScope}
+								onValueChange={(value) => setNewScope(value as APITokenScope)}
+							>
+								<SelectTrigger id="new-token-scope" className="h-8 w-32">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="admin">Admin</SelectItem>
+									<SelectItem value="read">Read-only</SelectItem>
+								</SelectContent>
+							</Select>
 						</div>
 						<div className="flex gap-1">
 							<Button

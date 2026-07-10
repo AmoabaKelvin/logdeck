@@ -41,11 +41,11 @@ func TestDynamicMiddlewareAcceptsAPIToken(t *testing.T) {
 		t.Fatalf("GenerateAPIToken failed: %v", err)
 	}
 
-	lookup := func(presented string) (string, bool) {
+	lookup := func(presented string) (string, string, bool) {
 		if HashAPIToken(presented) == hash {
-			return "ci", true
+			return "ci", "", true
 		}
-		return "", false
+		return "", "", false
 	}
 
 	var gotUser models.User
@@ -62,11 +62,69 @@ func TestDynamicMiddlewareAcceptsAPIToken(t *testing.T) {
 	if gotUser.Username != "token:ci" {
 		t.Errorf("expected context user %q, got %q", "token:ci", gotUser.Username)
 	}
+	if gotUser.Role != "admin" {
+		t.Errorf("expected legacy token (no scope) to get role %q, got %q", "admin", gotUser.Role)
+	}
+}
+
+func TestDynamicMiddlewareLegacyTokenAllowsMutations(t *testing.T) {
+	svc := testService(t)
+	// Empty scope simulates a token stored before scopes existed.
+	lookup := func(string) (string, string, bool) { return "legacy", "", true }
+
+	var gotUser models.User
+	handler := DynamicMiddleware(func() *Service { return svc }, lookup)(echoUserHandler(&gotUser))
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/v1/containers/abc/restart", nil)
+	r.Header.Set("Authorization", "Bearer "+APITokenPrefix+"legacy")
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for legacy token on mutating route, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDynamicMiddlewareReadScopeToken(t *testing.T) {
+	svc := testService(t)
+	lookup := func(string) (string, string, bool) { return "agent", APITokenScopeRead, true }
+
+	cases := []struct {
+		name     string
+		method   string
+		path     string
+		wantCode int
+	}{
+		{"GET allowed", "GET", "/api/v1/containers", http.StatusOK},
+		{"log streaming websocket allowed", "GET", "/api/v1/containers/abc/logs/parsed", http.StatusOK},
+		{"POST denied", "POST", "/api/v1/containers/abc/restart", http.StatusForbidden},
+		{"PUT denied", "PUT", "/api/v1/containers/abc/env", http.StatusForbidden},
+		{"DELETE denied", "DELETE", "/api/v1/settings/api-tokens/ldk_abcd1234", http.StatusForbidden},
+		{"exec websocket denied despite GET", "GET", "/api/v1/containers/abc/exec", http.StatusForbidden},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotUser models.User
+			handler := DynamicMiddleware(func() *Service { return svc }, lookup)(echoUserHandler(&gotUser))
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest(tc.method, tc.path, nil)
+			r.Header.Set("Authorization", "Bearer "+APITokenPrefix+"read-token")
+			handler.ServeHTTP(w, r)
+
+			if w.Code != tc.wantCode {
+				t.Fatalf("expected %d, got %d: %s", tc.wantCode, w.Code, w.Body.String())
+			}
+			if tc.wantCode == http.StatusOK && gotUser.Role != APITokenScopeRead {
+				t.Errorf("expected role %q, got %q", APITokenScopeRead, gotUser.Role)
+			}
+		})
+	}
 }
 
 func TestDynamicMiddlewareRejectsUnknownAPIToken(t *testing.T) {
 	svc := testService(t)
-	lookup := func(string) (string, bool) { return "", false }
+	lookup := func(string) (string, string, bool) { return "", "", false }
 
 	var gotUser models.User
 	handler := DynamicMiddleware(func() *Service { return svc }, lookup)(echoUserHandler(&gotUser))
@@ -83,7 +141,7 @@ func TestDynamicMiddlewareRejectsUnknownAPIToken(t *testing.T) {
 
 func TestDynamicMiddlewareStillAcceptsJWT(t *testing.T) {
 	svc := testService(t)
-	lookup := func(string) (string, bool) { return "", false }
+	lookup := func(string) (string, string, bool) { return "", "", false }
 
 	jwtToken, err := svc.GenerateToken("admin")
 	if err != nil {

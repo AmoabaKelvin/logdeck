@@ -203,7 +203,11 @@ logdeck status        # now talks to prod`}
         <p className="mb-4 text-base">
           API tokens are created in the LogDeck web UI under{" "}
           <strong>Settings → API Tokens</strong> and sent as{" "}
-          <code>Authorization: Bearer &lt;token&gt;</code>. When the server has
+          <code>Authorization: Bearer &lt;token&gt;</code>. Tokens have a
+          scope: <strong>admin</strong> tokens have full access, while{" "}
+          <strong>read-only</strong> tokens can read logs, stats, and container
+          details but cannot start, stop, or modify anything — useful for CI
+          jobs or AI agents that only need to read. When the server has
           authentication disabled, no token is needed.
         </p>
 

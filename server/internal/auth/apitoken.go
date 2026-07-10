@@ -14,6 +14,22 @@ const APITokenPrefix = "ldk_"
 // for display and identification (includes the "ldk_" prefix).
 const APITokenDisplayLen = 12
 
+// API token scopes. Admin tokens have full access; read tokens can only
+// perform read operations.
+const (
+	APITokenScopeAdmin = "admin"
+	APITokenScopeRead  = "read"
+)
+
+// NormalizeAPITokenScope maps a stored scope to its effective value. Tokens
+// created before scopes existed have an empty scope and are treated as admin.
+func NormalizeAPITokenScope(scope string) string {
+	if scope == APITokenScopeRead {
+		return APITokenScopeRead
+	}
+	return APITokenScopeAdmin
+}
+
 // GenerateAPIToken creates a new API token from 32 random bytes.
 // It returns the full token (shown to the user exactly once), the SHA256 hex
 // hash to persist, and the display prefix used to identify the token.
