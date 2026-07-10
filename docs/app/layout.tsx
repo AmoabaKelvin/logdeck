@@ -130,6 +130,7 @@ export default function RootLayout({
       <body className={`${geistSans.className} ${geistMono.variable} antialiased`}>
         <script
           type="application/ld+json"
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: static JSON-LD literal defined above, no user input
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
         />
         <ThemeProvider
