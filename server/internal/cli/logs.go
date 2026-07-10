@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"sort"
@@ -244,7 +245,7 @@ func (a *app) followLogs(ctx context.Context, path string, query url.Values, wit
 
 // scanNDJSON reads an NDJSON stream line by line, skipping blank lines and
 // heartbeats. Context cancellation (Ctrl-C, --for expiry) is a clean stop.
-func (a *app) scanNDJSON(ctx context.Context, body interface{ Read([]byte) (int, error) }, handle func(line []byte) error) error {
+func (a *app) scanNDJSON(ctx context.Context, body io.Reader, handle func(line []byte) error) error {
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	for scanner.Scan() {

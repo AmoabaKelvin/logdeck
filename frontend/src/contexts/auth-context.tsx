@@ -7,6 +7,7 @@ import {
 	useState,
 } from "react";
 
+import { getAuthToken, removeAuthToken, setAuthToken } from "@/lib/api-client";
 import { isAuthEnabled as fetchIsAuthEnabled } from "@/lib/auth-config";
 import { API_BASE_URL } from "@/types/api";
 
@@ -23,12 +24,9 @@ interface AuthContextType {
 	isAuthEnabled: boolean;
 	login: (username: string, password: string) => Promise<void>;
 	logout: () => void;
-	checkAuth: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-const TOKEN_KEY = "logdeck_auth_token";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
 	const [user, setUser] = useState<User | null>(null);
@@ -36,7 +34,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 	const [isLoading, setIsLoading] = useState(true);
 	const [isAuthEnabled, setIsAuthEnabled] = useState(true);
 
-	// Check if authentication is enabled on the backend
 	const checkIfAuthEnabled = useCallback(async () => {
 		try {
 			setIsAuthEnabled(await fetchIsAuthEnabled());
@@ -64,18 +61,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 			} else if (response.status === 404) {
 				// Auth endpoint doesn't exist - auth is disabled
 				setIsAuthEnabled(false);
-				localStorage.removeItem(TOKEN_KEY);
+				removeAuthToken();
 				setToken(null);
 				setUser(null);
 			} else {
-				// Token is invalid, clear it
-				localStorage.removeItem(TOKEN_KEY);
+				removeAuthToken();
 				setToken(null);
 				setUser(null);
 			}
 		} catch (error) {
 			console.error("Failed to verify token:", error);
-			localStorage.removeItem(TOKEN_KEY);
+			removeAuthToken();
 			setToken(null);
 			setUser(null);
 		} finally {
@@ -84,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 	}, []);
 
 	useEffect(() => {
-		const storedToken = localStorage.getItem(TOKEN_KEY);
+		const storedToken = getAuthToken();
 		if (storedToken) {
 			setToken(storedToken);
 			verifyToken(storedToken);
@@ -92,38 +88,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 			checkIfAuthEnabled();
 		}
 	}, [verifyToken, checkIfAuthEnabled]);
-
-	// Check authentication status
-	const checkAuth = async (): Promise<boolean> => {
-		const storedToken = localStorage.getItem(TOKEN_KEY);
-		if (!storedToken) {
-			return false;
-		}
-
-		try {
-			const response = await fetch(`${API_BASE_URL}/api/v1/auth/me`, {
-				headers: {
-					Authorization: `Bearer ${storedToken}`,
-				},
-			});
-
-			if (response.ok) {
-				const data = await response.json();
-				setUser(data.user);
-				setToken(storedToken);
-				return true;
-			}
-
-			// Token is invalid
-			localStorage.removeItem(TOKEN_KEY);
-			setToken(null);
-			setUser(null);
-			return false;
-		} catch (error) {
-			console.error("Failed to check auth:", error);
-			return false;
-		}
-	};
 
 	const login = async (username: string, password: string) => {
 		try {
@@ -142,8 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 			const data = await response.json();
 
-			// Store token and user
-			localStorage.setItem(TOKEN_KEY, data.token);
+			setAuthToken(data.token);
 			setToken(data.token);
 			setUser(data.user);
 		} catch (error) {
@@ -153,7 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 	};
 
 	const logout = () => {
-		localStorage.removeItem(TOKEN_KEY);
+		removeAuthToken();
 		setToken(null);
 		setUser(null);
 	};
@@ -166,7 +129,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 		isAuthEnabled,
 		login,
 		logout,
-		checkAuth,
 	};
 
 	return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

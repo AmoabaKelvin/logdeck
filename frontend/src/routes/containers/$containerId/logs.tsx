@@ -54,10 +54,9 @@ function ContainerLogsPage() {
 	const logViewerRef = useRef<LogViewerHandle>(null);
 	const logViewState = useUrlLogViewState();
 
-	// Decode the URL parameter (could be name or ID)
+	// The URL parameter can be a container name or an ID
 	const containerIdentifier = decodeURIComponent(encodedContainerId);
 
-	// Fetch container info
 	const { data: containersData } = useLiveContainersQuery();
 	const { statsMap } = useContainerStats();
 
@@ -65,7 +64,6 @@ function ContainerLogsPage() {
 
 	// Find container by name (preferred) or ID (fallback for backward compatibility)
 	const container = containers.find((c) => {
-		// Check if identifier matches the container name (without leading slash)
 		if (c.names && c.names.length > 0) {
 			const cleanName = c.names[0].startsWith("/")
 				? c.names[0].slice(1)
@@ -78,7 +76,8 @@ function ContainerLogsPage() {
 		return c.id === containerIdentifier || c.id.startsWith(containerIdentifier);
 	});
 
-	// Use the actual container ID for API calls (Docker API accepts both name and ID, but we'll use ID for consistency)
+	// Prefer the real ID for API calls; fall back to the raw identifier while
+	// the container list is still loading.
 	const actualContainerId = container?.id || containerIdentifier;
 
 	const handleContainerRecreated = async (_newContainerId: string) => {
@@ -177,7 +176,6 @@ function ContainerLogsPage() {
 										</div>
 									</div>
 
-									{/* Resource Usage Section - only for running containers */}
 									{container.state.toLowerCase() === "running" && (
 										<div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
 											<div className="md:col-span-3">
@@ -257,7 +255,7 @@ function ContainerLogsPage() {
 												<EnvironmentVariables
 													containerId={actualContainerId}
 													containerHost={container.host}
-													isCoolifyManaged={isCoolifyManaged(container?.labels)}
+													isCoolifyManaged={isCoolifyManaged(container.labels)}
 													onContainerIdChange={handleContainerRecreated}
 												/>
 											</div>

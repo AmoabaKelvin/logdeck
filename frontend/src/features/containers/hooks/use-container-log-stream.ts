@@ -411,14 +411,13 @@ export function useContainerLogStream<TLogEntry>({
 						if (isLogStreamHeartbeat(item)) {
 							continue;
 						}
-						const entry = item as TLogEntry;
 
 						if (isStreamPausedRef.current) {
-							bufferedLogsRef.current.push(entry);
+							bufferedLogsRef.current.push(item);
 							continue;
 						}
 
-						pendingLogsRef.current.push(entry);
+						pendingLogsRef.current.push(item);
 					}
 				} catch (error) {
 					if (error instanceof Error) {

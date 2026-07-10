@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"log"
+	"slices"
 	"sync"
 	"time"
 
@@ -46,14 +47,7 @@ func mapContainerEvent(hostName string, msg events.Message) (models.ContainerEve
 	}
 
 	action := string(msg.Action)
-	watched := false
-	for _, a := range watchedContainerActions {
-		if action == a {
-			watched = true
-			break
-		}
-	}
-	if !watched {
+	if !slices.Contains(watchedContainerActions, action) {
 		return models.ContainerEvent{}, false
 	}
 

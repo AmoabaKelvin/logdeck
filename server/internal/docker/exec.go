@@ -8,16 +8,14 @@ import (
 	"github.com/docker/docker/api/types/container"
 )
 
-// CreateExec creates an exec instance for a container
-// It tries to launch /bin/bash, falling back to /bin/sh if bash is not available
+// CreateExec creates an exec instance for a container, launching /bin/bash
+// and falling back to /bin/sh if bash is not available.
 func (c *MultiHostClient) CreateExec(ctx context.Context, host, containerID string) (string, error) {
 	cli, err := c.GetClient(host)
 	if err != nil {
 		return "", err
 	}
 
-	// We use a shell command that tries bash first, then sh
-	// This is a common pattern to get the best available shell
 	cmd := []string{"/bin/sh", "-c", "(test -x /bin/bash && exec /bin/bash) || exec /bin/sh"}
 
 	config := container.ExecOptions{
@@ -65,4 +63,3 @@ func (c *MultiHostClient) ResizeExec(ctx context.Context, host, execID string, h
 		Width:  width,
 	})
 }
-

@@ -33,7 +33,7 @@ func NewRouter(registry *services.Registry, manager *config.Manager, version str
 	return r.Routes()
 }
 
-func WriteJsonResponse(w http.ResponseWriter, status int, data interface{}) {
+func WriteJsonResponse(w http.ResponseWriter, status int, data any) {
 	payload, err := json.Marshal(data)
 	if err != nil {
 		http.Error(w, "failed to encode response", http.StatusInternalServerError)
@@ -55,7 +55,6 @@ func (ar *APIRouter) Routes() *chi.Mux {
 		AllowedHeaders: []string{"*"},
 	}))
 
-	// API routes
 	ar.router.Route("/api/v1", func(r chi.Router) {
 		// Access logging only for API routes (static SPA routes stay quiet)
 		r.Use(middleware.AccessLog)

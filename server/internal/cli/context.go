@@ -46,16 +46,11 @@ func newLoginCmd(a *app) *cobra.Command {
 				return err
 			}
 
-			path, err := configPath()
+			err := updateConfig(func(cfg *cliConfig) error {
+				cfg.setContext(name, contextConfig{URL: serverURL, Token: token})
+				return nil
+			})
 			if err != nil {
-				return err
-			}
-			cfg, err := loadConfig(path)
-			if err != nil {
-				return err
-			}
-			cfg.setContext(name, contextConfig{URL: serverURL, Token: token})
-			if err := saveConfig(path, cfg); err != nil {
 				return err
 			}
 
@@ -83,26 +78,18 @@ func newLogoutCmd(a *app) *cobra.Command {
 		Short: "Remove the saved token from a context (keeps its URL)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: a.run(func(cmd *cobra.Command, args []string) error {
-			path, err := configPath()
+			var name string
+			err := updateConfig(func(cfg *cliConfig) error {
+				name = cfg.CurrentContext
+				if len(args) == 1 {
+					name = args[0]
+				}
+				if name == "" {
+					return fmt.Errorf("no current context; pass a context name (see: logdeck context list)")
+				}
+				return cfg.clearToken(name)
+			})
 			if err != nil {
-				return err
-			}
-			cfg, err := loadConfig(path)
-			if err != nil {
-				return err
-			}
-
-			name := cfg.CurrentContext
-			if len(args) == 1 {
-				name = args[0]
-			}
-			if name == "" {
-				return fmt.Errorf("no current context; pass a context name (see: logdeck context list)")
-			}
-			if err := cfg.clearToken(name); err != nil {
-				return err
-			}
-			if err := saveConfig(path, cfg); err != nil {
 				return err
 			}
 
@@ -181,25 +168,22 @@ func newContextUseCmd(a *app) *cobra.Command {
 		Short: "Make a saved context the current one",
 		Args:  cobra.ExactArgs(1),
 		RunE: a.run(func(cmd *cobra.Command, args []string) error {
-			path, err := configPath()
+			var contextURL string
+			err := updateConfig(func(cfg *cliConfig) error {
+				if err := cfg.useContext(args[0]); err != nil {
+					return err
+				}
+				contextURL = cfg.Contexts[args[0]].URL
+				return nil
+			})
 			if err != nil {
-				return err
-			}
-			cfg, err := loadConfig(path)
-			if err != nil {
-				return err
-			}
-			if err := cfg.useContext(args[0]); err != nil {
-				return err
-			}
-			if err := saveConfig(path, cfg); err != nil {
 				return err
 			}
 
 			if a.jsonOutput() {
 				return a.printJSON(map[string]string{"message": "context switched", "context": args[0]})
 			}
-			fmt.Printf("Switched to context %q (%s).\n", args[0], cfg.Contexts[args[0]].URL)
+			fmt.Printf("Switched to context %q (%s).\n", args[0], contextURL)
 			return nil
 		}),
 	}
@@ -211,18 +195,10 @@ func newContextRmCmd(a *app) *cobra.Command {
 		Short: "Delete a saved context",
 		Args:  cobra.ExactArgs(1),
 		RunE: a.run(func(cmd *cobra.Command, args []string) error {
-			path, err := configPath()
+			err := updateConfig(func(cfg *cliConfig) error {
+				return cfg.removeContext(args[0])
+			})
 			if err != nil {
-				return err
-			}
-			cfg, err := loadConfig(path)
-			if err != nil {
-				return err
-			}
-			if err := cfg.removeContext(args[0]); err != nil {
-				return err
-			}
-			if err := saveConfig(path, cfg); err != nil {
 				return err
 			}
 

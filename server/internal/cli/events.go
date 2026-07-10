@@ -10,7 +10,6 @@ import (
 )
 
 func newEventsCmd(a *app) *cobra.Command {
-	var follow bool
 	var forDuration string
 
 	cmd := &cobra.Command{
@@ -62,7 +61,9 @@ func newEventsCmd(a *app) *cobra.Command {
 		}),
 	}
 
-	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "stream until interrupted (the default)")
+	// --follow is a no-op accepted for parity with logs -f; streaming is
+	// already the default.
+	cmd.Flags().BoolP("follow", "f", false, "stream until interrupted (the default)")
 	cmd.Flags().StringVar(&forDuration, "for", "", "read events for this long, then exit (e.g. 10s)")
 	return cmd
 }

@@ -16,6 +16,18 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// containerParams returns the required "host" query param and the "{id}" path
+// param shared by all per-container routes. When host is missing it writes a
+// 400 response and returns ok=false.
+func containerParams(w http.ResponseWriter, r *http.Request) (host, id string, ok bool) {
+	host = r.URL.Query().Get("host")
+	if host == "" {
+		http.Error(w, "host parameter is required", http.StatusBadRequest)
+		return "", "", false
+	}
+	return host, chi.URLParam(r, "id"), true
+}
+
 func (ar *APIRouter) GetSystemStats(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	stats, err := system.GetStats(ctx)
@@ -46,7 +58,6 @@ func (ar *APIRouter) GetContainers(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	containersMap, hostErrors, err := ar.registry.Docker().ListContainersAllHosts(ctx)
-
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -58,30 +69,18 @@ func (ar *APIRouter) GetContainers(w http.ResponseWriter, r *http.Request) {
 		allContainers = append(allContainers, containers...)
 	}
 
-	// Build host errors list for the frontend
-	hostErrorMessages := make([]map[string]string, 0, len(hostErrors))
-	for _, he := range hostErrors {
-		hostErrorMessages = append(hostErrorMessages, map[string]string{
-			"host":    he.HostName,
-			"message": he.Err.Error(),
-		})
-	}
-
 	WriteJsonResponse(w, http.StatusOK, map[string]any{
 		"containers":        allContainers,
 		"hosts":             ar.registry.Docker().GetHosts(),
 		"readOnly":          ar.registry.Config().ReadOnly,
-		"hostErrors":        hostErrorMessages,
+		"hostErrors":        hostErrorMessages(hostErrors),
 		"coolifyConfigured": ar.registry.Coolify() != nil,
 	})
 }
 
 func (ar *APIRouter) GetContainer(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	host := r.URL.Query().Get("host")
-
-	if host == "" {
-		http.Error(w, "host parameter is required", http.StatusBadRequest)
+	host, id, ok := containerParams(w, r)
+	if !ok {
 		return
 	}
 
@@ -96,11 +95,8 @@ func (ar *APIRouter) GetContainer(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ar *APIRouter) StartContainer(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	host := r.URL.Query().Get("host")
-
-	if host == "" {
-		http.Error(w, "host parameter is required", http.StatusBadRequest)
+	host, id, ok := containerParams(w, r)
+	if !ok {
 		return
 	}
 
@@ -115,11 +111,8 @@ func (ar *APIRouter) StartContainer(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ar *APIRouter) StopContainer(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	host := r.URL.Query().Get("host")
-
-	if host == "" {
-		http.Error(w, "host parameter is required", http.StatusBadRequest)
+	host, id, ok := containerParams(w, r)
+	if !ok {
 		return
 	}
 
@@ -134,11 +127,8 @@ func (ar *APIRouter) StopContainer(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ar *APIRouter) RestartContainer(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	host := r.URL.Query().Get("host")
-
-	if host == "" {
-		http.Error(w, "host parameter is required", http.StatusBadRequest)
+	host, id, ok := containerParams(w, r)
+	if !ok {
 		return
 	}
 
@@ -153,11 +143,8 @@ func (ar *APIRouter) RestartContainer(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ar *APIRouter) RemoveContainer(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	host := r.URL.Query().Get("host")
-
-	if host == "" {
-		http.Error(w, "host parameter is required", http.StatusBadRequest)
+	host, id, ok := containerParams(w, r)
+	if !ok {
 		return
 	}
 
@@ -172,18 +159,13 @@ func (ar *APIRouter) RemoveContainer(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ar *APIRouter) GetContainerLogsParsed(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	host := r.URL.Query().Get("host")
-
-	if host == "" {
-		http.Error(w, "host parameter is required", http.StatusBadRequest)
+	host, id, ok := containerParams(w, r)
+	if !ok {
 		return
 	}
 
-	// Parse query parameters for log options
 	options := parseLogOptions(r)
 
-	// Validate search regex if provided
 	if options.Search != "" {
 		if _, err := regexp.Compile(options.Search); err != nil {
 			http.Error(w, fmt.Sprintf("invalid search pattern: %v", err), http.StatusBadRequest)
@@ -216,29 +198,7 @@ func (ar *APIRouter) streamParsedLogs(w http.ResponseWriter, r *http.Request, ho
 	}
 	defer stream.Close()
 
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming not supported", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/x-ndjson")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-
-	buffer := make([]byte, 32*1024)
-	for {
-		n, readErr := stream.Read(buffer)
-		if n > 0 {
-			if _, writeErr := w.Write(buffer[:n]); writeErr != nil {
-				break
-			}
-			flusher.Flush()
-		}
-		if readErr != nil {
-			break
-		}
-	}
+	writeNDJSONStream(w, stream)
 }
 
 func (ar *APIRouter) GetContainerEvents(w http.ResponseWriter, r *http.Request) {
@@ -335,11 +295,8 @@ func clampTail(tail string) string {
 }
 
 func (ar *APIRouter) GetEnvVariables(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	host := r.URL.Query().Get("host")
-
-	if host == "" {
-		http.Error(w, "host parameter is required", http.StatusBadRequest)
+	host, id, ok := containerParams(w, r)
+	if !ok {
 		return
 	}
 
@@ -357,11 +314,8 @@ func (ar *APIRouter) GetEnvVariables(w http.ResponseWriter, r *http.Request) {
 var envKeyRegex = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_\-\.]*$`)
 
 func (ar *APIRouter) UpdateEnvVariables(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	host := r.URL.Query().Get("host")
-
-	if host == "" {
-		http.Error(w, "host parameter is required", http.StatusBadRequest)
+	host, id, ok := containerParams(w, r)
+	if !ok {
 		return
 	}
 
@@ -390,21 +344,18 @@ func (ar *APIRouter) UpdateEnvVariables(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Best-effort sync to Coolify API
-	coolifyMulti := ar.registry.Coolify()
-	if coolifyMulti != nil {
-		coolifyClient := coolifyMulti.GetClient(host)
-		coolifyResource := coolify.ExtractResourceInfo(labels)
-		if coolifyClient != nil && coolifyResource != nil {
-			syncCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-			defer cancel()
+	coolifyClient := ar.registry.Coolify().GetClient(host)
+	coolifyResource := coolify.ExtractResourceInfo(labels)
+	if coolifyClient != nil && coolifyResource != nil {
+		syncCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
 
-			if syncErr := coolifyClient.SyncEnvVars(syncCtx, coolifyResource, envVariables.Env); syncErr != nil {
-				log.Printf("Warning: failed to sync env vars to Coolify for host %s: %v", host, syncErr)
-				response["coolify_synced"] = false
-				response["coolify_error"] = syncErr.Error()
-			} else {
-				response["coolify_synced"] = true
-			}
+		if syncErr := coolifyClient.SyncEnvVars(syncCtx, coolifyResource, envVariables.Env); syncErr != nil {
+			log.Printf("Warning: failed to sync env vars to Coolify for host %s: %v", host, syncErr)
+			response["coolify_synced"] = false
+			response["coolify_error"] = syncErr.Error()
+		} else {
+			response["coolify_synced"] = true
 		}
 	}
 
