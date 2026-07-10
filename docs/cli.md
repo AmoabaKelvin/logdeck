@@ -6,9 +6,17 @@
 
 The CLI is built for scripting and AI agents: it is fully non-interactive, every command supports machine-readable JSON output (`-o json`), errors always go to stderr, and exit codes are consistent (0 success, 1 runtime error, 2 usage error).
 
-## Install / Build
+## Install
 
-The CLI lives in the same Go module as the server and builds to a single static binary:
+Install the latest release binary (macOS and Linux, amd64/arm64):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/AmoabaKelvin/logdeck/main/install.sh | sh
+```
+
+Binaries are published on [GitHub Releases](https://github.com/AmoabaKelvin/logdeck/releases) with checksums; the installer picks the right one for your OS/architecture and installs to `/usr/local/bin` or `~/.local/bin`. Check your version with `logdeck --version`.
+
+Or build from source — the CLI lives in the same Go module as the server and builds to a single static binary:
 
 ```bash
 cd server

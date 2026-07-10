@@ -57,12 +57,13 @@ func (a *app) printError(err error) {
 
 // Execute runs the CLI and returns the process exit code:
 // 0 success, 1 runtime error, 2 usage error.
-func Execute() int {
+func Execute(version string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	a := &app{}
 	root := newRootCmd(a)
+	root.Version = version
 	err := root.ExecuteContext(ctx)
 	if err == nil {
 		return 0
