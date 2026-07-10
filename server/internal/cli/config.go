@@ -68,6 +68,23 @@ func saveConfig(path string, cfg cliConfig) error {
 	return os.Chmod(path, 0o600)
 }
 
+// updateConfig loads the config, applies mutate, and saves the result.
+// Nothing is written when mutate returns an error.
+func updateConfig(mutate func(*cliConfig) error) error {
+	path, err := configPath()
+	if err != nil {
+		return err
+	}
+	cfg, err := loadConfig(path)
+	if err != nil {
+		return err
+	}
+	if err := mutate(&cfg); err != nil {
+		return err
+	}
+	return saveConfig(path, cfg)
+}
+
 // setContext saves (or overwrites) a context and makes it current.
 func (c *cliConfig) setContext(name string, ctx contextConfig) {
 	if c.Contexts == nil {

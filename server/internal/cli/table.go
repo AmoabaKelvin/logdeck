@@ -34,14 +34,13 @@ func humanBytes(n uint64) string {
 		return fmt.Sprintf("%dB", n)
 	}
 	value := float64(n)
-	suffixes := []string{"KiB", "MiB", "GiB", "TiB", "PiB"}
-	for _, suffix := range suffixes {
+	for _, suffix := range []string{"KiB", "MiB", "GiB", "TiB"} {
 		value /= unit
-		if value < unit || suffix == suffixes[len(suffixes)-1] {
+		if value < unit {
 			return fmt.Sprintf("%.1f%s", value, suffix)
 		}
 	}
-	return fmt.Sprintf("%.1f%s", value, suffixes[len(suffixes)-1])
+	return fmt.Sprintf("%.1fPiB", value/unit)
 }
 
 // humanAge renders how long ago a time was, coarsely ("3d ago", "5m ago").
