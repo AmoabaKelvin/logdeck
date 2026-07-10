@@ -1,26 +1,8 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import {
-	ArrowDownIcon,
-	ArrowDownToLineIcon,
-	CheckIcon,
-	ChevronDownIcon,
-	ChevronLeftIcon,
-	ChevronRightIcon,
-	CopyIcon,
-	DownloadIcon,
-	EllipsisVerticalIcon,
-	HelpCircleIcon,
-	PauseIcon,
-	PlayIcon,
-	RefreshCcwIcon,
-	SearchIcon,
-	SquareIcon,
-} from "lucide-react";
 import type React from "react";
 import {
 	useCallback,
 	useEffect,
-	useId,
 	useImperativeHandle,
 	useMemo,
 	useRef,
@@ -28,36 +10,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
-import { Spinner } from "@/components/ui/spinner";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Card, CardHeader } from "@/components/ui/card";
 import type { AggregateLogTarget } from "@/features/containers/api/get-aggregated-logs";
 import {
 	getAggregatedLogs,
@@ -66,22 +19,21 @@ import {
 import type {
 	ContainerLogsOptions,
 	LogEntry,
-	LogLevel,
 } from "@/features/containers/api/get-container-logs-parsed";
 import {
 	getContainerLogsParsed,
-	getLogLevelBadgeColor,
 	groupRelatedLogEntries,
 	streamContainerLogsParsed,
 } from "@/features/containers/api/get-container-logs-parsed";
-import { CollapsibleJson } from "@/features/containers/components/collapsible-json";
-import { SelectionActionBar } from "@/features/containers/components/selection-action-bar";
 import { useContainerLogStream } from "@/features/containers/hooks/use-container-log-stream";
-import { isJsonString } from "@/lib/json-format";
 import { mapRawRangeToGroupedRange } from "./animated-range";
+import { downloadLogs, formatLogEntryLine } from "./log-export";
+import { LogList } from "./log-list";
+import { PageToolbar } from "./page-toolbar";
+import { SheetToolbar } from "./sheet-toolbar";
 import { ShortcutHelpDialog } from "./shortcut-help";
 import { resolveTimeRange } from "./time-range";
-import { TimeRangeControl } from "./time-range-control";
+import type { LogViewerToolbarProps } from "./toolbar-shared";
 import { useLogFiltering } from "./use-log-filtering";
 import { navigatePins, useLogPins } from "./use-log-pins";
 import { useLogSearch, useSearchMatches } from "./use-log-search";
@@ -111,40 +63,6 @@ interface LogViewerProps {
 	ref?: React.Ref<LogViewerHandle>;
 }
 
-const activeToggleButtonClass =
-	"h-8 text-xs data-[active=true]:bg-muted data-[active=true]:text-foreground data-[active=true]:border-border data-[active=true]:ring-1 data-[active=true]:ring-primary/30 dark:data-[active=true]:bg-primary/15 dark:data-[active=true]:ring-primary/50 dark:data-[active=true]:border-primary/30";
-
-// Deterministic per-container badge color for aggregate views.
-const CONTAINER_NAME_BADGE_COLORS = [
-	"bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300",
-	"bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300",
-	"bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300",
-	"bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300",
-	"bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-300",
-	"bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-300",
-	"bg-lime-100 text-lime-700 dark:bg-lime-900 dark:text-lime-300",
-	"bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900 dark:text-fuchsia-300",
-];
-
-function getContainerNameBadgeColor(name: string): string {
-	let hash = 0;
-	for (let i = 0; i < name.length; i++) {
-		hash = (hash * 31 + name.charCodeAt(i)) | 0;
-	}
-	return CONTAINER_NAME_BADGE_COLORS[
-		Math.abs(hash) % CONTAINER_NAME_BADGE_COLORS.length
-	];
-}
-
-function formatLogEntryLine(entry: LogEntry): string {
-	const timestamp = entry.timestamp
-		? new Date(entry.timestamp).toISOString()
-		: "";
-	const level = entry.level || "UNKNOWN";
-	const message = entry.message || entry.raw || "";
-	return `[${timestamp}] [${level}] ${message}`;
-}
-
 export function LogViewer({
 	variant,
 	containerId,
@@ -156,24 +74,17 @@ export function LogViewer({
 }: LogViewerProps) {
 	const {
 		searchText,
-		setSearchText,
 		useRegex,
-		setUseRegex,
 		selectedLevels,
-		setSelectedLevels,
 		showTimestamps,
-		setShowTimestamps,
 		wrapText,
-		setWrapText,
 		logLines,
 		setLogLines,
 		timeRange,
-		setTimeRange,
 	} = viewState;
 
 	const [excludeMatches, setExcludeMatches] = useState(false);
 	const [autoScroll, setAutoScroll] = useState(true);
-	const [showFilters, setShowFilters] = useState(false);
 	const [selectedIndices, setSelectedIndices] = useState<Set<number>>(
 		new Set(),
 	);
@@ -185,7 +96,6 @@ export function LogViewer({
 	const parentRef = useRef<HTMLDivElement>(null);
 	const searchInputRef = useRef<HTMLInputElement>(null);
 	const autoScrollRef = useRef(autoScroll);
-	const logLinesInputId = useId();
 
 	const { searchParsed, highlightSearchText } = useLogSearch(
 		searchText,
@@ -199,16 +109,12 @@ export function LogViewer({
 
 	const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
 		const containerEl = parentRef.current;
-		if (autoScrollRef.current && containerEl) {
-			if (behavior === "smooth") {
-				containerEl.scrollTo({
-					top: containerEl.scrollHeight,
-					behavior: "smooth",
-				});
-				return;
-			}
-			containerEl.scrollTop = containerEl.scrollHeight;
+		if (!autoScrollRef.current || !containerEl) return;
+		if (behavior === "smooth") {
+			containerEl.scrollTo({ top: containerEl.scrollHeight, behavior });
+			return;
 		}
+		containerEl.scrollTop = containerEl.scrollHeight;
 	}, []);
 
 	// Anchor relative presets once per time-range change (not per render) so
@@ -375,16 +281,6 @@ export function LogViewer({
 		}
 	};
 
-	const toggleLogLevel = (level: LogLevel) => {
-		const newSet = new Set(selectedLevels);
-		if (newSet.has(level)) {
-			newSet.delete(level);
-		} else {
-			newSet.add(level);
-		}
-		setSelectedLevels(newSet);
-	};
-
 	const handleCopyLog = (entry: LogEntry) => {
 		const text = entry.message || entry.raw || "";
 		navigator.clipboard
@@ -412,7 +308,7 @@ export function LogViewer({
 	}, []);
 
 	const handleLogClick = useCallback(
-		(index: number, event: React.MouseEvent) => {
+		(index: number, event: React.MouseEvent | React.KeyboardEvent) => {
 			if (event.shiftKey && lastClickedIndex !== null) {
 				const start = Math.min(lastClickedIndex, index);
 				const end = Math.max(lastClickedIndex, index);
@@ -421,18 +317,19 @@ export function LogViewer({
 					newSelected.add(i);
 				}
 				setSelectedIndices(newSelected);
-			} else {
-				setSelectedIndices((prev) => {
-					const newSet = new Set(prev);
-					if (newSet.has(index)) {
-						newSet.delete(index);
-					} else {
-						newSet.add(index);
-					}
-					return newSet;
-				});
-				setLastClickedIndex(index);
+				return;
 			}
+
+			setSelectedIndices((prev) => {
+				const newSet = new Set(prev);
+				if (newSet.has(index)) {
+					newSet.delete(index);
+				} else {
+					newSet.add(index);
+				}
+				return newSet;
+			});
+			setLastClickedIndex(index);
 		},
 		[lastClickedIndex],
 	);
@@ -442,35 +339,7 @@ export function LogViewer({
 			toast.error("No logs to download");
 			return;
 		}
-
-		const cleanContainerName = (containerName || "container")
-			.replace(/^\//, "")
-			.replace(/[/\\:*?"<>|]/g, "-");
-		const timestamp = new Date()
-			.toISOString()
-			.replace(/:/g, "-")
-			.replace(/\..+/, "");
-		const filename = `${cleanContainerName}-logs-${timestamp}.${format}`;
-		let content: string;
-		let mimeType: string;
-
-		if (format === "json") {
-			content = JSON.stringify(filteredLogs, null, 2);
-			mimeType = "application/json";
-		} else {
-			content = filteredLogs.map(formatLogEntryLine).join("\n");
-			mimeType = "text/plain";
-		}
-
-		const blob = new Blob([content], { type: mimeType });
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement("a");
-		a.href = url;
-		a.download = filename;
-		document.body.appendChild(a);
-		a.click();
-		document.body.removeChild(a);
-		URL.revokeObjectURL(url);
+		downloadLogs(filteredLogs, containerName, format);
 		toast.success(`Logs downloaded as ${format.toUpperCase()}`);
 	};
 
@@ -492,15 +361,13 @@ export function LogViewer({
 
 		setPinnedLogIndices((prev) => {
 			const next = new Set(prev);
-			if (allSelectedArePinned) {
-				selectedOriginalIndices.forEach((index) => {
+			selectedOriginalIndices.forEach((index) => {
+				if (allSelectedArePinned) {
 					next.delete(index);
-				});
-			} else {
-				selectedOriginalIndices.forEach((index) => {
+				} else {
 					next.add(index);
-				});
-			}
+				}
+			});
 			return next;
 		});
 
@@ -543,7 +410,8 @@ export function LogViewer({
 		setExpandedJsonRows(new Set());
 	}, [searchText, excludeMatches, selectedLevels, useRegex]);
 
-	// Virtualization setup (must be before navigation functions)
+	// The virtualizer must be created before the navigation callbacks that
+	// scroll through it.
 	const rowVirtualizer = useVirtualizer({
 		count: filteredLogs.length,
 		getScrollElement: () => parentRef.current,
@@ -600,16 +468,18 @@ export function LogViewer({
 	const goToAdjacentLogLine = useCallback(
 		(direction: 1 | -1) => {
 			if (filteredLogs.length === 0) return;
-			const selected = Array.from(selectedIndices);
-			const fallbackIndex =
-				selected.length > 0
-					? direction > 0
-						? Math.max(...selected)
-						: Math.min(...selected)
-					: direction > 0
-						? -1
-						: filteredLogs.length;
-			const baseIndex = lastClickedIndex ?? fallbackIndex;
+
+			let baseIndex = lastClickedIndex;
+			if (baseIndex === null) {
+				const selected = Array.from(selectedIndices);
+				if (selected.length > 0) {
+					baseIndex =
+						direction > 0 ? Math.max(...selected) : Math.min(...selected);
+				} else {
+					// Off the ends, so the first step lands on the first/last line.
+					baseIndex = direction > 0 ? -1 : filteredLogs.length;
+				}
+			}
 			const nextIndex = Math.min(
 				filteredLogs.length - 1,
 				Math.max(0, baseIndex + direction),
@@ -628,27 +498,26 @@ export function LogViewer({
 			if (filteredLogs.length === 0) return;
 
 			const selected = Array.from(selectedIndices);
-			const minSelected = selected.length > 0 ? Math.min(...selected) : null;
-			const maxSelected = selected.length > 0 ? Math.max(...selected) : null;
+			const minSelected = selected.length > 0 ? Math.min(...selected) : -1;
+			const maxSelected = selected.length > 0 ? Math.max(...selected) : -1;
 
+			// The anchor is the fixed end of the range; the active end moves.
 			let anchorIndex: number;
 			if (lastClickedIndex !== null) {
 				anchorIndex = lastClickedIndex;
+			} else if (selected.length > 0) {
+				anchorIndex = direction > 0 ? minSelected : maxSelected;
+				setLastClickedIndex(anchorIndex);
 			} else {
-				if (selected.length > 0) {
-					anchorIndex =
-						direction > 0 ? (minSelected as number) : (maxSelected as number);
-				} else {
-					anchorIndex = direction > 0 ? 0 : filteredLogs.length - 1;
-				}
+				anchorIndex = direction > 0 ? 0 : filteredLogs.length - 1;
 				setLastClickedIndex(anchorIndex);
 			}
 
 			const activeIndex =
 				selected.length > 0
 					? direction > 0
-						? (maxSelected as number)
-						: (minSelected as number)
+						? maxSelected
+						: minSelected
 					: anchorIndex;
 			const targetIndex = Math.min(
 				filteredLogs.length - 1,
@@ -769,807 +638,62 @@ export function LogViewer({
 		};
 	}, []);
 
-	const levelFilterPopover = (
-		<Popover open={showFilters} onOpenChange={setShowFilters}>
-			<PopoverTrigger asChild>
-				<Button variant="outline" size="sm" className="h-8 text-xs">
-					Log level
-					{selectedLevels.size > 0 && (
-						<Badge
-							variant="secondary"
-							className="ml-1.5 px-1 py-0 h-4 text-[10px] leading-none"
-						>
-							{selectedLevels.size}
-						</Badge>
-					)}
-					<ChevronDownIcon className="ml-1 size-3.5 opacity-50" />
-				</Button>
-			</PopoverTrigger>
-			<PopoverContent align="start" className="w-56">
-				<div className="space-y-3">
-					<div>
-						<h4 className="text-sm font-medium mb-2">Log Levels</h4>
-						<div className="space-y-2">
-							{availableLogLevels.length === 0 ? (
-								<p className="text-xs text-muted-foreground">
-									No log levels available
-								</p>
-							) : (
-								availableLogLevels.map((level) => (
-									<label
-										key={level}
-										className="flex items-center gap-2 cursor-pointer"
-									>
-										<button
-											type="button"
-											onClick={() => toggleLogLevel(level)}
-											aria-pressed={selectedLevels.has(level)}
-											className={`size-4 rounded border flex items-center justify-center ${
-												selectedLevels.has(level)
-													? "bg-primary border-primary"
-													: "border-input"
-											}`}
-										>
-											{selectedLevels.has(level) && (
-												<CheckIcon className="size-3 text-primary-foreground" />
-											)}
-										</button>
-										<Badge
-											variant="outline"
-											className={`text-xs ${getLogLevelBadgeColor(level)}`}
-										>
-											{level}
-										</Badge>
-									</label>
-								))
-							)}
-						</div>
-					</div>
-					{selectedLevels.size > 0 && (
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => setSelectedLevels(new Set())}
-							className="w-full"
-						>
-							Clear Filters
-						</Button>
-					)}
-				</div>
-			</PopoverContent>
-		</Popover>
-	);
-
-	const pageToolbar = (
-		<div className="space-y-3">
-			{/* Row 1: Search + Lines + Stream/Refresh */}
-			<div className="flex items-center gap-2">
-				<CardTitle className="text-base shrink-0">
-					Logs
-					{filteredLogs.length !== logs.length && (
-						<span className="ml-2 text-xs text-muted-foreground font-normal">
-							({filteredLogs.length} of {logs.length})
-						</span>
-					)}
-				</CardTitle>
-
-				<div className="relative flex-1 min-w-[140px]">
-					<SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-					<Input
-						ref={searchInputRef}
-						placeholder="Search logs..."
-						value={searchText}
-						onChange={(e) => setSearchText(e.target.value)}
-						className={`pl-8 h-8 text-xs ${useRegex && searchParsed.error ? "border-red-500 focus-visible:ring-red-500" : ""}`}
-					/>
-				</div>
-				<Button
-					variant={useRegex ? "secondary" : "ghost"}
-					size="sm"
-					onClick={() => setUseRegex(!useRegex)}
-					aria-label={
-						useRegex ? "Switch to plain text search" : "Switch to regex search"
-					}
-					aria-pressed={useRegex}
-					className="h-8 w-8 p-0 font-mono text-xs shrink-0"
-					title={
-						useRegex ? "Switch to plain text search" : "Switch to regex search"
-					}
-				>
-					.*
-				</Button>
-				{searchText && !excludeMatches && (
-					<div className="flex items-center gap-0.5 shrink-0">
-						<span className="text-xs tabular-nums text-muted-foreground whitespace-nowrap px-1">
-							{searchMatches.length > 0
-								? `${currentMatchIndex + 1} of ${searchMatches.length}`
-								: "No matches"}
-						</span>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={goToPreviousMatch}
-							disabled={searchMatches.length === 0}
-							aria-label="Previous match"
-							className="h-8 w-8 p-0"
-						>
-							<ChevronLeftIcon className="size-3.5" />
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={goToNextMatch}
-							disabled={searchMatches.length === 0}
-							aria-label="Next match"
-							className="h-8 w-8 p-0"
-						>
-							<ChevronRightIcon className="size-3.5" />
-						</Button>
-					</div>
-				)}
-
-				{sortedPinnedIndices.length > 0 && (
-					<div className="flex items-center gap-0.5 shrink-0">
-						<span className="text-xs tabular-nums text-muted-foreground whitespace-nowrap px-1">
-							{`${Math.min(currentPinnedIndex + 1, sortedPinnedIndices.length)} of ${sortedPinnedIndices.length} pinned`}
-						</span>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => goToPinnedByOffset(-1)}
-							aria-label="Previous pinned line"
-							className="h-8 w-8 p-0"
-						>
-							<ChevronLeftIcon className="size-3.5" />
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => goToPinnedByOffset(1)}
-							aria-label="Next pinned line"
-							className="h-8 w-8 p-0"
-						>
-							<ChevronRightIcon className="size-3.5" />
-						</Button>
-					</div>
-				)}
-
-				<div className="flex items-center gap-2 shrink-0">
-					<Label
-						htmlFor={logLinesInputId}
-						className="text-xs text-muted-foreground"
-					>
-						Lines
-					</Label>
-					<Input
-						id={logLinesInputId}
-						type="text"
-						inputMode="numeric"
-						pattern="[0-9]*"
-						value={logLines}
-						onChange={(e) => handleLogLinesChange(e.target.value)}
-						disabled={isStreaming}
-						className="h-8 w-20 text-xs"
-					/>
-				</div>
-				{isReconnecting && (
-					<span className="shrink-0 text-xs text-muted-foreground animate-pulse">
-						Reconnecting…
-					</span>
-				)}
-				<Button
-					variant="outline"
-					size="sm"
-					data-active={isStreaming}
-					onClick={toggleStreaming}
-					disabled={isLoadingLogs && !isStreaming}
-					aria-pressed={isStreaming}
-					className={`shrink-0 ${activeToggleButtonClass}`}
-				>
-					{isStreaming ? (
-						<>
-							<SquareIcon className="mr-2 size-4" />
-							Stop
-						</>
-					) : (
-						<>
-							<PlayIcon className="mr-2 size-4" />
-							Stream
-						</>
-					)}
-				</Button>
-				<Button
-					variant="outline"
-					size="sm"
-					data-active={isStreamPaused}
-					onClick={togglePauseStreaming}
-					disabled={!isStreaming}
-					aria-pressed={isStreamPaused}
-					className={`shrink-0 ${activeToggleButtonClass}`}
-				>
-					{isStreamPaused ? (
-						<>
-							<PlayIcon className="mr-2 size-4" />
-							Resume
-							{bufferedCount > 0 && (
-								<span className="ml-1 text-[10px] tabular-nums">
-									({bufferedCount})
-								</span>
-							)}
-						</>
-					) : (
-						<>
-							<PauseIcon className="mr-2 size-4" />
-							Pause
-						</>
-					)}
-				</Button>
-				<Button
-					variant="outline"
-					size="sm"
-					onClick={handleRefresh}
-					disabled={isStreaming || isLoadingLogs}
-					aria-label="Refresh logs"
-					className="shrink-0"
-				>
-					<RefreshCcwIcon className="size-4" />
-				</Button>
-			</div>
-			<p className="text-[11px] text-muted-foreground">
-				Shortcuts: <kbd className="font-mono">/</kbd> search,{" "}
-				<kbd className="font-mono">j</kbd>/<kbd className="font-mono">k</kbd>{" "}
-				lines, <kbd className="font-mono">n</kbd>/
-				<kbd className="font-mono">N</kbd> matches,{" "}
-				<kbd className="font-mono">p</kbd>/<kbd className="font-mono">P</kbd>{" "}
-				pins,{" "}
-				<button
-					type="button"
-					onClick={() => setShowShortcutHelp(true)}
-					className="underline underline-offset-2 hover:text-foreground"
-				>
-					<kbd className="font-mono">?</kbd> help
-				</button>
-			</p>
-			{/* Row 2: Options bar */}
-			<div className="flex flex-wrap items-center gap-2">
-				{searchText && (
-					<Select
-						value={excludeMatches ? "exclude" : "highlight"}
-						onValueChange={(v) => setExcludeMatches(v === "exclude")}
-					>
-						<SelectTrigger size="sm" className="w-[160px] text-xs">
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="highlight">Highlight matches</SelectItem>
-							<SelectItem value="exclude">Exclude matches</SelectItem>
-						</SelectContent>
-					</Select>
-				)}
-
-				{levelFilterPopover}
-
-				<TimeRangeControl
-					timeRange={timeRange}
-					setTimeRange={setTimeRange}
-					disabled={isStreaming}
-				/>
-
-				<Button
-					variant="outline"
-					size="sm"
-					data-active={showTimestamps}
-					onClick={() => setShowTimestamps(!showTimestamps)}
-					aria-pressed={showTimestamps}
-					className={activeToggleButtonClass}
-				>
-					Timestamps
-				</Button>
-
-				<Button
-					variant="outline"
-					size="sm"
-					data-active={wrapText}
-					onClick={() => setWrapText(!wrapText)}
-					aria-pressed={wrapText}
-					className={activeToggleButtonClass}
-				>
-					Wrap
-				</Button>
-
-				<Button
-					variant="outline"
-					size="sm"
-					data-active={autoScroll}
-					onClick={() => setAutoScroll(!autoScroll)}
-					aria-pressed={autoScroll}
-					className={activeToggleButtonClass}
-				>
-					{autoScroll ? (
-						<ArrowDownToLineIcon className="mr-1.5 size-3.5" />
-					) : (
-						<ArrowDownIcon className="mr-1.5 size-3.5" />
-					)}
-					Auto-scroll
-				</Button>
-
-				<div className="flex-1" />
-
-				<DropdownMenu>
-					<DropdownMenuTrigger asChild>
-						<Button variant="outline" size="sm" className="h-8 text-xs">
-							<DownloadIcon className="mr-1.5 size-3.5" />
-							Download
-						</Button>
-					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end">
-						<DropdownMenuItem onClick={() => handleDownloadLogs("json")}>
-							Download as JSON
-						</DropdownMenuItem>
-						<DropdownMenuItem onClick={() => handleDownloadLogs("txt")}>
-							Download as TXT
-						</DropdownMenuItem>
-					</DropdownMenuContent>
-				</DropdownMenu>
-			</div>
-		</div>
-	);
-
-	const sheetToolbar = (
-		<div className="space-y-2">
-			{/* Row 1: Search + Stream controls */}
-			<div className="flex items-center gap-1.5">
-				{/* Search input with inset regex toggle */}
-				<div className="relative flex-1 min-w-[120px]">
-					<SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-					<Input
-						ref={searchInputRef}
-						placeholder={useRegex ? "Regex search..." : "Search logs..."}
-						value={searchText}
-						onChange={(e) => setSearchText(e.target.value)}
-						className={`pl-8 pr-9 h-8 text-xs ${useRegex && searchParsed.error ? "border-red-500 focus-visible:ring-red-500" : ""}`}
-					/>
-					<button
-						type="button"
-						onClick={() => setUseRegex(!useRegex)}
-						aria-label={
-							useRegex
-								? "Switch to plain text search"
-								: "Switch to regex search"
-						}
-						aria-pressed={useRegex}
-						title={useRegex ? "Switch to plain text" : "Switch to regex"}
-						className={`absolute right-1.5 top-1/2 -translate-y-1/2 px-1 py-0.5 rounded text-[10px] font-mono leading-none transition-colors ${
-							useRegex
-								? "bg-primary text-primary-foreground"
-								: "text-muted-foreground hover:text-foreground hover:bg-muted"
-						}`}
-					>
-						.*
-					</button>
-				</div>
-
-				{/* Controls: log level, time range, stream, auto-scroll, overflow */}
-				<div className="flex items-center gap-1 shrink-0">
-					{isReconnecting && (
-						<span className="shrink-0 text-xs text-muted-foreground animate-pulse">
-							Reconnecting…
-						</span>
-					)}
-					{levelFilterPopover}
-
-					<TimeRangeControl
-						timeRange={timeRange}
-						setTimeRange={setTimeRange}
-						disabled={isStreaming}
-					/>
-
-					<Tooltip>
-						<TooltipTrigger asChild>
-							<Button
-								variant="outline"
-								size="sm"
-								data-active={isStreaming}
-								onClick={toggleStreaming}
-								disabled={isLoadingLogs && !isStreaming}
-								aria-label={isStreaming ? "Stop streaming" : "Start streaming"}
-								aria-pressed={isStreaming}
-								className={`h-8 w-8 p-0 ${activeToggleButtonClass}`}
-							>
-								{isStreaming ? (
-									<SquareIcon className="size-3.5" />
-								) : (
-									<PlayIcon className="size-3.5" />
-								)}
-							</Button>
-						</TooltipTrigger>
-						<TooltipContent>
-							{isStreaming ? "Stop streaming" : "Start streaming"}
-						</TooltipContent>
-					</Tooltip>
-					{isStreaming && (
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<Button
-									variant="outline"
-									size="sm"
-									data-active={isStreamPaused}
-									onClick={togglePauseStreaming}
-									aria-label={
-										isStreamPaused ? "Resume streaming" : "Pause streaming"
-									}
-									aria-pressed={isStreamPaused}
-									className={`h-8 w-8 p-0 ${activeToggleButtonClass}`}
-								>
-									{isStreamPaused ? (
-										<PlayIcon className="size-3.5" />
-									) : (
-										<PauseIcon className="size-3.5" />
-									)}
-								</Button>
-							</TooltipTrigger>
-							<TooltipContent>
-								{isStreamPaused
-									? `Resume${bufferedCount > 0 ? ` (${bufferedCount} buffered)` : ""}`
-									: "Pause streaming"}
-							</TooltipContent>
-						</Tooltip>
-					)}
-					<Tooltip>
-						<TooltipTrigger asChild>
-							<Button
-								variant="outline"
-								size="sm"
-								onClick={handleRefresh}
-								disabled={isStreaming || isLoadingLogs}
-								aria-label="Refresh logs"
-								className="h-8 w-8 p-0"
-							>
-								<RefreshCcwIcon className="size-3.5" />
-							</Button>
-						</TooltipTrigger>
-						<TooltipContent>Refresh logs</TooltipContent>
-					</Tooltip>
-					<Tooltip>
-						<TooltipTrigger asChild>
-							<Button
-								variant="outline"
-								size="sm"
-								data-active={autoScroll}
-								onClick={() => setAutoScroll(!autoScroll)}
-								aria-label={`Auto-scroll ${autoScroll ? "on" : "off"}`}
-								aria-pressed={autoScroll}
-								className={`h-8 w-8 p-0 ${activeToggleButtonClass}`}
-							>
-								{autoScroll ? (
-									<ArrowDownToLineIcon className="size-3.5" />
-								) : (
-									<ArrowDownIcon className="size-3.5" />
-								)}
-							</Button>
-						</TooltipTrigger>
-						<TooltipContent>
-							Auto-scroll {autoScroll ? "on" : "off"}
-						</TooltipContent>
-					</Tooltip>
-
-					{/* Overflow menu: view options + download */}
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<Button
-								variant="ghost"
-								size="sm"
-								aria-label="More options"
-								className="h-8 w-8 p-0"
-							>
-								<EllipsisVerticalIcon className="size-3.5" />
-							</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end" className="w-48">
-							{searchText && (
-								<>
-									<DropdownMenuItem
-										onClick={() => setExcludeMatches(!excludeMatches)}
-									>
-										<span className="flex-1">
-											{excludeMatches ? "Highlight matches" : "Exclude matches"}
-										</span>
-									</DropdownMenuItem>
-									<DropdownMenuSeparator />
-								</>
-							)}
-							<DropdownMenuItem
-								onClick={() => setShowTimestamps(!showTimestamps)}
-							>
-								<span className="flex-1">Timestamps</span>
-								{showTimestamps && <CheckIcon className="size-3.5" />}
-							</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => setWrapText(!wrapText)}>
-								<span className="flex-1">Wrap lines</span>
-								{wrapText && <CheckIcon className="size-3.5" />}
-							</DropdownMenuItem>
-							<DropdownMenuItem asChild>
-								<div className="flex items-center gap-2">
-									<span className="flex-1">Lines</span>
-									<Input
-										type="text"
-										inputMode="numeric"
-										pattern="[0-9]*"
-										value={logLines}
-										onChange={(e) => handleLogLinesChange(e.target.value)}
-										disabled={isStreaming}
-										className="h-6 w-16 text-xs text-center"
-										onClick={(e) => e.stopPropagation()}
-									/>
-								</div>
-							</DropdownMenuItem>
-							<DropdownMenuSeparator />
-							<DropdownMenuItem onClick={() => handleDownloadLogs("json")}>
-								<DownloadIcon className="size-3.5 mr-2" />
-								Download as JSON
-							</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => handleDownloadLogs("txt")}>
-								<DownloadIcon className="size-3.5 mr-2" />
-								Download as TXT
-							</DropdownMenuItem>
-							<DropdownMenuSeparator />
-							<DropdownMenuItem onClick={() => setShowShortcutHelp(true)}>
-								<HelpCircleIcon className="size-3.5 mr-2" />
-								Keyboard shortcuts
-							</DropdownMenuItem>
-						</DropdownMenuContent>
-					</DropdownMenu>
-				</div>
-			</div>
-
-			{/* Conditional row: search match navigation + pinned navigation */}
-			{(searchText && !excludeMatches && searchMatches.length > 0) ||
-			sortedPinnedIndices.length > 0 ? (
-				<div className="flex items-center gap-3">
-					{searchText && !excludeMatches && (
-						<div className="flex items-center gap-0.5">
-							<span className="text-xs tabular-nums text-muted-foreground whitespace-nowrap px-0.5">
-								{searchMatches.length > 0
-									? `${currentMatchIndex + 1}/${searchMatches.length} matches`
-									: "No matches"}
-							</span>
-							<Button
-								variant="ghost"
-								size="sm"
-								onClick={goToPreviousMatch}
-								disabled={searchMatches.length === 0}
-								aria-label="Previous match"
-								className="h-7 w-7 p-0"
-							>
-								<ChevronLeftIcon className="size-3.5" />
-							</Button>
-							<Button
-								variant="ghost"
-								size="sm"
-								onClick={goToNextMatch}
-								disabled={searchMatches.length === 0}
-								aria-label="Next match"
-								className="h-7 w-7 p-0"
-							>
-								<ChevronRightIcon className="size-3.5" />
-							</Button>
-						</div>
-					)}
-					{sortedPinnedIndices.length > 0 && (
-						<div className="flex items-center gap-0.5">
-							<span className="text-xs tabular-nums text-muted-foreground whitespace-nowrap px-0.5">
-								{`${Math.min(currentPinnedIndex + 1, sortedPinnedIndices.length)}/${sortedPinnedIndices.length} pinned`}
-							</span>
-							<Button
-								variant="ghost"
-								size="sm"
-								onClick={() => goToPinnedByOffset(-1)}
-								aria-label="Previous pinned line"
-								className="h-7 w-7 p-0"
-							>
-								<ChevronLeftIcon className="size-3.5" />
-							</Button>
-							<Button
-								variant="ghost"
-								size="sm"
-								onClick={() => goToPinnedByOffset(1)}
-								aria-label="Next pinned line"
-								className="h-7 w-7 p-0"
-							>
-								<ChevronRightIcon className="size-3.5" />
-							</Button>
-						</div>
-					)}
-				</div>
-			) : null}
-		</div>
-	);
+	const toolbarProps: LogViewerToolbarProps = {
+		viewState,
+		searchParsed,
+		searchInputRef,
+		excludeMatches,
+		setExcludeMatches,
+		autoScroll,
+		setAutoScroll,
+		availableLogLevels,
+		searchMatches,
+		currentMatchIndex,
+		onPreviousMatch: goToPreviousMatch,
+		onNextMatch: goToNextMatch,
+		sortedPinnedIndices,
+		currentPinnedIndex,
+		onNavigatePins: goToPinnedByOffset,
+		isStreaming,
+		isStreamPaused,
+		isReconnecting,
+		isLoadingLogs,
+		bufferedCount,
+		onToggleStreaming: toggleStreaming,
+		onTogglePause: togglePauseStreaming,
+		onRefresh: handleRefresh,
+		onLogLinesChange: handleLogLinesChange,
+		onDownload: handleDownloadLogs,
+		onShowShortcutHelp: () => setShowShortcutHelp(true),
+	};
 
 	const logList = (
-		<CardContent className="p-0 relative">
-			{/* Selection Action Bar - sticky at top of logs */}
-			<SelectionActionBar
-				selectedCount={selectedIndices.size}
-				onCopy={handleCopySelected}
-				onTogglePin={handleTogglePinSelected}
-				pinActionLabel={allSelectedArePinned ? "unpin" : "pin"}
-				onClear={clearSelection}
-			/>
-			<div
-				ref={parentRef}
-				className={
-					variant === "page"
-						? "h-[calc(100vh-400px)] min-h-[400px] w-full overflow-auto"
-						: "h-[400px] w-full overflow-auto"
-				}
-			>
-				{isLoadingLogs && logs.length === 0 ? (
-					<div className="flex items-center justify-center py-8 text-muted-foreground">
-						<Spinner className="mr-2 size-4" />
-						Loading logs...
-					</div>
-				) : logs.length === 0 ? (
-					<div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
-						No logs available
-					</div>
-				) : filteredLogs.length === 0 ? (
-					<div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
-						No logs match the current filters
-					</div>
-				) : (
-					<div
-						style={{
-							height: `${rowVirtualizer.getTotalSize()}px`,
-							width: "100%",
-							position: "relative",
-						}}
-						className={`font-mono text-xs ${wrapText ? "" : "w-fit min-w-full"}`}
-					>
-						{rowVirtualizer.getVirtualItems().map((virtualRow) => {
-							const entry = filteredLogs[virtualRow.index];
-							const displayText = entry.message || entry.raw || "";
-							if (!displayText.trim()) return null;
-
-							const timestamp = entry.timestamp
-								? new Date(entry.timestamp)
-								: null;
-							const dateLabel = timestamp
-								? `${timestamp.toLocaleDateString("en-GB", {
-										day: "2-digit",
-										month: "2-digit",
-										year: "numeric",
-									})} ${timestamp.toLocaleTimeString("en-US", {
-										hour12: false,
-										hour: "2-digit",
-										minute: "2-digit",
-										second: "2-digit",
-									})}`
-								: "—";
-
-							const isCurrentMatch =
-								searchMatches.length > 0 &&
-								searchMatches[currentMatchIndex] === virtualRow.index;
-							const hasMatch = searchMatchSet.has(virtualRow.index);
-							const isSelected = selectedIndices.has(virtualRow.index);
-							const isPinned = pinnedFilteredIndices.has(virtualRow.index);
-							// Animation range is in grouped index space; compare against
-							// this row's grouped index, not its filtered position.
-							const groupedIndex = filteredToOriginalIndex[virtualRow.index];
-							const isNewRow =
-								animatedGroupedRange !== null &&
-								groupedIndex >= animatedGroupedRange.start &&
-								groupedIndex <= animatedGroupedRange.end;
-
-							return (
-								// biome-ignore lint/a11y/useSemanticElements: div required for virtual scrolling absolute positioning
-								<div
-									key={virtualRow.key}
-									data-index={virtualRow.index}
-									ref={rowVirtualizer.measureElement}
-									role="button"
-									tabIndex={0}
-									onClick={(e) => handleLogClick(virtualRow.index, e)}
-									onMouseDown={(e) => {
-										// Suppress native text selection on shift-click so range
-										// selection doesn't highlight everything in between;
-										// normal click-drag selection stays intact.
-										if (e.shiftKey) e.preventDefault();
-									}}
-									onKeyDown={(e) => {
-										if (e.key === "Enter" || e.key === " ") {
-											e.preventDefault();
-											handleLogClick(
-												virtualRow.index,
-												e as unknown as React.MouseEvent,
-											);
-										}
-									}}
-									style={{
-										position: "absolute",
-										top: 0,
-										left: 0,
-										width: wrapText ? "100%" : "max-content",
-										minWidth: "100%",
-										transform: `translateY(${virtualRow.start}px)`,
-										cursor: "pointer",
-									}}
-									className={`group flex items-start gap-3 px-4 py-1.5 transition-all duration-150 ease-out ${
-										wrapText ? "" : "whitespace-nowrap"
-									} ${
-										isSelected && isPinned
-											? "bg-amber-200/80 dark:bg-amber-800/45 border-l-[3px] border-amber-500 shadow-[inset_0_0_0_1px_rgba(245,158,11,0.35)]"
-											: isSelected
-												? "bg-primary/[0.08] dark:bg-primary/[0.15] border-l-[3px] border-primary shadow-[inset_0_0_0_1px_rgba(var(--primary),0.1)]"
-												: isPinned
-													? "bg-amber-100/80 dark:bg-amber-900/35 border-l-[3px] border-amber-500 hover:bg-amber-100 dark:hover:bg-amber-900/45"
-													: isCurrentMatch
-														? "bg-yellow-100 dark:bg-yellow-900/30 border-y-2 border-yellow-400 dark:border-yellow-600"
-														: virtualRow.index % 2 === 0
-															? "bg-muted/30 border-l-[3px] border-transparent hover:bg-muted/50"
-															: "border-l-[3px] border-transparent hover:bg-muted/50"
-									} ${isNewRow ? "log-stream-row-enter" : ""}`}
-								>
-									{showTimestamps && (
-										<span className="text-muted-foreground shrink-0 text-[11px]">
-											{dateLabel}
-										</span>
-									)}
-									<Badge
-										variant="outline"
-										className={`shrink-0 text-xs px-1.5 py-0 h-5 ${getLogLevelBadgeColor(entry.level ?? "UNKNOWN")}`}
-									>
-										{entry.level ?? "UNKNOWN"}
-									</Badge>
-									{entry.containerName && (
-										<Badge
-											variant="outline"
-											className={`shrink-0 text-xs px-1.5 py-0 h-5 ${getContainerNameBadgeColor(entry.containerName)}`}
-										>
-											{entry.containerName}
-										</Badge>
-									)}
-									<span
-										className={`text-foreground flex-1 ${wrapText ? "whitespace-pre-wrap break-words" : "whitespace-pre"}`}
-									>
-										{isJsonString(displayText) ? (
-											<CollapsibleJson
-												text={displayText}
-												isExpanded={expandedJsonRows.has(virtualRow.index)}
-												onToggle={() => toggleJsonExpanded(virtualRow.index)}
-												isCurrentMatch={isCurrentMatch}
-												highlightSearchText={
-													hasMatch ? highlightSearchText : undefined
-												}
-											/>
-										) : hasMatch ? (
-											highlightSearchText(displayText, isCurrentMatch)
-										) : (
-											displayText
-										)}
-									</span>
-									<Tooltip>
-										<TooltipTrigger asChild>
-											<button
-												type="button"
-												onClick={(e) => {
-													e.stopPropagation();
-													handleCopyLog(entry);
-												}}
-												aria-label="Copy log entry"
-												className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-muted rounded"
-											>
-												<CopyIcon className="size-3 text-muted-foreground" />
-											</button>
-										</TooltipTrigger>
-										<TooltipContent>Copy log entry</TooltipContent>
-									</Tooltip>
-								</div>
-							);
-						})}
-					</div>
-				)}
-			</div>
-		</CardContent>
+		<LogList
+			variant={variant}
+			parentRef={parentRef}
+			rowVirtualizer={rowVirtualizer}
+			isLoadingLogs={isLoadingLogs}
+			totalCount={logs.length}
+			filteredLogs={filteredLogs}
+			filteredToOriginalIndex={filteredToOriginalIndex}
+			wrapText={wrapText}
+			showTimestamps={showTimestamps}
+			searchMatches={searchMatches}
+			searchMatchSet={searchMatchSet}
+			currentMatchIndex={currentMatchIndex}
+			selectedIndices={selectedIndices}
+			pinnedFilteredIndices={pinnedFilteredIndices}
+			animatedGroupedRange={animatedGroupedRange}
+			expandedJsonRows={expandedJsonRows}
+			highlightSearchText={highlightSearchText}
+			onLogClick={handleLogClick}
+			onToggleJson={toggleJsonExpanded}
+			onCopyEntry={handleCopyLog}
+			allSelectedArePinned={allSelectedArePinned}
+			onCopySelected={handleCopySelected}
+			onTogglePinSelected={handleTogglePinSelected}
+			onClearSelection={clearSelection}
+		/>
 	);
 
 	const shortcutHelpDialog = (
@@ -1582,7 +706,13 @@ export function LogViewer({
 	if (variant === "page") {
 		return (
 			<Card>
-				<CardHeader>{pageToolbar}</CardHeader>
+				<CardHeader>
+					<PageToolbar
+						{...toolbarProps}
+						totalCount={logs.length}
+						filteredCount={filteredLogs.length}
+					/>
+				</CardHeader>
 				{logList}
 				{shortcutHelpDialog}
 			</Card>
@@ -1591,7 +721,7 @@ export function LogViewer({
 
 	return (
 		<div className="space-y-3">
-			{sheetToolbar}
+			<SheetToolbar {...toolbarProps} />
 			<Card>{logList}</Card>
 			{shortcutHelpDialog}
 		</div>

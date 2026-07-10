@@ -73,7 +73,7 @@ export function useLogSearch(searchText: string, useRegex: boolean) {
 				let key = 0;
 				for (const match of text.matchAll(searchParsed.regex)) {
 					if (match.index === undefined) continue;
-					// Guard against zero-length matches to avoid infinite loops
+					// Zero-length matches would render empty <mark> elements.
 					if (match[0].length === 0) continue;
 					if (match.index > lastIndex) {
 						parts.push(
@@ -114,7 +114,7 @@ export function useLogSearch(searchText: string, useRegex: boolean) {
 		[searchText, useRegex, searchParsed, plainTextSplitRegex],
 	);
 
-	return { searchParsed, plainTextSplitRegex, highlightSearchText };
+	return { searchParsed, highlightSearchText };
 }
 
 export function useSearchMatches({

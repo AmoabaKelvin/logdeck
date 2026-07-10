@@ -41,16 +41,15 @@ export function computeFilteredLogItems(
 				}
 			}
 			if (excludeMatches && searchText) {
-				if (useRegex && !searchParsed.regex) {
-					// Invalid regex — skip filtering
-				} else {
-					const message = entry.message || entry.raw || "";
-					if (useRegex && searchParsed.regex) {
+				const message = entry.message || entry.raw || "";
+				if (useRegex) {
+					// An invalid regex excludes nothing rather than hiding every row.
+					if (searchParsed.regex) {
 						searchParsed.regex.lastIndex = 0;
 						if (searchParsed.regex.test(message)) return false;
-					} else {
-						if (message.toLowerCase().includes(searchLower)) return false;
 					}
+				} else if (message.toLowerCase().includes(searchLower)) {
+					return false;
 				}
 			}
 			return true;
