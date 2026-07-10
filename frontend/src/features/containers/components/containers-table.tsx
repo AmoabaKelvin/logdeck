@@ -39,7 +39,6 @@ import {
 	formatCPUPercent,
 	formatCreatedDate,
 	formatMemoryStats,
-	formatUptime,
 	getComposeProject,
 	getStateBadgeClass,
 	isCoolifyManaged,
@@ -209,7 +208,7 @@ export function ContainersTable({
 					)}
 				</TableCell>
 				<TableCell className="h-16 px-4 text-sm text-muted-foreground">
-					{formatUptime(container.created)}
+					{container.status || "—"}
 				</TableCell>
 				<TableCell className="h-16 px-4 text-sm text-muted-foreground">
 					{formatCreatedDate(container.created)}

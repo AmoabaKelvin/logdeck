@@ -22,7 +22,6 @@ import {
 	formatCPUPercent,
 	formatCreatedDate,
 	formatMemoryStats,
-	formatUptime,
 	getStateBadgeClass,
 	isCoolifyManaged,
 	toTitleCase,
@@ -205,14 +204,6 @@ function ContainerLogsPage() {
 									)}
 
 									<div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-										<div>
-											<span className="text-muted-foreground block mb-1">
-												Uptime
-											</span>
-											<p className="font-medium">
-												{formatUptime(container.created)}
-											</p>
-										</div>
 										<div>
 											<span className="text-muted-foreground block mb-1">
 												Created
