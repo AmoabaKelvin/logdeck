@@ -45,7 +45,8 @@ export function isLogStreamHeartbeat(
 	return (
 		typeof value === "object" &&
 		value !== null &&
-		(value as { type?: unknown }).type === "heartbeat"
+		"type" in value &&
+		value.type === "heartbeat"
 	);
 }
 
@@ -242,6 +243,8 @@ function appendContinuationLogEntry<TLogEntry extends LogEntry>(
 		fields[fieldMatch[1]] = fieldMatch[2].trim();
 	}
 
+	// Cast needed: spreading a generic and overriding base fields is not
+	// assignable back to TLogEntry as far as the compiler can prove.
 	return {
 		...entry,
 		message: [entry.message, message].filter(Boolean).join("\n"),
