@@ -6,8 +6,7 @@ import (
 	"github.com/AmoabaKelvin/logdeck/internal/cli"
 )
 
-// version is injected at build time via
-// -ldflags "-X main.version=<version>". Defaults to "dev".
+// version is injected at build time via -ldflags "-X main.version=<version>".
 var version = "dev"
 
 func main() {
