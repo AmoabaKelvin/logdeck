@@ -144,6 +144,8 @@ Search the recent logs of every running container across all hosts, merged by ti
 logdeck grep "connection refused" --since 1h --level ERROR
 ```
 
+An empty result still exits 0: stdout stays empty (clean for pipelines) and a one-line hint goes to stderr — `no running containers to search` or `no matches in <N> containers since <time>`.
+
 ### stats
 
 CPU and memory usage for all running containers, or one.
@@ -233,7 +235,7 @@ logdeck logs api --follow
 Notes for agents:
 
 - `-o json` always emits a single JSON document on stdout for one-shot commands; streaming commands (`logs --follow`, `events`) emit NDJSON, one object per line.
-- Errors go to stderr as `{"error": "..."}` in JSON mode; stdout stays clean for parsing.
+- Errors — both runtime and usage errors — go to stderr as `{"error": "..."}` in JSON mode; stdout stays clean for parsing. (If `-o` itself fails to parse, the error falls back to plain text.)
 - Exit codes: 0 success, 1 runtime/server error, 2 usage error.
 - `--since`/`--until` accept relative durations (`15m`, `2h`, `1d`), so no date math is needed.
 - `logdeck grep` is the fastest way to find which container is emitting an error across an entire deployment.

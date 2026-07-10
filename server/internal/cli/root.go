@@ -60,17 +60,28 @@ func (a *app) printError(err error) {
 func Execute(version string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	return execute(ctx, version, os.Args[1:])
+}
 
+func execute(ctx context.Context, version string, args []string) int {
 	a := &app{}
 	root := newRootCmd(a)
 	root.Version = version
+	root.SetArgs(args)
 	err := root.ExecuteContext(ctx)
 	if err == nil {
 		return 0
 	}
 	if !a.ran {
-		fmt.Fprintln(os.Stderr, "Error: "+err.Error())
-		fmt.Fprintln(os.Stderr, "Run 'logdeck --help' for usage.")
+		// Usage error. Honor -o json when it parsed before the failure;
+		// if -o itself is what failed, a.output isn't "json" and we fall
+		// back to plain text.
+		if a.jsonOutput() {
+			a.printError(err)
+		} else {
+			fmt.Fprintln(os.Stderr, "Error: "+err.Error())
+			fmt.Fprintln(os.Stderr, "Run 'logdeck --help' for usage.")
+		}
 		return 2
 	}
 	a.printError(err)
