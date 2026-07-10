@@ -1,150 +1,89 @@
-"use client";
-
-import { motion } from "framer-motion";
-import { Container, Download, Eye, Layers, Server, Shield } from "lucide-react";
-
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-
 const features = [
   {
-    icon: Eye,
-    title: "Real-time Log Streaming",
+    title: "Live log streaming",
     description:
-      "Monitor your container logs in real-time with auto-scroll, timestamps, and color-coded log levels. Search, filter, and download logs with ease.",
-    number: "01",
+      "Follow logs in real time with pause, auto-scroll, and timestamps. Thousands of lines stay smooth.",
   },
   {
-    icon: Server,
-    title: "Multi-Host Management",
+    title: "Search and filtering",
     description:
-      "Connect to multiple Docker hosts at once (local Unix sockets, TCP endpoints, or SSH targets) and manage them from a single LogDeck dashboard.",
-    number: "02",
+      "Full-text search with match navigation, log level filters, and calendar-based time ranges.",
   },
   {
-    icon: Container,
-    title: "Container Management",
+    title: "Multi-host",
     description:
-      "Start, stop, restart, and remove containers with a single click. View detailed information including environment variables, volumes, and ports.",
-    number: "03",
+      "Manage local, TCP, and SSH daemons from one dashboard. Every container, one list.",
   },
   {
-    icon: Layers,
-    title: "Beautiful Interface",
+    title: "Docker and Podman",
     description:
-      "Enjoy a modern, intuitive UI with dark and light mode support. Built with React and Tailwind CSS for a smooth, responsive experience.",
-    number: "04",
+      "Works with both engines, rootless or rootful, side by side in the same setup.",
   },
   {
-    icon: Shield,
-    title: "Optional Authentication",
+    title: "Compose stacks",
     description:
-      "Secure your instance with JWT-based authentication or run completely open. Read-only mode available for safe viewing without modifications.",
-    number: "05",
+      "Start, stop, or restart whole stacks, and read stack logs merged by timestamp.",
   },
   {
-    icon: Download,
-    title: "Easy Installation",
+    title: "Stats and trends",
     description:
-      "Deploy with Docker Compose in seconds. Single binary with embedded frontend. No database required. Works with any Docker host.",
-    number: "06",
+      "Live CPU and memory per container, with sparklines covering the last five minutes.",
+  },
+  {
+    title: "Resource limits",
+    description:
+      "Change memory limits, CPU limits, and restart policies live — no recreate, no downtime.",
+  },
+  {
+    title: "Command-line client",
+    description:
+      "A scriptable logdeck CLI with JSON output, built for automation and AI agents.",
+  },
+  {
+    title: "Web terminal",
+    description:
+      "Open a shell in any running container straight from the browser.",
+  },
+  {
+    title: "Images, volumes, networks",
+    description:
+      "Read-only views of everything else on your hosts, aggregated and filterable.",
+  },
+  {
+    title: "Environment variables",
+    description:
+      "View and edit container env vars, with bulk paste from .env files.",
+  },
+  {
+    title: "Auth and API tokens",
+    description:
+      "Optional login, API tokens for external tools, and a read-only mode for production.",
   },
 ];
 
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1,
-    },
-  },
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      duration: 0.5,
-    },
-  },
-};
-
 export function Features() {
   return (
-    <section id="features" className="container py-20 md:py-32">
-      <div className="mx-auto flex max-w-232 flex-col items-center space-y-4 text-center">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5 }}
-        >
-          <Badge className="mb-4">Features</Badge>
-          <h2 className="text-3xl font-bold leading-[1.1] sm:text-4xl md:text-5xl">
-            Everything you need to manage Docker
-          </h2>
-          {/* <p className="mt-4 text-lg text-muted-foreground sm:text-xl">
-            LogDeck provides a comprehensive set of features to help you monitor
-            and manage your Docker containers efficiently.
-          </p> */}
-        </motion.div>
+    <section id="features" className="container py-20 sm:py-24">
+      <div className="max-w-2xl">
+        <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+          Everything you need to run containers
+        </h2>
+        <p className="mt-3 text-muted-foreground">
+          One binary with the frontend embedded. No database, no agents on your
+          hosts.
+        </p>
       </div>
 
-      <motion.div
-        variants={containerVariants}
-        initial="hidden"
-        whileInView="visible"
-        viewport={{ once: true, margin: "-100px" }}
-        className="mx-auto mt-16 grid max-w-7xl gap-6 sm:grid-cols-2 lg:grid-cols-3"
-      >
-        {features.map((feature) => {
-          const Icon = feature.icon;
-          return (
-            <motion.div key={feature.title} variants={itemVariants}>
-              <Card className="relative h-full overflow-hidden border-border/50 transition-all hover:border-border hover:shadow-lg">
-                <div className="absolute top-4 right-4 text-8xl font-bold text-muted/5">
-                  {feature.number}
-                </div>
-                <CardHeader>
-                  <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-                    <Icon className="h-6 w-6 text-primary" />
-                  </div>
-                  <CardTitle className="text-xl">{feature.title}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <CardDescription className="text-base">
-                    {feature.description}
-                  </CardDescription>
-                </CardContent>
-              </Card>
-            </motion.div>
-          );
-        })}
-      </motion.div>
+      <dl className="mt-12 grid gap-x-10 gap-y-9 sm:grid-cols-2 lg:grid-cols-3">
+        {features.map((feature) => (
+          <div key={feature.title}>
+            <dt className="font-medium">{feature.title}</dt>
+            <dd className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+              {feature.description}
+            </dd>
+          </div>
+        ))}
+      </dl>
     </section>
-  );
-}
-
-function Badge({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div
-      className={`inline-flex items-center rounded-lg bg-muted px-3 py-1 text-sm font-medium ${className}`}
-    >
-      {children}
-    </div>
   );
 }

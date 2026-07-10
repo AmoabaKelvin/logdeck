@@ -6,7 +6,8 @@ import { AlertTriangle, CloudCog, Info, Lock, Server } from "lucide-react"
 
 export const metadata: Metadata = {
   title: "Configuration",
-  description: "Complete configuration guide for LogDeck including environment variables, authentication, and Docker setup.",
+  description: "Configure LogDeck with environment variables: DOCKER_HOSTS for multi-host setups, JWT authentication, Coolify sync, read-only mode, and reverse proxy examples.",
+  alternates: { canonical: "/docs/configuration" },
 }
 
 export default function ConfigurationPage() {
@@ -387,10 +388,38 @@ console.log(hash);`}
         <p className="mb-4 text-base">
           LogDeck supports a read-only mode that prevents any container management operations.
           This is useful in production environments where you want to view logs but not modify containers.
+          When enabled, all mutating operations (start, stop, restart, remove, env and resource updates)
+          are blocked.
         </p>
+        <p className="mb-4 text-base">
+          Toggle it from the <strong>Settings</strong> page in the UI, or pin it with an environment variable:
+        </p>
+
+        <div className="not-prose mb-4">
+          <CodeBlock code="READONLY_MODE=true" language="bash" />
+        </div>
+
         <p className="mb-8 text-base">
-          Read-only mode is controlled via a feature flag in the backend code. When enabled, all
-          mutating operations (start, stop, restart, remove, env updates) will be blocked.
+          When <code>READONLY_MODE</code> is set, it takes precedence and the UI toggle is disabled —
+          useful when the environment, not the admin, should have the final say.
+        </p>
+
+        <Separator className="my-12" />
+
+        <h2 className="mb-4 text-3xl font-bold tracking-tight">API Tokens</h2>
+        <p className="mb-4 text-base">
+          API tokens give the <a href="/docs/cli">LogDeck CLI</a> and external tools their own
+          credentials, so you never have to share your admin login. They are managed entirely in
+          the UI — no environment variables involved:
+        </p>
+        <ul className="mb-4 space-y-2">
+          <li>Create and revoke tokens under <strong>Settings &rarr; API Tokens</strong></li>
+          <li>Tokens are prefixed <code>ldk_</code> and shown in full only once, at creation</li>
+          <li>Requests authenticate with an <code>Authorization: Bearer &lt;token&gt;</code> header</li>
+        </ul>
+        <p className="mb-8 text-base">
+          Tokens only matter when authentication is enabled; on an open instance the API is
+          reachable without them.
         </p>
 
         <Separator className="my-12" />

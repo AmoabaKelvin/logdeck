@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Check, Copy } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import copy from "copy-to-clipboard"
@@ -16,7 +16,13 @@ interface CodeBlockProps {
 
 export function CodeBlock({ code, language = "bash", showLineNumbers = false }: CodeBlockProps) {
   const [copied, setCopied] = useState(false)
-  const { theme } = useTheme()
+  const { resolvedTheme } = useTheme()
+  // Render the light style until mounted so the first client render matches
+  // the prerendered HTML; the post-mount re-render applies the real theme
+  // (hydration never patches mismatched inline style attributes).
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+  const isDark = mounted && resolvedTheme === "dark"
 
   const handleCopy = () => {
     copy(code)
@@ -43,7 +49,7 @@ export function CodeBlock({ code, language = "bash", showLineNumbers = false }: 
       <div className="overflow-x-auto rounded-lg border w-full">
         <SyntaxHighlighter
           language={language}
-          style={theme === "dark" ? oneDark : oneLight}
+          style={isDark ? oneDark : oneLight}
           showLineNumbers={showLineNumbers}
           customStyle={{
             margin: 0,

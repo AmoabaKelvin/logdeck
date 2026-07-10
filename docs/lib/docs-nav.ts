@@ -1,4 +1,4 @@
-import { BookOpen, Layers, Rocket, Settings } from "lucide-react"
+import { BookOpen, Layers, Rocket, Settings, Terminal } from "lucide-react"
 
 export const docsNav = [
   {
@@ -23,6 +23,11 @@ export const docsNav = [
         title: "Features",
         href: "/docs/features",
         icon: Layers,
+      },
+      {
+        title: "CLI",
+        href: "/docs/cli",
+        icon: Terminal,
       },
       {
         title: "Configuration",
