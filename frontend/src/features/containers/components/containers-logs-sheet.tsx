@@ -21,7 +21,6 @@ import type { ContainerInfo } from "../types";
 import {
 	formatContainerName,
 	formatCreatedDate,
-	formatUptime,
 	getContainerUrlIdentifier,
 	getStateBadgeClass,
 	isCoolifyManaged,
@@ -140,12 +139,6 @@ export function ContainersLogsSheet({
 											<span className="text-muted-foreground">Status</span>
 											<span className="col-span-2 font-medium">
 												{container.status}
-											</span>
-										</div>
-										<div className="grid grid-cols-3 gap-4">
-											<span className="text-muted-foreground">Uptime</span>
-											<span className="col-span-2 font-medium">
-												{formatUptime(container.created)}
 											</span>
 										</div>
 										<div className="grid grid-cols-3 gap-4">

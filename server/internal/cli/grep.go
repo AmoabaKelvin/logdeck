@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -48,6 +49,7 @@ func newGrepCmd(a *app) *cobra.Command {
 				running = append(running, c)
 			}
 			if len(running) == 0 {
+				fmt.Fprintln(os.Stderr, "no running containers to search")
 				return a.printLogs(nil, true)
 			}
 
@@ -64,6 +66,9 @@ func newGrepCmd(a *app) *cobra.Command {
 			logs, err := a.aggregatedLogs(ctx, buildTargets(running), query)
 			if err != nil {
 				return err
+			}
+			if len(logs) == 0 {
+				fmt.Fprintf(os.Stderr, "no matches in %d containers since %s\n", len(running), since)
 			}
 			return a.printLogs(logs, true)
 		}),

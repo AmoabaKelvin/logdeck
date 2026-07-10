@@ -63,7 +63,7 @@ func newLoginCmd(a *app) *cobra.Command {
 					"current": true,
 				})
 			}
-			fmt.Printf("Saved context %q (%s, token %s) and made it current.\n", name, serverURL, tokenPreview(token))
+			fmt.Printf("saved context %q (%s, token %s) and made it current\n", name, serverURL, tokenPreview(token))
 			return nil
 		}),
 	}
@@ -96,7 +96,7 @@ func newLogoutCmd(a *app) *cobra.Command {
 			if a.jsonOutput() {
 				return a.printJSON(map[string]string{"message": "token removed", "context": name})
 			}
-			fmt.Printf("Removed token from context %q.\n", name)
+			fmt.Printf("logged out of context %q (token removed, url kept)\n", name)
 			return nil
 		}),
 	}
@@ -183,7 +183,7 @@ func newContextUseCmd(a *app) *cobra.Command {
 			if a.jsonOutput() {
 				return a.printJSON(map[string]string{"message": "context switched", "context": args[0]})
 			}
-			fmt.Printf("Switched to context %q (%s).\n", args[0], contextURL)
+			fmt.Printf("switched to context %q (%s)\n", args[0], contextURL)
 			return nil
 		}),
 	}
@@ -205,7 +205,7 @@ func newContextRmCmd(a *app) *cobra.Command {
 			if a.jsonOutput() {
 				return a.printJSON(map[string]string{"message": "context removed", "context": args[0]})
 			}
-			fmt.Printf("Removed context %q.\n", args[0])
+			fmt.Printf("removed context %q\n", args[0])
 			return nil
 		}),
 	}
