@@ -1,5 +1,5 @@
 import { CheckIcon, CopyIcon, PinIcon, PinOffIcon, XIcon } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -22,7 +22,6 @@ export function SelectionActionBar({
 	const [copied, setCopied] = useState(false);
 	const [isVisible, setIsVisible] = useState(false);
 
-	// Animate in/out based on selection
 	useEffect(() => {
 		if (selectedCount > 0) {
 			// Small delay for enter animation
@@ -33,11 +32,11 @@ export function SelectionActionBar({
 		}
 	}, [selectedCount]);
 
-	const handleCopy = useCallback(() => {
+	const handleCopy = () => {
 		onCopy();
 		setCopied(true);
 		setTimeout(() => setCopied(false), 1500);
-	}, [onCopy]);
+	};
 
 	if (selectedCount === 0) return null;
 
@@ -50,7 +49,6 @@ export function SelectionActionBar({
 				isVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2",
 			)}
 		>
-			{/* Selection indicator with animated dot */}
 			<div className="flex items-center gap-3">
 				<div className="relative flex items-center justify-center">
 					<span className="absolute size-2 rounded-full bg-primary/60 animate-ping" />
@@ -62,7 +60,6 @@ export function SelectionActionBar({
 				</span>
 			</div>
 
-			{/* Action buttons */}
 			<div className="flex items-center gap-2">
 				<Button
 					size="sm"

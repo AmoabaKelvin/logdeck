@@ -1,28 +1,10 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import type { DateRange } from "react-day-picker";
 import { toast } from "sonner";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Spinner } from "@/components/ui/spinner";
+
 import { ResourceNav } from "@/features/resources/components/resource-nav";
-import type { ComposeAction } from "../api/compose-actions";
-import { performComposeAction } from "../api/compose-actions";
-import {
-	removeContainer,
-	restartContainer,
-	startContainer,
-	stopContainer,
-} from "../api/container-actions";
 import type { GetContainersResponse } from "../api/get-containers";
+import { useContainerActions } from "../hooks/use-container-actions";
 import { useContainerStats } from "../hooks/use-container-stats";
 import { useContainersDashboardUrlState } from "../hooks/use-containers-dashboard-url-state";
 import { useHostsStats } from "../hooks/use-hosts-stats";
@@ -30,17 +12,8 @@ import { useLiveContainersQuery } from "../hooks/use-live-containers-query";
 import { useSystemUsageHistory } from "../hooks/use-stats-history";
 import { useSystemStats } from "../hooks/use-system-stats";
 import type { ContainerInfo } from "../types";
-import type {
-	ContainerActionType,
-	GroupByOption,
-	GroupedContainers,
-	SortDirection,
-} from "./container-utils";
-import {
-	formatContainerName,
-	getInitialStateCounts,
-	groupByCompose,
-} from "./container-utils";
+import { ConfirmActionDialog } from "./confirm-action-dialog";
+import { getInitialStateCounts, groupByCompose } from "./container-utils";
 import { ContainersLogsSheet } from "./containers-logs-sheet";
 import { ContainersPagination } from "./containers-pagination";
 import { ContainersStateSummary } from "./containers-state-summary";
@@ -72,22 +45,16 @@ export function ContainersDashboard() {
 		}
 	}, [hostErrors]);
 
-	const hostInfo = useMemo(
-		() => ({
-			hostname: systemStats?.hostInfo.hostname ?? "Loading...",
-			os: systemStats?.hostInfo.platform ?? "Unknown",
-			kernel: systemStats?.hostInfo.kernelVersion ?? "Unknown",
-		}),
-		[systemStats],
-	);
+	const hostInfo = {
+		hostname: systemStats?.hostInfo.hostname ?? "Loading...",
+		os: systemStats?.hostInfo.platform ?? "Unknown",
+		kernel: systemStats?.hostInfo.kernelVersion ?? "Unknown",
+	};
 
-	const systemUsage = useMemo(
-		() => ({
-			cpu: Math.round(systemStats?.usage.cpuPercent ?? 0),
-			memory: Math.round(systemStats?.usage.memoryPercent ?? 0),
-		}),
-		[systemStats],
-	);
+	const systemUsage = {
+		cpu: Math.round(systemStats?.usage.cpuPercent ?? 0),
+		memory: Math.round(systemStats?.usage.memoryPercent ?? 0),
+	};
 
 	const {
 		searchTerm,
@@ -111,20 +78,21 @@ export function ContainersDashboard() {
 	const [selectedContainer, setSelectedContainer] =
 		useState<ContainerInfo | null>(null);
 	const [isLogsSheetOpen, setIsLogsSheetOpen] = useState(false);
-	const [pendingAction, setPendingAction] = useState<{
-		id: string;
-		type: ContainerActionType;
-	} | null>(null);
-	const [pendingComposeAction, setPendingComposeAction] = useState<{
-		project: string;
-		type: ComposeAction;
-	} | null>(null);
-	const [confirmAction, setConfirmAction] = useState<{
-		type: Extract<ContainerActionType, "stop" | "remove">;
-		container: ContainerInfo;
-	} | null>(null);
 
-	// Helper function to check if a container matches filters
+	const {
+		pendingAction,
+		pendingComposeAction,
+		confirmAction,
+		isConfirmActionPending,
+		startContainerAction,
+		stopContainerAction,
+		restartContainerAction,
+		deleteContainerAction,
+		composeAction,
+		confirmPendingAction,
+		handleConfirmDialogOpenChange,
+	} = useContainerActions(refetch);
+
 	const matchesFilters = useMemo(() => {
 		const normalizedSearch = searchTerm.trim().toLowerCase();
 
@@ -228,140 +196,6 @@ export function ContainersDashboard() {
 		return counts;
 	}, [containers, matchesFilters]);
 
-	const executeAction = async (
-		actionType: ContainerActionType,
-		container: ContainerInfo,
-	) => {
-		setPendingAction({ id: container.id, type: actionType });
-		try {
-			let message = "";
-			switch (actionType) {
-				case "start":
-					message = await startContainer(container.id, container.host);
-					break;
-				case "stop":
-					message = await stopContainer(container.id, container.host);
-					break;
-				case "restart":
-					message = await restartContainer(container.id, container.host);
-					break;
-				case "remove":
-					message = await removeContainer(container.id, container.host);
-					break;
-				default:
-					return;
-			}
-			if (message) {
-				toast.success(message);
-			}
-			await refetch();
-		} catch (error) {
-			if (error instanceof Error) {
-				toast.error(error.message);
-			} else {
-				toast.error("Unexpected error while performing container action.");
-			}
-		} finally {
-			setPendingAction(null);
-		}
-	};
-
-	const executeComposeAction = async (
-		actionType: ComposeAction,
-		group: GroupedContainers,
-	) => {
-		// A UI group can theoretically span hosts; act once per distinct host.
-		const groupHosts = Array.from(
-			new Set(group.items.map((container) => container.host)),
-		);
-		setPendingComposeAction({ project: group.project, type: actionType });
-		try {
-			const results = await Promise.all(
-				groupHosts.map((host) =>
-					performComposeAction(group.project, actionType, host),
-				),
-			);
-			const succeeded = results.reduce(
-				(sum, result) => sum + result.succeeded,
-				0,
-			);
-			const verb =
-				actionType === "start"
-					? "Started"
-					: actionType === "stop"
-						? "Stopped"
-						: "Restarted";
-			toast.success(
-				`${verb} ${succeeded} container${succeeded === 1 ? "" : "s"} in ${group.project}`,
-			);
-			await refetch();
-		} catch (error) {
-			if (error instanceof Error) {
-				toast.error(error.message);
-			} else {
-				toast.error("Unexpected error while performing compose action.");
-			}
-		} finally {
-			setPendingComposeAction(null);
-		}
-	};
-
-	const handleComposeAction = (
-		action: ComposeAction,
-		group: GroupedContainers,
-	) => {
-		void executeComposeAction(action, group);
-	};
-
-	const handleConfirmAction = async () => {
-		if (!confirmAction) return;
-		const { type, container } = confirmAction;
-		await executeAction(type, container);
-		setConfirmAction(null);
-	};
-
-	const handleConfirmDialogOpenChange = (open: boolean) => {
-		if (!open) {
-			setConfirmAction(null);
-		}
-	};
-
-	const handleSearchChange = (value: string) => {
-		setSearchTerm(value);
-	};
-
-	const handleStateFilterChange = (value: string) => {
-		setStateFilter(value);
-	};
-
-	const handleHostFilterChange = (value: string) => {
-		setHostFilter(value);
-	};
-
-	const handleSortDirectionChange = (direction: SortDirection) => {
-		setSortDirection(direction);
-	};
-
-	const handleGroupByChange = (value: GroupByOption) => {
-		setGroupBy(value);
-	};
-
-	const handleDateRangeChange = (range: DateRange | undefined) => {
-		setDateRange(range);
-	};
-
-	const handleDateRangeClear = () => {
-		clearDateRange();
-	};
-
-	const handlePageSizeChange = (size: number) => {
-		setPageSize(size);
-	};
-
-	const handlePageChange = (nextPage: number) => {
-		setPage(nextPage);
-	};
-
 	const handleViewLogs = (container: ContainerInfo) => {
 		setSelectedContainer(container);
 		setIsLogsSheetOpen(true);
@@ -392,47 +226,6 @@ export function ContainersDashboard() {
 		}
 	};
 
-	const handleStartContainer = (container: ContainerInfo) => {
-		void executeAction("start", container);
-	};
-
-	const handleStopContainer = (container: ContainerInfo) => {
-		setConfirmAction({ type: "stop", container });
-	};
-
-	const handleRestartContainer = (container: ContainerInfo) => {
-		void executeAction("restart", container);
-	};
-
-	const handleDeleteContainer = (container: ContainerInfo) => {
-		setConfirmAction({ type: "remove", container });
-	};
-
-	const confirmActionTitle =
-		confirmAction?.type === "stop"
-			? "Stop container?"
-			: confirmAction?.type === "remove"
-				? "Remove container?"
-				: "";
-
-	const confirmActionDescription =
-		confirmAction?.type === "stop"
-			? "Stopping a container will terminate its running processes."
-			: confirmAction?.type === "remove"
-				? "Removing a container will permanently delete it and its resources. This action cannot be undone."
-				: "";
-
-	const confirmActionButtonLabel = confirmAction
-		? confirmAction.type === "stop"
-			? "Stop Container"
-			: "Remove Container"
-		: "Confirm";
-
-	const isConfirmActionPending =
-		!!confirmAction &&
-		pendingAction?.id === confirmAction.container.id &&
-		pendingAction?.type === confirmAction.type;
-
 	return (
 		<div className="w-full space-y-8">
 			<ResourceNav />
@@ -447,20 +240,20 @@ export function ContainersDashboard() {
 			<section className="space-y-4">
 				<ContainersToolbar
 					searchTerm={searchTerm}
-					onSearchChange={handleSearchChange}
+					onSearchChange={setSearchTerm}
 					stateFilter={stateFilter}
-					onStateFilterChange={handleStateFilterChange}
+					onStateFilterChange={setStateFilter}
 					availableStates={availableStates}
 					hostFilter={hostFilter}
-					onHostFilterChange={handleHostFilterChange}
+					onHostFilterChange={setHostFilter}
 					availableHosts={hosts}
 					sortDirection={sortDirection}
-					onSortDirectionChange={handleSortDirectionChange}
+					onSortDirectionChange={setSortDirection}
 					groupBy={groupBy}
-					onGroupByChange={handleGroupByChange}
+					onGroupByChange={setGroupBy}
 					dateRange={dateRange}
-					onDateRangeChange={handleDateRangeChange}
-					onDateRangeClear={handleDateRangeClear}
+					onDateRangeChange={setDateRange}
+					onDateRangeClear={clearDateRange}
 					onRefresh={refetch}
 					isFetching={isFetching}
 				/>
@@ -480,11 +273,11 @@ export function ContainersDashboard() {
 					isReadOnly={isReadOnly}
 					statsMap={statsMap}
 					statsHistory={statsHistory}
-					onStart={handleStartContainer}
-					onStop={handleStopContainer}
-					onRestart={handleRestartContainer}
-					onDelete={handleDeleteContainer}
-					onComposeAction={handleComposeAction}
+					onStart={startContainerAction}
+					onStop={stopContainerAction}
+					onRestart={restartContainerAction}
+					onDelete={deleteContainerAction}
+					onComposeAction={composeAction}
 					onViewLogs={handleViewLogs}
 					onRetry={() => {
 						void refetch();
@@ -498,70 +291,19 @@ export function ContainersDashboard() {
 					page={page}
 					totalPages={totalPages}
 					pageSize={pageSize}
-					onPageChange={handlePageChange}
-					onPageSizeChange={handlePageSizeChange}
+					onPageChange={setPage}
+					onPageSizeChange={setPageSize}
 				/>
 			</section>
 
-			<AlertDialog
-				open={Boolean(confirmAction)}
+			<ConfirmActionDialog
+				action={confirmAction}
+				isPending={isConfirmActionPending}
+				onConfirm={() => {
+					void confirmPendingAction();
+				}}
 				onOpenChange={handleConfirmDialogOpenChange}
-			>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>{confirmActionTitle}</AlertDialogTitle>
-						<AlertDialogDescription>
-							{confirmActionDescription}
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					{confirmAction && (
-						<div className="space-y-2">
-							<div className="text-sm font-medium text-muted-foreground">
-								Container Details
-							</div>
-							<div className="rounded-md border bg-muted/30 p-3 space-y-2">
-								<div className="flex items-start justify-between gap-4">
-									<span className="text-xs text-muted-foreground">Name</span>
-									<span className="text-sm font-medium text-right">
-										{formatContainerName(confirmAction.container.names)}
-									</span>
-								</div>
-								<div className="flex items-start justify-between gap-4">
-									<span className="text-xs text-muted-foreground">Image</span>
-									<span className="text-sm font-mono text-right break-all">
-										{confirmAction.container.image}
-									</span>
-								</div>
-								<div className="flex items-start justify-between gap-4">
-									<span className="text-xs text-muted-foreground">ID</span>
-									<span className="text-sm font-mono text-right break-all">
-										{confirmAction.container.id.slice(0, 12)}
-									</span>
-								</div>
-							</div>
-						</div>
-					)}
-					<AlertDialogFooter>
-						<AlertDialogCancel disabled={isConfirmActionPending}>
-							Cancel
-						</AlertDialogCancel>
-						<AlertDialogAction
-							className={`flex items-center gap-2 ${
-								confirmAction?.type === "remove"
-									? "bg-destructive text-white hover:bg-destructive/90"
-									: ""
-							}`}
-							onClick={() => {
-								void handleConfirmAction();
-							}}
-							disabled={isConfirmActionPending}
-						>
-							{isConfirmActionPending && <Spinner className="size-4" />}
-							{confirmActionButtonLabel}
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
+			/>
 
 			<ContainersLogsSheet
 				container={selectedContainer}
