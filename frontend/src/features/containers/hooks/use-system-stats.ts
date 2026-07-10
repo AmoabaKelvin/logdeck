@@ -9,6 +9,6 @@ export function useSystemStats() {
 	return useQuery({
 		queryKey: ["system-stats"],
 		queryFn: getSystemStats,
-		refetchInterval: isVisible ? 2000 : false, // Refresh every 2 seconds while the page is visible
+		refetchInterval: isVisible ? 2000 : false,
 	});
 }

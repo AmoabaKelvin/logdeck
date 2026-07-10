@@ -1,5 +1,4 @@
 import { formatDistanceToNow } from "date-fns";
-import { useMemo } from "react";
 
 import { formatBytes } from "@/features/containers/components/container-utils";
 
@@ -13,10 +12,7 @@ export function ImagesPage() {
 	const items = data?.items ?? [];
 	const hostErrors = data?.hostErrors ?? [];
 
-	const showHost = useMemo(
-		() => new Set(items.map((item) => item.host)).size > 1,
-		[items],
-	);
+	const showHost = new Set(items.map((item) => item.host)).size > 1;
 
 	const columns: ResourceColumn<ImageInfo>[] = [
 		{

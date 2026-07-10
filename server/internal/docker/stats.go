@@ -196,18 +196,14 @@ func (c *MultiHostClient) GetBulkContainerStats(ctx context.Context, containers 
 	return results
 }
 
-// GetAllRunningContainerStats fetches stats for all running containers across all hosts
+// GetAllRunningContainerStats fetches stats for all running containers across all hosts.
 func (c *MultiHostClient) GetAllRunningContainerStats(ctx context.Context) ([]models.ContainerStats, error) {
-	// First, get list of all running containers
 	var runningContainers []ContainerIdentifier
 
 	for hostName, apiClient := range c.clients {
-		containers, err := apiClient.ContainerList(ctx, container.ListOptions{
-			All: false, // Only running containers
-		})
+		containers, err := apiClient.ContainerList(ctx, container.ListOptions{All: false})
 		if err != nil {
-			// Log error but continue with other hosts
-			continue
+			continue // an unreachable host must not fail the whole call
 		}
 
 		for _, ctr := range containers {
@@ -218,7 +214,6 @@ func (c *MultiHostClient) GetAllRunningContainerStats(ctx context.Context) ([]mo
 		}
 	}
 
-	// Fetch stats for all running containers in parallel
 	return c.GetBulkContainerStats(ctx, runningContainers), nil
 }
 

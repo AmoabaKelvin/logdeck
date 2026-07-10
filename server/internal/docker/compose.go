@@ -36,7 +36,7 @@ type composeTarget struct {
 // applyToTargets runs apply on each target concurrently and aggregates
 // per-container failures instead of aborting the whole action.
 func applyToTargets(ctx context.Context, targets []composeTarget, apply func(ctx context.Context, id string) error) (succeeded int, failed []models.ComposeContainerFailure) {
-	failed = []models.ComposeContainerFailure{}
+	failed = []models.ComposeContainerFailure{} // non-nil so the JSON response renders [] rather than null
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
@@ -94,7 +94,7 @@ func (c *MultiHostClient) ComposeProjectAction(ctx context.Context, hostName, pr
 		return result, err
 	}
 
-	targets := []composeTarget{}
+	var targets []composeTarget
 	for _, ctr := range containers {
 		if !inComposeProject(ctr.Labels, project) {
 			continue

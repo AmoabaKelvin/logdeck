@@ -17,11 +17,6 @@ type containerInfo struct {
 	Host    string            `json:"host"`
 }
 
-type dockerHost struct {
-	Name string `json:"name"`
-	Host string `json:"host"`
-}
-
 type hostError struct {
 	Host    string `json:"host"`
 	Message string `json:"message"`
@@ -29,7 +24,6 @@ type hostError struct {
 
 type containersResponse struct {
 	Containers []containerInfo `json:"containers"`
-	Hosts      []dockerHost    `json:"hosts"`
 	HostErrors []hostError     `json:"hostErrors"`
 	ReadOnly   bool            `json:"readOnly"`
 }

@@ -82,9 +82,6 @@ func (mc *MultiClient) GetClient(hostName string) *Client {
 
 // TestConnection checks if the Coolify API is reachable by calling /api/v1/version.
 func (c *Client) TestConnection(ctx context.Context) error {
-	if c == nil {
-		return fmt.Errorf("coolify client is nil")
-	}
 	url := fmt.Sprintf("%s/api/v1/version", c.apiURL)
 	_, err := c.doRequest(ctx, "GET", url, nil)
 	if err != nil {
@@ -144,12 +141,7 @@ type coolifyEnvVar struct {
 
 // SyncEnvVars syncs environment variables to Coolify's API so they persist
 // across redeployments. It upserts new/changed vars and deletes removed ones.
-// No-ops if client or resource is nil.
 func (c *Client) SyncEnvVars(ctx context.Context, resource *ResourceInfo, envVars map[string]string) error {
-	if c == nil || resource == nil {
-		return nil
-	}
-
 	if resource.Type == ResourceTypeDatabase {
 		return fmt.Errorf("coolify: syncing env vars for database resources is not supported")
 	}

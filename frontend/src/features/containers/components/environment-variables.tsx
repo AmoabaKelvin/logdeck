@@ -3,16 +3,6 @@ import { Edit2, Plus, Save, Trash2, Upload, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +15,8 @@ import {
 
 import { getContainerEnvVariables } from "../api/get-container-env-variables";
 import { updateContainerEnvVariables } from "../api/update-container-env-variables";
+import { EnvUpdateConfirmDialog } from "./env-update-confirm-dialog";
+import { EnvUploadPreviewDialog } from "./env-upload-preview-dialog";
 
 interface EnvironmentVariablesProps {
 	containerId: string;
@@ -34,7 +26,6 @@ interface EnvironmentVariablesProps {
 	onContainerIdChange?: (newContainerId: string) => void;
 }
 
-// Parse .env file content into key-value pairs
 export function parseEnvFile(content: string): Record<string, string> {
 	const env: Record<string, string> = {};
 	const lines = content.split("\n");
@@ -42,12 +33,10 @@ export function parseEnvFile(content: string): Record<string, string> {
 	for (const line of lines) {
 		const trimmed = line.trim();
 
-		// Skip empty lines and comments
 		if (!trimmed || trimmed.startsWith("#")) {
 			continue;
 		}
 
-		// Find the first = sign
 		const equalIndex = trimmed.indexOf("=");
 		if (equalIndex === -1) {
 			continue;
@@ -56,7 +45,6 @@ export function parseEnvFile(content: string): Record<string, string> {
 		const key = trimmed.substring(0, equalIndex).trim();
 		let value = trimmed.substring(equalIndex + 1).trim();
 
-		// Remove quotes if present
 		if (
 			(value.startsWith('"') && value.endsWith('"')) ||
 			(value.startsWith("'") && value.endsWith("'"))
@@ -120,7 +108,6 @@ export function EnvironmentVariables({
 				queryKey: ["containers"],
 			});
 
-			// Notify parent of new container ID
 			onContainerIdChange?.(result.newContainerId);
 
 			setIsEditing(false);
@@ -175,7 +162,6 @@ export function EnvironmentVariables({
 
 	const handleConfirmUpdate = () => {
 		const finalEnv = { ...editedEnv };
-		// Remove deleted keys
 		deletedKeys.forEach((key) => {
 			delete finalEnv[key];
 		});
@@ -271,14 +257,13 @@ export function EnvironmentVariables({
 
 		const reader = new FileReader();
 		reader.onload = (e) => {
-			const content = e.target?.result as string;
-			try {
-				const parsed = parseEnvFile(content);
-				setParsedEnvFile(parsed);
-				setShowUploadPreview(true);
-			} catch {
+			const content = e.target?.result;
+			if (typeof content !== "string") {
 				toast.error("Failed to parse .env file");
+				return;
 			}
+			setParsedEnvFile(parseEnvFile(content));
+			setShowUploadPreview(true);
 		};
 		reader.readAsText(file);
 
@@ -287,18 +272,11 @@ export function EnvironmentVariables({
 	};
 
 	const handleConfirmUpload = () => {
-		const newKeys = new Set<string>();
+		setEditedEnv((prev) => ({ ...prev, ...parsedEnvFile }));
+		setModifiedKeys(
+			(prev) => new Set([...prev, ...Object.keys(parsedEnvFile)]),
+		);
 
-		// Merge parsed env file into editedEnv
-		Object.entries(parsedEnvFile).forEach(([key, value]) => {
-			setEditedEnv((prev) => ({ ...prev, [key]: value }));
-			newKeys.add(key);
-		});
-
-		// Track all uploaded keys as modified
-		setModifiedKeys((prev) => new Set([...prev, ...newKeys]));
-
-		// Close dialog and reset
 		setShowUploadPreview(false);
 		setParsedEnvFile({});
 
@@ -329,21 +307,19 @@ export function EnvironmentVariables({
 	}
 
 	const displayEnv = isEditing ? editedEnv : envVariables || {};
-	const envEntries = Object.entries(displayEnv)
-		.filter(([key]) => !deletedKeys.has(key))
-		.sort(([keyA], [keyB]) => {
-			// When editing, sort by modified status (modified first)
-			if (isEditing) {
-				const aIsModified = modifiedKeys.has(keyA);
-				const bIsModified = modifiedKeys.has(keyB);
-
-				if (aIsModified && !bIsModified) return -1;
-				if (!aIsModified && bIsModified) return 1;
-			}
-
-			// For items with same modified status (or when not editing), maintain original order
+	const envEntries = Object.entries(displayEnv).filter(
+		([key]) => !deletedKeys.has(key),
+	);
+	if (isEditing) {
+		// Surface modified keys first; entries with equal status keep their order.
+		envEntries.sort(([keyA], [keyB]) => {
+			const aIsModified = modifiedKeys.has(keyA);
+			const bIsModified = modifiedKeys.has(keyB);
+			if (aIsModified && !bIsModified) return -1;
+			if (!aIsModified && bIsModified) return 1;
 			return 0;
 		});
+	}
 
 	if (envEntries.length === 0 && !isEditing) {
 		return (
@@ -357,7 +333,6 @@ export function EnvironmentVariables({
 
 	return (
 		<div className="space-y-3 pt-2">
-			{/* Hidden file input */}
 			<input
 				type="file"
 				ref={fileInputRef}
@@ -366,7 +341,6 @@ export function EnvironmentVariables({
 				className="hidden"
 			/>
 
-			{/* Edit/Save/Cancel buttons */}
 			<div className="flex items-center gap-2 justify-end border-b pb-2">
 				{!isEditing ? (
 					<TooltipProvider>
@@ -550,172 +524,21 @@ export function EnvironmentVariables({
 				</div>
 			)}
 
-			{/* Upload Preview Dialog */}
-			<AlertDialog open={showUploadPreview} onOpenChange={setShowUploadPreview}>
-				<AlertDialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
-					<AlertDialogHeader className="shrink-0">
-						<AlertDialogTitle>Preview .env File Import</AlertDialogTitle>
-						<AlertDialogDescription>
-							Review the variables that will be imported from the .env file.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
+			<EnvUploadPreviewDialog
+				open={showUploadPreview}
+				onOpenChange={setShowUploadPreview}
+				parsedEnv={parsedEnvFile}
+				currentEnv={editedEnv}
+				onConfirm={handleConfirmUpload}
+				onCancel={handleCancelUpload}
+			/>
 
-					<div className="space-y-4 py-4 overflow-y-auto min-h-0">
-						{/* Summary */}
-						<div className="flex gap-4 text-sm">
-							<div className="flex items-center gap-2">
-								<span className="font-medium">Total:</span>
-								<span className="px-2 py-0.5 rounded bg-muted">
-									{Object.keys(parsedEnvFile).length}
-								</span>
-							</div>
-							<div className="flex items-center gap-2">
-								<span className="font-medium">New:</span>
-								<span className="px-2 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
-									{
-										Object.keys(parsedEnvFile).filter((key) => !editedEnv[key])
-											.length
-									}
-								</span>
-							</div>
-							<div className="flex items-center gap-2">
-								<span className="font-medium">Updated:</span>
-								<span className="px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
-									{
-										Object.keys(parsedEnvFile).filter(
-											(key) =>
-												editedEnv[key] && editedEnv[key] !== parsedEnvFile[key],
-										).length
-									}
-								</span>
-							</div>
-						</div>
-
-						{/* New Variables */}
-						{Object.keys(parsedEnvFile).filter((key) => !editedEnv[key])
-							.length > 0 && (
-							<div className="space-y-2">
-								<h4 className="text-sm font-semibold text-green-700 dark:text-green-400">
-									New Variables
-								</h4>
-								<div className="space-y-2 max-h-48 overflow-y-auto">
-									{Object.entries(parsedEnvFile)
-										.filter(([key]) => !editedEnv[key])
-										.map(([key, value]) => (
-											<div
-												key={key}
-												className="p-2 rounded border border-green-200 dark:border-green-900/30 bg-green-50 dark:bg-green-900/10"
-											>
-												<div className="font-mono text-xs break-all overflow-hidden">
-													<span className="font-semibold break-words">
-														{key}
-													</span>
-													<span className="text-muted-foreground"> = </span>
-													<span className="break-words">{value}</span>
-												</div>
-											</div>
-										))}
-								</div>
-							</div>
-						)}
-
-						{/* Updated Variables */}
-						{Object.keys(parsedEnvFile).filter(
-							(key) => editedEnv[key] && editedEnv[key] !== parsedEnvFile[key],
-						).length > 0 && (
-							<div className="space-y-2">
-								<h4 className="text-sm font-semibold text-blue-700 dark:text-blue-400">
-									Updated Variables
-								</h4>
-								<div className="space-y-3 max-h-48 overflow-y-auto">
-									{Object.entries(parsedEnvFile)
-										.filter(
-											([key]) =>
-												editedEnv[key] && editedEnv[key] !== parsedEnvFile[key],
-										)
-										.map(([key, value]) => (
-											<div
-												key={key}
-												className="p-2 rounded border border-blue-200 dark:border-blue-900/30 bg-blue-50 dark:bg-blue-900/10"
-											>
-												<div className="font-mono text-xs space-y-1 overflow-hidden">
-													<div className="font-semibold break-words">{key}</div>
-													<div className="flex flex-col gap-1">
-														<div className="flex items-start gap-2">
-															<span className="text-muted-foreground shrink-0">
-																Old:
-															</span>
-															<span className="text-red-600 dark:text-red-400 line-through break-all">
-																{editedEnv[key]}
-															</span>
-														</div>
-														<div className="flex items-start gap-2">
-															<span className="text-muted-foreground shrink-0">
-																New:
-															</span>
-															<span className="text-green-600 dark:text-green-400 break-all">
-																{value}
-															</span>
-														</div>
-													</div>
-												</div>
-											</div>
-										))}
-								</div>
-							</div>
-						)}
-
-						{/* Unchanged Variables */}
-						{Object.keys(parsedEnvFile).filter(
-							(key) => editedEnv[key] && editedEnv[key] === parsedEnvFile[key],
-						).length > 0 && (
-							<div className="space-y-2">
-								<h4 className="text-sm font-semibold text-muted-foreground">
-									Unchanged Variables (
-									{
-										Object.keys(parsedEnvFile).filter(
-											(key) =>
-												editedEnv[key] && editedEnv[key] === parsedEnvFile[key],
-										).length
-									}
-									)
-								</h4>
-							</div>
-						)}
-					</div>
-
-					<AlertDialogFooter className="shrink-0">
-						<AlertDialogCancel onClick={handleCancelUpload}>
-							Cancel
-						</AlertDialogCancel>
-						<AlertDialogAction onClick={handleConfirmUpload}>
-							Import Variables
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
-
-			{/* Confirmation Dialog */}
-			<AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>Update environment variables?</AlertDialogTitle>
-						<AlertDialogDescription>
-							Changing environment variables requires recreating the container.
-							This will cause a brief downtime.
-							{isCoolifyManaged
-								? " Changes will also be synced to Coolify so they persist across redeployments. Are you sure you want to continue?"
-								: " Are you sure you want to continue?"}
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction onClick={handleConfirmUpdate}>
-							Confirm & Update
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
+			<EnvUpdateConfirmDialog
+				open={showConfirmDialog}
+				onOpenChange={setShowConfirmDialog}
+				isCoolifyManaged={isCoolifyManaged}
+				onConfirm={handleConfirmUpdate}
+			/>
 		</div>
 	);
 }

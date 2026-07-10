@@ -118,12 +118,7 @@ func (s *Service) GenerateToken(username string) (string, error) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString(s.jwtSecret)
-	if err != nil {
-		return "", err
-	}
-
-	return tokenString, nil
+	return token.SignedString(s.jwtSecret)
 }
 
 // VerifyToken validates a JWT token and returns the claims

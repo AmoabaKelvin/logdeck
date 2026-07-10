@@ -40,12 +40,10 @@ type LogOptions struct {
 // DefaultLogOptions returns sensible defaults for log fetching
 func DefaultLogOptions() LogOptions {
 	return LogOptions{
-		Follow:     false,
 		Timestamps: true,
 		Tail:       "100",
 		ShowStdout: true,
 		ShowStderr: true,
-		Details:    false,
 	}
 }
 

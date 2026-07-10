@@ -12,8 +12,8 @@ export function useContainerStats() {
 	const query = useQuery({
 		queryKey: ["containers", "stats"],
 		queryFn: getContainerStats,
-		refetchInterval: isVisible ? 5000 : false, // Refresh every 5 seconds while the page is visible
-		staleTime: 4000, // Consider stale after 4 seconds
+		refetchInterval: isVisible ? 5000 : false,
+		staleTime: 4000,
 	});
 
 	// Convert array to map for O(1) lookup by container ID

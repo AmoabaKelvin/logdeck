@@ -31,10 +31,9 @@ type Usage struct {
 	MemoryUsed    uint64  `json:"memoryUsed"`
 }
 
-// Init configures gopsutil to use the host's /proc directory if mounted
+// Init points gopsutil at /host/proc when it is mounted, so a containerized
+// server reports host metrics instead of its own namespace's.
 func Init() {
-	// If we are running in a container and have mounted /proc to /host/proc,
-	// we need to tell gopsutil to look there.
 	if _, err := os.Stat("/host/proc"); err == nil {
 		os.Setenv("HOST_PROC", "/host/proc")
 	}
@@ -46,17 +45,13 @@ func GetStats(ctx context.Context) (*SystemStats, error) {
 		return nil, err
 	}
 
-	// Get Memory Info
 	vMem, err := mem.VirtualMemoryWithContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// Get CPU Percent (over a small interval)
-	// Note: 0 interval returns immediate value since last call, which might be 0 on first call
-	// For a dashboard, we usually want the average over the last second, but that blocks.
-	// A better approach for an API is to return the value since last call or just immediate.
-	// Let's use a very short interval for responsiveness, or 0.
+	// A zero interval returns usage since the previous call without blocking
+	// the request; the very first call may report 0.
 	cpuPercents, err := cpu.PercentWithContext(ctx, 0, false)
 	if err != nil {
 		return nil, err
