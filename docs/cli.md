@@ -18,20 +18,36 @@ go build ./cmd/logdeck
 
 ## Connection and Authentication
 
-The CLI connects to a LogDeck server over HTTP:
-
-| Flag      | Environment variable | Default                 |
-| --------- | -------------------- | ----------------------- |
-| `--url`   | `LOGDECK_URL`        | `http://localhost:8080` |
-| `--token` | `LOGDECK_TOKEN`      | (none)                  |
+Connect once with `logdeck login` — it verifies the connection (health check, plus an authenticated call when a token is given) and saves it as a named context, kubectl-style. From then on every command uses that context:
 
 ```bash
-export LOGDECK_URL=https://logdeck.example.com
-export LOGDECK_TOKEN=<api token>
-logdeck status
+logdeck login --url https://logdeck.example.com --token ldk_... --name prod
+logdeck status        # now talks to prod
+```
+
+Contexts persist in `~/.config/logdeck/config.json` (respecting `XDG_CONFIG_HOME`). Because the file stores API tokens, it is created with `0600` permissions inside a `0700` directory, and the CLI never prints a saved token — only its `ldk_` prefix.
+
+Manage contexts with:
+
+```bash
+logdeck context list          # name, url, token prefix, current marker
+logdeck context use staging   # switch the current context
+logdeck context rm old        # delete a context
+logdeck logout                # remove the token from the current (or named) context, keeping its URL
 ```
 
 The token is sent as `Authorization: Bearer <token>`. When the server has authentication disabled, no token is needed. On a 401 response the CLI tells you to authenticate with an API token created in LogDeck Settings, via `--token` or `LOGDECK_TOKEN`.
+
+### Resolution order
+
+Flags and environment variables override the saved context — useful for CI or one-off calls. URL and token resolve independently, each from the first source that provides it:
+
+1. Explicit `--url` / `--token` flags
+2. `LOGDECK_URL` / `LOGDECK_TOKEN` environment variables
+3. The active context from the config file (`--context <name>` selects another saved context for one invocation)
+4. Default `http://localhost:8080`
+
+`logdeck status` shows which source supplied the URL and token.
 
 ## Output Formats
 
@@ -44,9 +60,33 @@ Timestamps are RFC3339. There are no colors, spinners, prompts, or pagination.
 
 ## Commands
 
+### login
+
+Verify a server connection and save it as the current context. Fails with the Settings hint if the server requires authentication and no working token is given.
+
+```bash
+logdeck login --url https://logdeck.example.com --token ldk_... --name prod
+```
+
+### context
+
+Manage saved contexts: `list`, `use <name>`, `rm <name>`.
+
+```bash
+logdeck context list
+```
+
+### logout
+
+Remove the saved token from the current (or a named) context, keeping its URL.
+
+```bash
+logdeck logout prod
+```
+
 ### status
 
-Server health, version, and a per-host summary. The natural first call to discover what a server manages. Exits nonzero if the server is unreachable.
+Server health, version, and a per-host summary, plus where the connection settings came from (flag, env, or context). The natural first call to discover what a server manages. Exits nonzero if the server is unreachable.
 
 ```bash
 logdeck status
@@ -162,6 +202,9 @@ logdeck networks
 The CLI is designed so an agent can debug containerized services without a browser. A typical investigation:
 
 ```bash
+# One-time setup on this machine (or use LOGDECK_URL/LOGDECK_TOKEN in CI)
+logdeck login --url https://logdeck.example.com --token ldk_...
+
 # What is running, and is the server healthy?
 logdeck status -o json
 logdeck containers -o json

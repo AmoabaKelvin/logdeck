@@ -39,14 +39,24 @@ func newStatusCmd(a *app) *cobra.Command {
 
 			if a.jsonOutput() {
 				return a.printJSON(map[string]any{
-					"url":     a.client.baseURL,
-					"status":  health.Status,
-					"version": version.Version,
-					"hosts":   hosts.Hosts,
+					"url":         a.client.baseURL,
+					"urlSource":   a.conn.urlSource,
+					"tokenSource": a.conn.tokenSource,
+					"status":      health.Status,
+					"version":     version.Version,
+					"hosts":       hosts.Hosts,
 				})
 			}
 
+			source := "url from " + a.conn.urlSource
+			if a.conn.tokenSource == "none" {
+				source += ", no token"
+			} else {
+				source += ", token from " + a.conn.tokenSource
+			}
+
 			fmt.Printf("Server:  %s\n", a.client.baseURL)
+			fmt.Printf("Source:  %s\n", source)
 			fmt.Printf("Status:  %s\n", health.Status)
 			fmt.Printf("Version: %s\n\n", version.Version)
 

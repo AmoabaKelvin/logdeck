@@ -16,11 +16,13 @@ import (
 )
 
 type app struct {
-	url    string
-	token  string
-	output string
+	url         string
+	token       string
+	output      string
+	contextName string
 
 	client *client
+	conn   connection
 
 	// ran flips to true once a command's RunE body starts executing, so
 	// Execute can tell usage errors (exit 2) from runtime errors (exit 1).
@@ -74,35 +76,59 @@ func Execute() int {
 	return 1
 }
 
-func envOr(key, fallback string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return fallback
-}
+const rootLong = `logdeck talks to a running LogDeck server over its HTTP API.
+It is non-interactive and scriptable; use -o json for machine-readable output.
+
+Connect once with "logdeck login" to save the server as a context in
+~/.config/logdeck/config.json. Connection settings resolve in this order:
+explicit --url/--token flags > LOGDECK_URL/LOGDECK_TOKEN env vars > the
+active context (--context selects another saved one) > http://localhost:8080.`
 
 func newRootCmd(a *app) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "logdeck",
 		Short:         "Command-line client for a running LogDeck server",
-		Long:          "logdeck talks to a running LogDeck server over its HTTP API.\nIt is non-interactive and scriptable; use -o json for machine-readable output.",
+		Long:          rootLong,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if a.output != "table" && a.output != "json" {
 				return fmt.Errorf("invalid output format %q (must be table or json)", a.output)
 			}
-			a.client = newClient(strings.TrimRight(a.url, "/"), a.token)
+
+			path, err := configPath()
+			if err != nil {
+				return err
+			}
+			cfg, err := loadConfig(path)
+			if err != nil {
+				return err
+			}
+			conn, err := resolveConnection(
+				a.url, cmd.Flags().Changed("url"),
+				a.token, cmd.Flags().Changed("token"),
+				os.Getenv("LOGDECK_URL"), os.Getenv("LOGDECK_TOKEN"),
+				cfg, a.contextName,
+			)
+			if err != nil {
+				return err
+			}
+			a.conn = conn
+			a.client = newClient(strings.TrimRight(conn.url, "/"), conn.token)
 			return nil
 		},
 	}
 
-	root.PersistentFlags().StringVar(&a.url, "url", envOr("LOGDECK_URL", "http://localhost:8080"), "LogDeck server URL (env: LOGDECK_URL)")
-	root.PersistentFlags().StringVar(&a.token, "token", os.Getenv("LOGDECK_TOKEN"), "API token sent as a Bearer token (env: LOGDECK_TOKEN)")
+	root.PersistentFlags().StringVar(&a.url, "url", "", "LogDeck server URL (overrides LOGDECK_URL and the active context; default http://localhost:8080)")
+	root.PersistentFlags().StringVar(&a.token, "token", "", "API token sent as a Bearer token (overrides LOGDECK_TOKEN and the active context)")
+	root.PersistentFlags().StringVar(&a.contextName, "context", "", "use this saved context instead of the current one for this invocation")
 	root.PersistentFlags().StringVarP(&a.output, "output", "o", "table", "output format: table or json")
 
 	root.AddCommand(
 		newStatusCmd(a),
+		newLoginCmd(a),
+		newLogoutCmd(a),
+		newContextCmd(a),
 		newContainersCmd(a),
 		newStacksCmd(a),
 		newInspectCmd(a),
