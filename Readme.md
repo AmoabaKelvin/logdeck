@@ -45,6 +45,17 @@ LogDeck works with Podman as well as Docker, using Podman's Docker-compatible AP
 
 For setup instructions, see the [Podman Setup Guide](./podman.md).
 
+### Command-Line Interface
+
+A scriptable `logdeck` CLI talks to the server's HTTP API — built for automation and AI agents:
+
+- List containers and stacks, inspect, read/follow/search logs, and check stats from the terminal
+- `logdeck grep` searches the recent logs of every running container across all hosts
+- Lifecycle actions, resource limits, and compose stack controls
+- Table output for humans, JSON/NDJSON output (`-o json`) for machines
+
+See the [CLI Guide](./docs/cli.md) for installation and every command.
+
 ### Container Lifecycle Management
 
 - Start, stop, restart, and remove containers
