@@ -42,6 +42,11 @@ interface EditingHost {
 
 const EMPTY_HOST: EditingHost = { hostName: "", apiURL: "", apiToken: "" };
 
+// Must match the server's secretMask constant. GET /settings returns tokens
+// masked with this value, and the server only resolves it back to the stored
+// token when the host name matches an existing entry.
+const SECRET_MASK = "••••••••";
+
 export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
 	const envHosts = config.hosts.filter((h) => h.source === "env");
 	const originalFileHosts = config.hosts
@@ -114,6 +119,15 @@ export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
 			fileHosts.some((h, i) => i !== editingIndex && h.hostName === trimmedName)
 		) {
 			toast.error(`Host name "${trimmedName}" already exists`);
+			return;
+		}
+		if (
+			editingHost.apiToken === SECRET_MASK &&
+			!originalFileHosts.some((h) => h.hostName === trimmedName)
+		) {
+			toast.error(
+				`Enter the API token for "${trimmedName}" — a masked token can only be kept for an existing host name`,
+			);
 			return;
 		}
 		const next = [...fileHosts];
