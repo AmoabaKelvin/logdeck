@@ -4,7 +4,6 @@ import { z } from "zod";
 import { ContainersDashboard } from "@/features/containers/components/containers-dashboard";
 import { requireAuthIfEnabled } from "@/lib/auth-guard";
 
-// Define search params schema for the dashboard
 const dashboardSearchSchema = z
 	.object({
 		search: z.string().optional(),

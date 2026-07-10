@@ -295,6 +295,119 @@ export function ContainersTable({
 		);
 	};
 
+	const renderBodyRows = () => {
+		if (isLoading) {
+			return (
+				<TableRow>
+					<TableCell colSpan={8} className="h-32">
+						<div className="flex items-center justify-center text-sm text-muted-foreground">
+							<Spinner className="mr-2" />
+							Loading containers…
+						</div>
+					</TableCell>
+				</TableRow>
+			);
+		}
+
+		if (isError) {
+			return (
+				<TableRow>
+					<TableCell colSpan={8} className="h-32">
+						<div className="flex flex-col items-center gap-3 text-center">
+							<p className="text-sm text-muted-foreground">
+								{(error instanceof Error && error.message) ||
+									"Unable to load containers."}
+							</p>
+							<Button size="sm" variant="outline" onClick={onRetry}>
+								Try again
+							</Button>
+						</div>
+					</TableCell>
+				</TableRow>
+			);
+		}
+
+		if (filteredContainers.length === 0) {
+			return (
+				<TableRow>
+					<TableCell colSpan={8} className="h-32">
+						<div className="text-center text-sm text-muted-foreground">
+							No containers found.
+						</div>
+					</TableCell>
+				</TableRow>
+			);
+		}
+
+		if (groupBy === "compose" && groupedItems) {
+			return groupedItems.map((group) => (
+				<Fragment key={group.project}>
+					<TableRow className="bg-muted/30 hover:bg-muted/30">
+						<TableCell
+							colSpan={8}
+							className="h-10 px-4 text-xs font-medium text-muted-foreground"
+						>
+							<div className="flex items-center justify-between">
+								<span>
+									{group.project} · {group.items.length} container
+									{group.items.length === 1 ? "" : "s"}
+								</span>
+								<div className="flex items-center gap-3">
+									{group.project !== "Standalone" && (
+										<Link
+											to="/stacks/$project/logs"
+											params={{ project: group.project }}
+											className="inline-flex items-center gap-1 text-primary hover:underline"
+										>
+											<FileTextIcon className="size-3" />
+											Stack logs
+										</Link>
+									)}
+									{isComposeGroup(group) && (
+										<TooltipProvider>
+											<div className="flex items-center gap-1">
+												<ActionButton
+													icon={PlayIcon}
+													action="start"
+													containerId={group.project}
+													onClick={() => onComposeAction("start", group)}
+													isPending={isComposePending}
+													busy={isComposeBusy(group.project)}
+													isReadOnly={isReadOnly}
+												/>
+												<ActionButton
+													icon={SquareIcon}
+													action="stop"
+													containerId={group.project}
+													onClick={() => onComposeAction("stop", group)}
+													isPending={isComposePending}
+													busy={isComposeBusy(group.project)}
+													isReadOnly={isReadOnly}
+												/>
+												<ActionButton
+													icon={RotateCwIcon}
+													action="restart"
+													containerId={group.project}
+													onClick={() => onComposeAction("restart", group)}
+													isPending={isComposePending}
+													busy={isComposeBusy(group.project)}
+													isReadOnly={isReadOnly}
+												/>
+											</div>
+										</TooltipProvider>
+									)}
+								</div>
+							</div>
+						</TableCell>
+					</TableRow>
+					{group.items.map(renderContainerRow)}
+				</Fragment>
+			));
+		}
+
+		return pageItems.map(renderContainerRow);
+	};
+
 	return (
 		<div className="rounded-lg border bg-card">
 			<Table>
@@ -316,107 +429,7 @@ export function ContainersTable({
 						</TableHead>
 					</TableRow>
 				</TableHeader>
-				<TableBody>
-					{isLoading ? (
-						<TableRow>
-							<TableCell colSpan={8} className="h-32">
-								<div className="flex items-center justify-center text-sm text-muted-foreground">
-									<Spinner className="mr-2" />
-									Loading containers…
-								</div>
-							</TableCell>
-						</TableRow>
-					) : isError ? (
-						<TableRow>
-							<TableCell colSpan={8} className="h-32">
-								<div className="flex flex-col items-center gap-3 text-center">
-									<p className="text-sm text-muted-foreground">
-										{(error as Error)?.message || "Unable to load containers."}
-									</p>
-									<Button size="sm" variant="outline" onClick={onRetry}>
-										Try again
-									</Button>
-								</div>
-							</TableCell>
-						</TableRow>
-					) : filteredContainers.length === 0 ? (
-						<TableRow>
-							<TableCell colSpan={8} className="h-32">
-								<div className="text-center text-sm text-muted-foreground">
-									No containers found.
-								</div>
-							</TableCell>
-						</TableRow>
-					) : groupBy === "compose" && groupedItems ? (
-						groupedItems.map((group) => (
-							<Fragment key={group.project}>
-								<TableRow className="bg-muted/30 hover:bg-muted/30">
-									<TableCell
-										colSpan={8}
-										className="h-10 px-4 text-xs font-medium text-muted-foreground"
-									>
-										<div className="flex items-center justify-between">
-											<span>
-												{group.project} · {group.items.length} container
-												{group.items.length === 1 ? "" : "s"}
-											</span>
-											<div className="flex items-center gap-3">
-												{group.project !== "Standalone" && (
-													<Link
-														to="/stacks/$project/logs"
-														params={{ project: group.project }}
-														className="inline-flex items-center gap-1 text-primary hover:underline"
-													>
-														<FileTextIcon className="size-3" />
-														Stack logs
-													</Link>
-												)}
-												{isComposeGroup(group) && (
-													<TooltipProvider>
-														<div className="flex items-center gap-1">
-															<ActionButton
-																icon={PlayIcon}
-																action="start"
-																containerId={group.project}
-																onClick={() => onComposeAction("start", group)}
-																isPending={isComposePending}
-																busy={isComposeBusy(group.project)}
-																isReadOnly={isReadOnly}
-															/>
-															<ActionButton
-																icon={SquareIcon}
-																action="stop"
-																containerId={group.project}
-																onClick={() => onComposeAction("stop", group)}
-																isPending={isComposePending}
-																busy={isComposeBusy(group.project)}
-																isReadOnly={isReadOnly}
-															/>
-															<ActionButton
-																icon={RotateCwIcon}
-																action="restart"
-																containerId={group.project}
-																onClick={() =>
-																	onComposeAction("restart", group)
-																}
-																isPending={isComposePending}
-																busy={isComposeBusy(group.project)}
-																isReadOnly={isReadOnly}
-															/>
-														</div>
-													</TooltipProvider>
-												)}
-											</div>
-										</div>
-									</TableCell>
-								</TableRow>
-								{group.items.map(renderContainerRow)}
-							</Fragment>
-						))
-					) : (
-						pageItems.map(renderContainerRow)
-					)}
-				</TableBody>
+				<TableBody>{renderBodyRows()}</TableBody>
 			</Table>
 		</div>
 	);

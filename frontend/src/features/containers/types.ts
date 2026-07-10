@@ -21,14 +21,6 @@ export interface HostError {
 	message: string;
 }
 
-export interface ContainersQueryParams {
-	search?: string;
-	state?: string;
-	sortCreated?: "asc" | "desc";
-	groupBy?: "none" | "compose";
-	host?: string;
-}
-
 export interface ContainerStats {
 	id: string;
 	host: string;

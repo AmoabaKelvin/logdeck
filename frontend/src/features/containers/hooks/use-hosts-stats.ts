@@ -10,6 +10,6 @@ export function useHostsStats(enabled: boolean) {
 		queryKey: ["hosts-stats"],
 		queryFn: getHostsStats,
 		enabled,
-		refetchInterval: isVisible ? 10000 : false, // Refresh every 10 seconds while the page is visible
+		refetchInterval: isVisible ? 10000 : false,
 	});
 }

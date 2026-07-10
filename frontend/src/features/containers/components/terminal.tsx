@@ -136,7 +136,6 @@ export function Terminal({ containerId, host }: TerminalProps) {
 	const [isConnected, setIsConnected] = useState(false);
 	const [isReconnecting, setIsReconnecting] = useState(false);
 
-	// Update terminal theme when system/app theme changes
 	useEffect(() => {
 		if (xtermRef.current) {
 			xtermRef.current.options.theme = getTerminalTheme(resolvedTheme);
@@ -172,7 +171,6 @@ export function Terminal({ containerId, host }: TerminalProps) {
 	const connect = useCallback(() => {
 		if (!terminalRef.current) return;
 
-		// Clean up existing connection if any
 		if (cleanupRef.current) {
 			cleanupRef.current();
 			cleanupRef.current = null;
@@ -180,7 +178,6 @@ export function Terminal({ containerId, host }: TerminalProps) {
 
 		setIsReconnecting(true);
 
-		// Create or reuse terminal
 		let term = xtermRef.current;
 		let fitAddon = fitAddonRef.current;
 
@@ -271,7 +268,6 @@ export function Terminal({ containerId, host }: TerminalProps) {
 			sendResize();
 		}, 100);
 
-		// Store cleanup function
 		cleanupRef.current = () => {
 			window.removeEventListener("resize", sendResize);
 			resizeObserver?.disconnect();

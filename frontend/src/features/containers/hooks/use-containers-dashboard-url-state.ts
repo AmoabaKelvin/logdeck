@@ -13,7 +13,6 @@ import type {
 	SortDirection,
 } from "../components/container-utils";
 
-// Custom parser for SortDirection
 const parseAsSortDirection = createParser({
 	parse: (value): SortDirection | null => {
 		if (value === "asc" || value === "desc") {
@@ -24,7 +23,6 @@ const parseAsSortDirection = createParser({
 	serialize: (value: SortDirection) => value,
 });
 
-// Custom parser for GroupByOption
 const parseAsGroupBy = createParser({
 	parse: (value): GroupByOption | null => {
 		if (value === "none" || value === "compose") {
@@ -35,13 +33,12 @@ const parseAsGroupBy = createParser({
 	serialize: (value: GroupByOption) => value,
 });
 
-// Search params configuration with defaults
 const searchParamsConfig = {
 	search: parseAsString.withDefault(""),
 	state: parseAsString.withDefault("all"),
 	host: parseAsString.withDefault("all"),
-	sort: parseAsSortDirection.withDefault("desc" as SortDirection),
-	group: parseAsGroupBy.withDefault("none" as GroupByOption),
+	sort: parseAsSortDirection.withDefault("desc"),
+	group: parseAsGroupBy.withDefault("none"),
 	page: parseAsInteger.withDefault(1),
 	pageSize: parseAsInteger.withDefault(10),
 	from: parseAsIsoDateTime,
@@ -65,7 +62,6 @@ export function useContainersDashboardUrlState() {
 		to,
 	} = params;
 
-	// Convert from/to into DateRange format
 	// Supports open-ended ranges: from without to, to without from, or both
 	const dateRange = useMemo((): DateRange | undefined => {
 		if (!from && !to) {
