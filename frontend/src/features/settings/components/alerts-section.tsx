@@ -828,41 +828,45 @@ function HistoryBlock() {
 			)}
 
 			{alerts.length > 0 && (
-				<Table>
-					<TableHeader>
-						<TableRow>
-							<TableHead>Time</TableHead>
-							<TableHead>Rule</TableHead>
-							<TableHead>Container</TableHead>
-							<TableHead>Reason</TableHead>
-							<TableHead>Delivery</TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{alerts.map((entry) => (
-							<TableRow key={entry.id}>
-								<TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-									{new Date(entry.firedAt).toLocaleString()}
-								</TableCell>
-								<TableCell className="font-medium">{entry.ruleName}</TableCell>
-								<TableCell className="text-xs text-muted-foreground font-mono">
-									{entry.containerName}@{entry.host}
-								</TableCell>
-								<TableCell className="text-xs text-muted-foreground">
-									{entry.reason}
-									{entry.suppressed > 0 && (
-										<span className="ml-1.5 text-muted-foreground/70">
-											(+{entry.suppressed} suppressed)
-										</span>
-									)}
-								</TableCell>
-								<TableCell>
-									<DeliveryStatus entry={entry} />
-								</TableCell>
+				<div className="max-h-80 overflow-y-auto rounded-md border">
+					<Table>
+						<TableHeader>
+							<TableRow>
+								<TableHead>Time</TableHead>
+								<TableHead>Rule</TableHead>
+								<TableHead>Container</TableHead>
+								<TableHead>Reason</TableHead>
+								<TableHead>Delivery</TableHead>
 							</TableRow>
-						))}
-					</TableBody>
-				</Table>
+						</TableHeader>
+						<TableBody>
+							{alerts.map((entry) => (
+								<TableRow key={entry.id}>
+									<TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+										{new Date(entry.firedAt).toLocaleString()}
+									</TableCell>
+									<TableCell className="font-medium">
+										{entry.ruleName}
+									</TableCell>
+									<TableCell className="text-xs text-muted-foreground font-mono">
+										{entry.containerName}@{entry.host}
+									</TableCell>
+									<TableCell className="text-xs text-muted-foreground">
+										{entry.reason}
+										{entry.suppressed > 0 && (
+											<span className="ml-1.5 text-muted-foreground/70">
+												(+{entry.suppressed} suppressed)
+											</span>
+										)}
+									</TableCell>
+									<TableCell>
+										<DeliveryStatus entry={entry} />
+									</TableCell>
+								</TableRow>
+							))}
+						</TableBody>
+					</Table>
+				</div>
 			)}
 
 			<AlertDialog open={isClearOpen} onOpenChange={setIsClearOpen}>
