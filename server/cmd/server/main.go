@@ -84,8 +84,10 @@ func main() {
 				time.Sleep(30 * time.Second)
 				old.Close()
 			}()
-			// The client set changed; re-evaluate alert watch targets.
+			// The client set changed; re-evaluate alert watch targets and
+			// converge the shared log tails onto the new client.
 			alertEngine.Reconcile()
+			logHub.Reconcile()
 		}
 
 		// Recreate Coolify clients.
