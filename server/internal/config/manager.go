@@ -117,6 +117,12 @@ func (m *Manager) Sources() ConfigSources {
 	return m.sources
 }
 
+// ConfigFilePath returns the path of the JSON config file. The path is fixed
+// at construction and never changes, so no locking is needed.
+func (m *Manager) ConfigFilePath() string {
+	return m.filePath
+}
+
 // FileConfig returns the current file config (for reading stored secrets).
 func (m *Manager) FileConfigSnapshot() FileConfig {
 	m.mu.RLock()
