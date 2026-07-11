@@ -82,7 +82,7 @@ export function useTestAlertWebhook() {
 
 export function useAlertHistory(limit: number) {
 	return useQuery({
-		queryKey: HISTORY_KEY,
+		queryKey: [...HISTORY_KEY, limit],
 		queryFn: () => getAlertHistory(limit),
 		refetchInterval: 30_000,
 		refetchOnWindowFocus: true,
