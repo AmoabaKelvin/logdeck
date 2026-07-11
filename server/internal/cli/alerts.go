@@ -52,7 +52,7 @@ type alertInfo struct {
 	Reason        string        `json:"reason"`
 	Sample        string        `json:"sample"`
 	Count         int           `json:"count"`
-	Suppressed    bool          `json:"suppressed"`
+	Suppressed    int           `json:"suppressed"`
 	FiredAt       time.Time     `json:"firedAt"`
 	Delivery      alertDelivery `json:"delivery"`
 }
@@ -392,7 +392,7 @@ func newAlertHistoryCmd(a *app) *cobra.Command {
 					al.RuleName,
 					al.ContainerName + "@" + al.Host,
 					al.Reason,
-					strconv.FormatBool(al.Suppressed),
+					strconv.Itoa(al.Suppressed),
 					deliverySummary(al.Delivery),
 				})
 			}

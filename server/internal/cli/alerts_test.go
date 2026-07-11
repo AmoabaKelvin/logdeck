@@ -269,8 +269,8 @@ func TestAlertHistoryTable(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotLimit = r.URL.Query().Get("limit")
 		fmt.Fprintf(w, `{"alerts":[
-			{"id":"a1","ruleName":"older-rule","host":"prod","containerName":"web","reason":"exited","suppressed":false,"firedAt":%q,"delivery":{"status":"ok","httpStatus":200,"error":""}},
-			{"id":"a2","ruleName":"newer-rule","host":"prod","containerName":"api","reason":"oom","suppressed":true,"firedAt":%q,"delivery":{"status":"failed","httpStatus":500,"error":"boom"}}
+			{"id":"a1","ruleName":"older-rule","host":"prod","containerName":"web","reason":"exited","suppressed":0,"firedAt":%q,"delivery":{"status":"ok","httpStatus":200,"error":""}},
+			{"id":"a2","ruleName":"newer-rule","host":"prod","containerName":"api","reason":"oom","suppressed":3,"firedAt":%q,"delivery":{"status":"failed","httpStatus":500,"error":"boom"}}
 		],"count":2}`, older, newer)
 	}))
 	defer server.Close()
