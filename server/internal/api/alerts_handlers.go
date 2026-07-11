@@ -98,6 +98,12 @@ func buildAlertRule(req alertRuleRequest) (config.AlertRule, error) {
 		return rule, fmt.Errorf("name must be at most %d characters", maxAlertRuleNameLen)
 	}
 
+	// Normalize container names: the engine and hub match against names
+	// without the Docker API's leading "/", so "/web" would never match.
+	for i, c := range rule.Containers {
+		rule.Containers[i] = strings.TrimPrefix(strings.TrimSpace(c), "/")
+	}
+
 	for _, targets := range []struct {
 		field  string
 		values []string
@@ -357,7 +363,11 @@ func (ar *APIRouter) UpdateAlertsWebhook(w http.ResponseWriter, r *http.Request)
 	}
 
 	ar.reconcileAlerts()
-	WriteJsonResponse(w, http.StatusOK, map[string]any{"url": webhookURL})
+	message := "Webhook updated"
+	if webhookURL == "" {
+		message = "Webhook cleared"
+	}
+	WriteJsonResponse(w, http.StatusOK, map[string]any{"message": message})
 }
 
 // TestAlertsWebhook handles POST /api/v1/alerts/test. The delivery result is

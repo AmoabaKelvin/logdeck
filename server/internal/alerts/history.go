@@ -71,6 +71,21 @@ func (h *history) append(a models.Alert) {
 	h.dirty = true
 }
 
+// setDelivery records the delivery result on the entry with the given alert
+// ID and marks the store dirty. An ID that is no longer present (evicted past
+// the cap or cleared) is ignored.
+func (h *history) setDelivery(id string, result models.DeliveryResult) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for i := range h.entries {
+		if h.entries[i].ID == id {
+			h.entries[i].Delivery = &result
+			h.dirty = true
+			return
+		}
+	}
+}
+
 // list returns up to limit entries, newest first. limit <= 0 falls back to
 // defaultHistoryLimit. The result is always a non-nil copy.
 func (h *history) list(limit int) []models.Alert {
@@ -98,23 +113,20 @@ func (h *history) clear() {
 
 // flushIfDirty writes the current entries to disk when there are unpersisted
 // changes. On write failure the store stays dirty so the next flush retries.
+// h.mu is held across the entire write (the payload is at most historyCap
+// small structs) so concurrent flushes cannot interleave on the shared tmp
+// file and a stale snapshot can never win the rename over a newer one.
 func (h *history) flushIfDirty() {
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	if !h.dirty {
-		h.mu.Unlock()
 		return
 	}
-	snapshot := make([]models.Alert, len(h.entries))
-	copy(snapshot, h.entries)
-	h.dirty = false
-	h.mu.Unlock()
-
-	if err := writeHistoryFile(h.path, snapshot); err != nil {
+	if err := writeHistoryFile(h.path, h.entries); err != nil {
 		log.Printf("alerts: failed to persist alert history: %v", err)
-		h.mu.Lock()
-		h.dirty = true
-		h.mu.Unlock()
+		return
 	}
+	h.dirty = false
 }
 
 // flushLoop persists dirty state at most every historyFlushEvery until stop

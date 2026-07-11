@@ -221,7 +221,7 @@ logdeck alerts test                           # send a test delivery; exits 1 on
 logdeck alerts history --limit 20             # recently fired alerts, newest first
 ```
 
-Targeting flags (`--host`, `--container`, `--project`, all repeatable) narrow which containers a rule watches; an untargeted rule watches everything. `--window` and `--cooldown` accept Go durations (`60s`, `5m`) or bare seconds.
+Targeting flags (`--host`, `--container`, `--project`, all repeatable) narrow which containers a rule watches; an untargeted rule watches everything. `--window` and `--cooldown` accept Go durations (`60s`, `5m`) or bare seconds. When `--cooldown` is 0 or omitted, the server applies its default cooldown of 300 seconds between deliveries for the same rule and container.
 
 ## Using with AI Agents
 

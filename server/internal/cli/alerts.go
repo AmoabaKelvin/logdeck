@@ -145,8 +145,8 @@ func ruleTargets(r alertRule) string {
 	return strings.Join(parts, " ")
 }
 
-// ruleTrigger summarizes what fires a rule ("die,oom 3x/120s",
-// "level>=ERROR pattern=timeout").
+// ruleTrigger summarizes what fires a rule and how often it may deliver
+// ("die,oom 3x/120s cooldown 60s", "level>=ERROR cooldown 300s (default)").
 func ruleTrigger(r alertRule) string {
 	var parts []string
 	if r.Type == "event" {
@@ -164,8 +164,11 @@ func ruleTrigger(r alertRule) string {
 	if r.Threshold > 0 {
 		parts = append(parts, fmt.Sprintf("%dx/%ds", r.Threshold, r.WindowSeconds))
 	}
-	if len(parts) == 0 {
-		return "-"
+	if r.CooldownSeconds > 0 {
+		parts = append(parts, fmt.Sprintf("cooldown %ds", r.CooldownSeconds))
+	} else {
+		// The server treats 0/absent as its 300s default.
+		parts = append(parts, "cooldown 300s (default)")
 	}
 	return strings.Join(parts, " ")
 }
@@ -285,7 +288,7 @@ func newAlertRuleCreateCmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&pattern, "pattern", "", "regex the log message must match (only with --type log)")
 	cmd.Flags().IntVar(&threshold, "threshold", 0, "fire only after this many matches within --window")
 	cmd.Flags().StringVar(&window, "window", "", "threshold window (e.g. 60s, 5m, or bare seconds)")
-	cmd.Flags().StringVar(&cooldown, "cooldown", "", "minimum time between deliveries (e.g. 5m)")
+	cmd.Flags().StringVar(&cooldown, "cooldown", "", "minimum time between deliveries (e.g. 5m); 0 or omitted uses the server default of 300s")
 	cmd.Flags().BoolVar(&disabled, "disabled", false, "create the rule disabled")
 	return cmd
 }

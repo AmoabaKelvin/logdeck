@@ -117,6 +117,12 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	// Once the first signal starts the graceful shutdown, restore default
+	// signal handling so a second Ctrl-C terminates the process immediately.
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
 
 	go logHub.Run(ctx)
 	alertEngine.Start(ctx)

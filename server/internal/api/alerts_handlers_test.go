@@ -186,6 +186,7 @@ var alertRuleValidationCases = []struct{ name, body string }{
 	{"cooldownSeconds too large", `{"name":"r","type":"log","minLevel":"ERROR","cooldownSeconds":86401}`},
 	{"empty hosts entry", `{"name":"r","type":"log","minLevel":"ERROR","hosts":[""]}`},
 	{"blank containers entry", `{"name":"r","type":"log","minLevel":"ERROR","containers":[" "]}`},
+	{"slash-only containers entry", `{"name":"r","type":"log","minLevel":"ERROR","containers":["/"]}`},
 	{"empty projects entry", `{"name":"r","type":"log","minLevel":"ERROR","projects":[""]}`},
 }
 
@@ -226,7 +227,7 @@ func TestUpdateAlertRuleValidation(t *testing.T) {
 func TestCreateAlertRuleNormalization(t *testing.T) {
 	router, _ := newAlertsTestRouter(t, nil)
 	created := createAlertRule(t, router,
-		`{"name":"  noisy errors  ","type":"log","minLevel":" error ","pattern":" boom "}`)
+		`{"name":"  noisy errors  ","type":"log","minLevel":" error ","pattern":" boom ","containers":["/web"," api "]}`)
 
 	if created.Name != "noisy errors" {
 		t.Errorf("expected trimmed name, got %q", created.Name)
@@ -236,6 +237,11 @@ func TestCreateAlertRuleNormalization(t *testing.T) {
 	}
 	if created.Pattern != "boom" {
 		t.Errorf("expected trimmed pattern, got %q", created.Pattern)
+	}
+	// Container names are matched without the Docker API's leading "/": a
+	// rule created with "/web" must be stored slash-stripped and trimmed.
+	if len(created.Containers) != 2 || created.Containers[0] != "web" || created.Containers[1] != "api" {
+		t.Errorf("expected containers normalized to [web api], got %v", created.Containers)
 	}
 }
 
@@ -299,6 +305,9 @@ func TestAlertsWebhookSetAndClear(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 setting webhook, got %d: %s", w.Code, w.Body.String())
 	}
+	if !strings.Contains(w.Body.String(), "Webhook updated") {
+		t.Errorf("unexpected set response: %s", w.Body.String())
+	}
 	if got := getURL(); got != "https://example.com/hook" {
 		t.Errorf("expected webhook url to persist, got %q", got)
 	}
@@ -321,6 +330,9 @@ func TestAlertsWebhookSetAndClear(t *testing.T) {
 	w = doAlertsRequest(t, router, "PUT", "/api/v1/alerts/webhook", `{"url":""}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 clearing webhook, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "Webhook cleared") {
+		t.Errorf("unexpected clear response: %s", w.Body.String())
 	}
 	if got := getURL(); got != "" {
 		t.Errorf("expected webhook cleared, got %q", got)

@@ -56,19 +56,21 @@ var composeProjectLabels = []string{
 	"io.podman.compose.project",
 }
 
-// specMatches reports whether a container (identified by host, name without
-// the leading "/", and labels) is selected by spec.
-func specMatches(spec ContainerSpec, host, name string, labels map[string]string) bool {
-	if len(spec.Hosts) > 0 && !slices.Contains(spec.Hosts, host) {
+// Matches reports whether a container (identified by host, name without the
+// leading "/", and labels) is selected by the spec. Hosts are ANDed with the
+// container/project dimension, which is an OR between exact names and compose
+// projects.
+func (s ContainerSpec) Matches(host, name string, labels map[string]string) bool {
+	if len(s.Hosts) > 0 && !slices.Contains(s.Hosts, host) {
 		return false
 	}
-	if len(spec.Containers) == 0 && len(spec.Projects) == 0 {
+	if len(s.Containers) == 0 && len(s.Projects) == 0 {
 		return true
 	}
-	if slices.Contains(spec.Containers, name) {
+	if slices.Contains(s.Containers, name) {
 		return true
 	}
-	for _, project := range spec.Projects {
+	for _, project := range s.Projects {
 		for _, label := range composeProjectLabels {
 			if labels[label] == project {
 				return true
@@ -103,8 +105,7 @@ type tailExit struct {
 // subscription gets its own tails (with its own LogOptions); the hub's run
 // loop is the single owner of all subscription and tail state.
 type Hub struct {
-	provider DockerProvider
-	source   func() engineClient
+	source func() engineClient
 
 	reqCh      chan func()
 	pokeCh     chan struct{}
@@ -132,14 +133,13 @@ type Hub struct {
 // New creates a hub that tails containers through the provider's current
 // Docker client set.
 func New(provider DockerProvider) *Hub {
-	return newHub(provider, func() engineClient { return dockerAdapter{c: provider.Docker()} })
+	return newHub(func() engineClient { return dockerAdapter{c: provider.Docker()} })
 }
 
 // newHub builds a hub over an arbitrary client source; tests inject fakes
 // here. source must return comparable values so client swaps are detectable.
-func newHub(provider DockerProvider, source func() engineClient) *Hub {
+func newHub(source func() engineClient) *Hub {
 	return &Hub{
-		provider:       provider,
 		source:         source,
 		reqCh:          make(chan func()),
 		pokeCh:         make(chan struct{}, 1),
@@ -319,7 +319,7 @@ func (h *Hub) handleEvent(ev docker.EngineEvent) {
 			if _, ok := sub.tails[key]; ok {
 				continue
 			}
-			if !specMatches(sub.spec, ev.Host, name, ev.Labels) {
+			if !sub.spec.Matches(ev.Host, name, ev.Labels) {
 				continue
 			}
 			h.spawnTail(sub, key, name, ev.Labels)
@@ -396,7 +396,7 @@ func (h *Hub) handleList(res listResult) {
 			if !listedHosts[key.host] {
 				continue
 			}
-			if meta, ok := running[key]; ok && specMatches(sub.spec, key.host, meta.name, meta.labels) {
+			if meta, ok := running[key]; ok && sub.spec.Matches(key.host, meta.name, meta.labels) {
 				continue
 			}
 			t.cancel()
@@ -407,7 +407,7 @@ func (h *Hub) handleList(res listResult) {
 			if _, ok := sub.tails[key]; ok {
 				continue
 			}
-			if !specMatches(sub.spec, key.host, meta.name, meta.labels) {
+			if !sub.spec.Matches(key.host, meta.name, meta.labels) {
 				continue
 			}
 			h.spawnTail(sub, key, meta.name, meta.labels)

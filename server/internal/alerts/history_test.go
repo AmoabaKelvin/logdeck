@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/AmoabaKelvin/logdeck/internal/models"
@@ -93,6 +94,41 @@ func TestHistoryPersistRoundTrip(t *testing.T) {
 	reloaded.load()
 	if got := reloaded.list(0); len(got) != 2 || got[0].ID != "new" {
 		t.Fatalf("reload = %#v, want [new old]", got)
+	}
+}
+
+// TestHistoryClearWithConcurrentFlushNeverPersistsStale hammers clear against
+// concurrent flushes: whatever the interleaving, once clear and every
+// in-flight flush have returned, a stale pre-clear snapshot must never remain
+// on disk (a restart would resurrect cleared alerts).
+func TestHistoryClearWithConcurrentFlushNeverPersistsStale(t *testing.T) {
+	path := historyPath(t)
+	h := newHistory(path, 500)
+
+	for i := 0; i < 100; i++ {
+		h.append(models.Alert{ID: strconv.Itoa(i)})
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			h.flushIfDirty()
+		}()
+		h.clear()
+		wg.Wait()
+		h.flushIfDirty() // no-op unless a flush failed and left the store dirty
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("iteration %d: read history file: %v", i, err)
+		}
+		var onDisk []models.Alert
+		if err := json.Unmarshal(data, &onDisk); err != nil {
+			t.Fatalf("iteration %d: history file corrupt: %v (content %q)", i, err, data)
+		}
+		if len(onDisk) != 0 {
+			t.Fatalf("iteration %d: stale entries persisted after clear: %+v", i, onDisk)
+		}
 	}
 }
 

@@ -344,6 +344,41 @@ func TestAlertTestExitCodes(t *testing.T) {
 	}
 }
 
+func TestAlertRulesTableCooldown(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"rules":[
+			{"id":"r1","name":"default-cd","enabled":true,"type":"event","events":["die"]},
+			{"id":"r2","name":"explicit-cd","enabled":true,"type":"log","minLevel":"ERROR","threshold":3,"windowSeconds":60,"cooldownSeconds":120}
+		]}`)
+	}))
+	defer server.Close()
+
+	var code int
+	stdout := captureStdout(t, func() {
+		code = execute(context.Background(), "test", []string{
+			"alerts", "rules", "--url", server.URL,
+		})
+	})
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("expected header + 2 rows, got %d lines:\n%s", len(lines), stdout)
+	}
+	// cooldownSeconds absent/0 means the server default of 300s; the trigger
+	// column must say so instead of hiding the cooldown.
+	if !strings.Contains(lines[1], "cooldown 300s (default)") {
+		t.Errorf("default-cooldown row missing default marker: %q", lines[1])
+	}
+	if !strings.Contains(lines[2], "cooldown 120s") || strings.Contains(lines[2], "default") {
+		t.Errorf("explicit-cooldown row wrong: %q", lines[2])
+	}
+}
+
 func TestAlertRulesJSONPassthrough(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 

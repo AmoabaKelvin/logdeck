@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/config"
+	"github.com/AmoabaKelvin/logdeck/internal/logstream"
 	"github.com/AmoabaKelvin/logdeck/internal/models"
 )
 
@@ -19,14 +20,6 @@ const (
 	defaultCooldown = 300 * time.Second
 )
 
-// Docker Compose and recent podman-compose both set the com.docker label;
-// older podman-compose releases only set the io.podman one. Mirrors the
-// helper in internal/logstream.
-var composeProjectLabels = []string{
-	"com.docker.compose.project",
-	"io.podman.compose.project",
-}
-
 // compiledRule is an immutable, normalized snapshot of one enabled alert
 // rule. Sink closures capture it by pointer; reconciles build fresh ones and
 // never mutate rules already handed out.
@@ -35,9 +28,9 @@ type compiledRule struct {
 	name string
 	typ  string // "event" | "log"
 
-	hosts      []string
-	containers []string
-	projects   []string
+	// spec is the rule's container targeting; matching is delegated to
+	// logstream.ContainerSpec.Matches.
+	spec logstream.ContainerSpec
 
 	events []string // event rules: "die" | "oom"
 
@@ -70,17 +63,15 @@ func compileRules(cfg config.AlertsConfig) []*compiledRule {
 		}
 
 		c := &compiledRule{
-			id:         rule.ID,
-			name:       rule.Name,
-			typ:        rule.Type,
-			hosts:      rule.Hosts,
-			containers: rule.Containers,
-			projects:   rule.Projects,
-			events:     rule.Events,
-			threshold:  rule.Threshold,
-			window:     time.Duration(rule.WindowSeconds) * time.Second,
-			cooldown:   time.Duration(rule.CooldownSeconds) * time.Second,
-			src:        rule,
+			id:        rule.ID,
+			name:      rule.Name,
+			typ:       rule.Type,
+			spec:      logstream.ContainerSpec{Hosts: rule.Hosts, Containers: rule.Containers, Projects: rule.Projects},
+			events:    rule.Events,
+			threshold: rule.Threshold,
+			window:    time.Duration(rule.WindowSeconds) * time.Second,
+			cooldown:  time.Duration(rule.CooldownSeconds) * time.Second,
+			src:       rule,
 		}
 		if c.threshold < 1 {
 			c.threshold = 1
@@ -113,30 +104,6 @@ func compileRules(cfg config.AlertsConfig) []*compiledRule {
 		compiled = append(compiled, c)
 	}
 	return compiled
-}
-
-// matchesTarget reports whether a container (host, name without the leading
-// "/", labels) is selected by the rule's targeting. All dimensions are
-// optional; hosts are ANDed with the container/project dimension, which is an
-// OR between exact names and compose projects.
-func (r *compiledRule) matchesTarget(host, name string, labels map[string]string) bool {
-	if len(r.hosts) > 0 && !slices.Contains(r.hosts, host) {
-		return false
-	}
-	if len(r.containers) == 0 && len(r.projects) == 0 {
-		return true
-	}
-	if slices.Contains(r.containers, name) {
-		return true
-	}
-	for _, project := range r.projects {
-		for _, label := range composeProjectLabels {
-			if labels[label] == project {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // matchesEntry reports whether a log entry satisfies the rule's level and

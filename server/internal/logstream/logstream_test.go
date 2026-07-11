@@ -155,7 +155,7 @@ func ctr(id, name, state string, labels map[string]string) models.ContainerInfo 
 // cleanup that cancels it and requires a prompt, leak-free shutdown.
 func startHub(t *testing.T, source func() engineClient) *Hub {
 	t.Helper()
-	h := newHub(nil, source)
+	h := newHub(source)
 	h.retryBaseDelay = time.Millisecond
 	h.retryMaxDelay = 4 * time.Millisecond
 	h.listTimeout = time.Second
@@ -217,8 +217,8 @@ func TestSpecMatches(t *testing.T) {
 		{"host and name both required", ContainerSpec{Hosts: []string{"h2"}, Containers: []string{"web"}}, "h1", "web", nil, false},
 	}
 	for _, tc := range cases {
-		if got := specMatches(tc.spec, tc.host, tc.cname, tc.labels); got != tc.want {
-			t.Errorf("%s: specMatches = %v, want %v", tc.name, got, tc.want)
+		if got := tc.spec.Matches(tc.host, tc.cname, tc.labels); got != tc.want {
+			t.Errorf("%s: Matches = %v, want %v", tc.name, got, tc.want)
 		}
 	}
 }
@@ -421,7 +421,7 @@ func TestShutdownDrainsBufferedRecordsAndWaitReturns(t *testing.T) {
 	}
 	f.set(map[string][]models.ContainerInfo{"h1": {ctr("c1", "web", "running", nil)}}, nil)
 
-	h := newHub(nil, func() engineClient { return f })
+	h := newHub(func() engineClient { return f })
 	h.resyncInterval = time.Hour
 	ctx, cancel := context.WithCancel(context.Background())
 	go h.Run(ctx)
@@ -520,7 +520,7 @@ func TestHotSwapReopensStreamAndRespawnsTails(t *testing.T) {
 }
 
 func TestReconcileBeforeRunDoesNotBlock(t *testing.T) {
-	h := newHub(nil, func() engineClient { return newFakeClient() })
+	h := newHub(func() engineClient { return newFakeClient() })
 	done := make(chan struct{})
 	go func() {
 		h.Reconcile()

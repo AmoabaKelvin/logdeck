@@ -6,7 +6,8 @@
 // rules, subscription handles, rate/cooldown windows, the event-stream child
 // context). Log-rule sinks run on the hub's delivery goroutines and only push
 // non-blocking match messages onto firedCh. A single dispatcher goroutine
-// consumes fired alerts, delivers webhooks, and appends to history. Helper
+// consumes fired alerts, appends them to history, delivers webhooks, and
+// records each delivery outcome on the history entry. Helper
 // goroutines exist only for single container-inspect exit-code lookups.
 package alerts
 
@@ -38,8 +39,17 @@ const (
 	defaultResyncInterval = 60 * time.Second
 	inspectTimeout        = 5 * time.Second
 	// deliverBudget bounds one delivery cycle (attempt + retry wait +
-	// attempt) so shutdown cannot hang on an unresponsive webhook.
+	// attempt).
 	deliverBudget = 30 * time.Second
+	// shutdownDrainBudget bounds the entire dispatch-queue drain after the
+	// Start context is cancelled: once it expires, remaining alerts are
+	// recorded as failed ("shutdown") instead of waiting out their delivery
+	// timeouts one by one.
+	shutdownDrainBudget = 30 * time.Second
+	// oomDieWindow is how long after an "oom" event a "die" for the same
+	// container is treated as part of the same incident by rules watching
+	// both actions.
+	oomDieWindow = 10 * time.Second
 	// windowIdleTTL is how long a (rule, host, container) key may go without
 	// a match before its window state is pruned.
 	windowIdleTTL = 24 * time.Hour
@@ -121,8 +131,9 @@ type Engine struct {
 	flushStop   chan struct{}
 
 	// deliverCtx survives Start-context cancellation so in-flight deliveries
-	// can finish during shutdown; skipRetry aborts retry waits once shutdown
-	// begins. Both are set in Start before any goroutine reads them.
+	// can finish during shutdown, but is cancelled once shutdownDrainBudget
+	// elapses after shutdown begins; skipRetry aborts retry waits once
+	// shutdown begins. Both are set in Start before any goroutine reads them.
 	deliverCtx context.Context
 	skipRetry  <-chan struct{}
 
@@ -172,9 +183,10 @@ func newEngine(hub engineHub, source func() eventClient, alertsFn func() config.
 // shutdown completes.
 func (e *Engine) Start(ctx context.Context) {
 	e.hist.load()
-	e.deliverCtx = context.WithoutCancel(ctx)
+	drainCtx, drainCancel := context.WithCancel(context.WithoutCancel(ctx))
+	e.deliverCtx = drainCtx
 	e.skipRetry = ctx.Done()
-	e.wg.Add(3)
+	e.wg.Add(4)
 	go func() {
 		defer e.wg.Done()
 		e.run(ctx)
@@ -186,6 +198,20 @@ func (e *Engine) Start(ctx context.Context) {
 	go func() {
 		defer e.wg.Done()
 		e.hist.flushLoop(e.flushStop)
+	}()
+	// The whole post-shutdown dispatch drain shares one budget: deliverCtx is
+	// cancelled shutdownDrainBudget after the Start context, so a queue of
+	// alerts against an unresponsive webhook cannot stall shutdown.
+	go func() {
+		defer e.wg.Done()
+		defer drainCancel()
+		<-ctx.Done()
+		timer := time.NewTimer(shutdownDrainBudget)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+		case <-e.flushStop: // drain finished within the budget
+		}
 	}()
 }
 
@@ -252,6 +278,7 @@ type runState struct {
 	subs       map[string]*activeSub // live log-rule subscriptions by rule ID
 	eventRules []*compiledRule
 	windows    map[string]*ruleWindow // by ruleID|host|containerName
+	lastOOM    map[string]time.Time   // last oom event by host|containerID
 
 	events       <-chan docker.EngineEvent
 	eventsCancel context.CancelFunc
@@ -265,6 +292,7 @@ func (e *Engine) run(ctx context.Context) {
 		ctx:     ctx,
 		subs:    make(map[string]*activeSub),
 		windows: make(map[string]*ruleWindow),
+		lastOOM: make(map[string]time.Time),
 	}
 	e.openEvents(st, e.source())
 	e.reconcile(st)
@@ -384,7 +412,7 @@ func (e *Engine) reconcile(st *runState) {
 func (e *Engine) subscribeRule(st *runState, rule *compiledRule) {
 	st.gen++
 	gen := st.gen
-	spec := logstream.ContainerSpec{Hosts: rule.hosts, Containers: rule.containers, Projects: rule.projects}
+	spec := rule.spec
 	opts := models.LogOptions{Timestamps: true, Tail: "0", ShowStdout: true, ShowStderr: true}
 	sink := func(rec logstream.Record) {
 		if !rule.matchesEntry(rec.Entry) {
@@ -481,9 +509,22 @@ func (e *Engine) handleInspect(st *runState, r inspectResult) {
 // rule's window.
 func (e *Engine) recordEventMatch(st *runState, ev docker.EngineEvent, action, exitCode string) {
 	name := strings.TrimPrefix(ev.ContainerName, "/")
+	oomKey := ev.Host + "|" + ev.ContainerID
+	if action == "oom" {
+		st.lastOOM[oomKey] = e.now()
+	}
 	for _, rule := range st.eventRules {
-		if !rule.hasEvent(action) || !rule.matchesTarget(ev.Host, name, ev.Labels) {
+		if !rule.hasEvent(action) || !rule.spec.Matches(ev.Host, name, ev.Labels) {
 			continue
+		}
+		// An OOM kill emits "oom" followed by "die" (137): for a rule that
+		// watches both actions the pair is one incident, so the die is
+		// skipped when this container OOMed just before. Rules watching only
+		// die still observe it.
+		if action == "die" && rule.hasEvent("oom") {
+			if t, ok := st.lastOOM[oomKey]; ok && e.now().Sub(t) <= oomDieWindow {
+				continue
+			}
 		}
 		key := rule.id + "|" + ev.Host + "|" + name
 		res := e.window(st, key, rule).observe(e.now())
@@ -530,12 +571,17 @@ func (e *Engine) emit(rule *compiledRule, host, containerID, containerName, reas
 }
 
 // pruneWindows drops rate/cooldown state for keys with no match in
-// windowIdleTTL.
+// windowIdleTTL, and oom timestamps too old to suppress a paired die.
 func (e *Engine) pruneWindows(st *runState) {
 	now := e.now()
 	for key, w := range st.windows {
 		if w.idleSince(now) > windowIdleTTL {
 			delete(st.windows, key)
+		}
+	}
+	for key, t := range st.lastOOM {
+		if now.Sub(t) > oomDieWindow {
+			delete(st.lastOOM, key)
 		}
 	}
 }
@@ -571,20 +617,30 @@ func (e *Engine) shutdownRun(st *runState) {
 	}
 }
 
-// dispatchLoop consumes fired alerts: it delivers to the webhook (read live
-// from config; empty means history-only) and appends the result to history.
-// It exits when the run loop closes dispatchCh, then stops the history
-// flusher, which performs the final synchronous flush.
+// dispatchLoop consumes fired alerts: each alert is appended to history first
+// (Delivery nil) so a hung webhook can never lose it, then delivered to the
+// webhook (read live from config; empty means history-only) and its history
+// entry updated with the result. It exits when the run loop closes
+// dispatchCh, then stops the history flusher, which performs the final
+// synchronous flush. Once the shutdown drain budget has expired, remaining
+// alerts are recorded as failed ("shutdown") without a delivery attempt.
 func (e *Engine) dispatchLoop() {
 	defer close(e.flushStop)
 	for alert := range e.dispatchCh {
-		if url := e.alertsFn().WebhookURL; url != "" {
-			ctx, cancel := context.WithTimeout(e.deliverCtx, deliverBudget)
-			result := e.notif.deliver(ctx, url, alert, e.skipRetry)
-			cancel()
-			alert.Delivery = &result
-		}
 		e.hist.append(alert)
+		url := e.alertsFn().WebhookURL
+		if url == "" {
+			continue
+		}
+		var result models.DeliveryResult
+		if e.deliverCtx.Err() != nil {
+			result = models.DeliveryResult{Status: "failed", Error: "shutdown"}
+		} else {
+			ctx, cancel := context.WithTimeout(e.deliverCtx, deliverBudget)
+			result = e.notif.deliver(ctx, url, alert, e.skipRetry)
+			cancel()
+		}
+		e.hist.setDelivery(alert.ID, result)
 	}
 }
 

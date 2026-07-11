@@ -289,6 +289,67 @@ func TestOOMEventFires(t *testing.T) {
 	}
 }
 
+func TestOOMThenDieCountsOnceForRuleWatchingBoth(t *testing.T) {
+	both := config.AlertRule{ID: "both", Name: "both", Enabled: true, Type: "event", Events: []string{"die", "oom"}, Threshold: 2, WindowSeconds: 60}
+	dieOnly := config.AlertRule{ID: "die-only", Name: "die only", Enabled: true, Type: "event", Events: []string{"die"}, Threshold: 1}
+	te := startTestEngine(t, both, dieOnly)
+
+	// One OOM kill: the daemon emits "oom" followed by "die" (exit 137).
+	te.events.ch <- docker.EngineEvent{Host: "local", ContainerID: "c1", ContainerName: "web", Action: "oom"}
+	te.events.ch <- docker.EngineEvent{Host: "local", ContainerID: "c1", ContainerName: "web", Action: "die", ExitCode: "137"}
+
+	// The die-only rule fires on the die. The both rule must have observed
+	// the incident once (the oom), so at threshold 2 it must not fire yet.
+	waitFor(t, "die-only alert", func() bool { return len(te.e.History(0)) == 1 })
+	time.Sleep(50 * time.Millisecond) // give a wrong double-counted alert time to appear
+	h := te.e.History(0)
+	if len(h) != 1 || h[0].RuleID != "die-only" {
+		t.Fatalf("history = %+v, want only the die-only alert (oom+die pair must count once)", h)
+	}
+
+	// A die outside the oom correlation window is a separate incident: the
+	// both rule's second observation, so it fires.
+	te.clock.advance(11 * time.Second)
+	te.events.ch <- docker.EngineEvent{Host: "local", ContainerID: "c1", ContainerName: "web", Action: "die", ExitCode: "1"}
+	waitFor(t, "both-rule alert", func() bool { return len(te.e.History(0)) == 2 })
+	if got := te.e.History(0)[0].RuleID; got != "both" {
+		t.Fatalf("newest alert rule = %q, want both", got)
+	}
+}
+
+func TestAlertInHistoryWhileDeliveryHangs(t *testing.T) {
+	unblock := make(chan struct{})
+	var once sync.Once
+	release := func() { once.Do(func() { close(unblock) }) }
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-unblock // hang until the test releases the webhook
+	}))
+	defer srv.Close()
+	defer release()
+
+	te := startTestEngine(t, config.AlertRule{ID: "r1", Name: "boom", Enabled: true, Type: "log", Pattern: "boom", Threshold: 1})
+	te.conf.set(config.AlertsConfig{WebhookURL: srv.URL, Rules: te.conf.get().Rules})
+	waitFor(t, "subscription", func() bool { return te.hub.liveCount() == 1 })
+
+	te.hub.emit(record(models.LogLevelError, "boom"))
+
+	// The alert must reach history while the webhook is still hanging.
+	waitFor(t, "alert in history during delivery", func() bool { return len(te.e.History(0)) == 1 })
+	if d := te.e.History(0)[0].Delivery; d != nil {
+		t.Fatalf("delivery = %+v, want nil while the webhook hangs", d)
+	}
+
+	// Once the webhook responds, the stored entry gains the delivery result.
+	release()
+	waitFor(t, "delivery recorded", func() bool {
+		h := te.e.History(0)
+		return len(h) == 1 && h[0].Delivery != nil
+	})
+	if d := te.e.History(0)[0].Delivery; d.Status != "ok" {
+		t.Fatalf("delivery = %+v, want ok", d)
+	}
+}
+
 func TestDieEventEmptyExitCodeFailingInspectFiresUnknown(t *testing.T) {
 	te := startTestEngine(t, config.AlertRule{
 		ID: "e1", Name: "Container died", Enabled: true, Type: "event", Events: []string{"die"}, Threshold: 1,

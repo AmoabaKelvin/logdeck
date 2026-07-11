@@ -89,25 +89,8 @@ func TestMapEngineEventOOMPassesThrough(t *testing.T) {
 	}
 }
 
-func TestMapEngineEventHealthStatusPrefixMatch(t *testing.T) {
-	msg := events.Message{
-		Type:   events.ContainerEventType,
-		Action: "health_status: unhealthy",
-		Actor:  events.Actor{ID: "abc123", Attributes: map[string]string{"name": "web"}},
-		Time:   1700000000,
-	}
-
-	event, ok := mapEngineEvent("local", msg)
-	if !ok {
-		t.Fatal("expected health_status event to be mapped")
-	}
-	if event.Action != "health_status: unhealthy" {
-		t.Fatalf("expected full action string, got %q", event.Action)
-	}
-}
-
 func TestMapEngineEventSkipsUnwatchedActions(t *testing.T) {
-	for _, action := range []events.Action{"create", "pause", "exec_start: bash"} {
+	for _, action := range []events.Action{"create", "pause", "exec_start: bash", "health_status: unhealthy"} {
 		msg := events.Message{
 			Type:   events.ContainerEventType,
 			Action: action,

@@ -75,8 +75,8 @@ func TestMatchesTargetMatrix(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			rule := compileOne(t, tt.rule)
-			if got := rule.matchesTarget(tt.host, tt.cname, tt.labels); got != tt.want {
-				t.Fatalf("matchesTarget(%s, %s, %v) = %v, want %v", tt.host, tt.cname, tt.labels, got, tt.want)
+			if got := rule.spec.Matches(tt.host, tt.cname, tt.labels); got != tt.want {
+				t.Fatalf("spec.Matches(%s, %s, %v) = %v, want %v", tt.host, tt.cname, tt.labels, got, tt.want)
 			}
 		})
 	}
