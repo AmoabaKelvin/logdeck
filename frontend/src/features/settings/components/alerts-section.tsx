@@ -320,7 +320,11 @@ function renderTrigger(rule: AlertRule): string {
 	if (rule.threshold > 1) {
 		parts.push(`${rule.threshold} in ${rule.windowSeconds ?? 0}s`);
 	}
-	if (rule.cooldownSeconds) parts.push(`cooldown ${rule.cooldownSeconds}s`);
+	if (rule.cooldownSeconds) {
+		parts.push(`cooldown ${rule.cooldownSeconds}s`);
+	} else {
+		parts.push("cooldown 300s (default)");
+	}
 	return parts.filter(Boolean).join(" · ");
 }
 
@@ -584,6 +588,7 @@ function RulesBlock() {
 									id="alert-rule-threshold"
 									type="number"
 									min={1}
+									max={1000}
 									value={form.threshold}
 									onChange={(e) => set("threshold", e.target.value)}
 									className="h-8"
@@ -594,7 +599,8 @@ function RulesBlock() {
 								<Input
 									id="alert-rule-window"
 									type="number"
-									min={1}
+									min={5}
+									max={3600}
 									value={form.windowSeconds}
 									onChange={(e) => set("windowSeconds", e.target.value)}
 									placeholder="60"
@@ -623,6 +629,7 @@ function RulesBlock() {
 										id="alert-rule-threshold"
 										type="number"
 										min={1}
+										max={1000}
 										value={form.threshold}
 										onChange={(e) => set("threshold", e.target.value)}
 										className="h-8"
@@ -633,7 +640,8 @@ function RulesBlock() {
 									<Input
 										id="alert-rule-window"
 										type="number"
-										min={1}
+										min={5}
+										max={3600}
 										value={form.windowSeconds}
 										onChange={(e) => set("windowSeconds", e.target.value)}
 										placeholder="120"
@@ -683,10 +691,11 @@ function RulesBlock() {
 							<Input
 								id="alert-rule-cooldown"
 								type="number"
-								min={1}
+								min={0}
+								max={86400}
 								value={form.cooldownSeconds}
 								onChange={(e) => set("cooldownSeconds", e.target.value)}
-								placeholder="300"
+								placeholder="300 (default)"
 								className="h-8"
 							/>
 						</div>
