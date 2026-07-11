@@ -43,6 +43,17 @@ export function formatContainerName(names: string[]) {
 	return primary.startsWith("/") ? primary.slice(1) : primary;
 }
 
+export function formatImageName(image: string) {
+	const segments = image.split("/");
+	if (segments.length > 1 && /[.:]/.test(segments[0])) {
+		segments.shift();
+	}
+	if (segments.length > 1 && segments[0] === "library") {
+		segments.shift();
+	}
+	return segments.join("/");
+}
+
 export function formatCreatedDate(createdSeconds: number) {
 	const createdDate = new Date(createdSeconds * 1000);
 	return createdDate.toLocaleString(undefined, {
