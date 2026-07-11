@@ -8,11 +8,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/AmoabaKelvin/logdeck/internal/alerts"
 	"github.com/AmoabaKelvin/logdeck/internal/api"
 	"github.com/AmoabaKelvin/logdeck/internal/auth"
 	"github.com/AmoabaKelvin/logdeck/internal/config"
 	"github.com/AmoabaKelvin/logdeck/internal/coolify"
 	"github.com/AmoabaKelvin/logdeck/internal/docker"
+	"github.com/AmoabaKelvin/logdeck/internal/logstream"
 	"github.com/AmoabaKelvin/logdeck/internal/services"
 	"github.com/AmoabaKelvin/logdeck/internal/system"
 )
@@ -63,6 +65,9 @@ func main() {
 
 	registry := services.NewRegistry(multiHostClient, coolifyClient, authService, cfg)
 
+	logHub := logstream.New(registry)
+	alertEngine := alerts.NewEngine(registry, manager, logHub)
+
 	// Register hot-reload callback.
 	manager.OnChange(func(newCfg *config.Config) {
 		registry.UpdateConfig(newCfg)
@@ -79,6 +84,8 @@ func main() {
 				time.Sleep(30 * time.Second)
 				old.Close()
 			}()
+			// The client set changed; re-evaluate alert watch targets.
+			alertEngine.Reconcile()
 		}
 
 		// Recreate Coolify clients.
@@ -93,7 +100,7 @@ func main() {
 		log.Println("Configuration reloaded successfully")
 	})
 
-	apiRouter := api.NewRouter(registry, manager, version)
+	apiRouter := api.NewRouter(registry, manager, alertEngine, version)
 
 	// No WriteTimeout/IdleTimeout: log streaming and terminal WebSockets are
 	// long-lived connections and would be killed by them. ReadTimeout only
@@ -108,6 +115,9 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	go logHub.Run(ctx)
+	alertEngine.Start(ctx)
 
 	go func() {
 		log.Println("Server starting on :8080")
@@ -124,4 +134,9 @@ func main() {
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Printf("Graceful shutdown failed: %v", err)
 	}
+
+	// Drain the alerting engine and the shared log tails after the server has
+	// stopped accepting requests.
+	alertEngine.Wait()
+	logHub.Wait()
 }

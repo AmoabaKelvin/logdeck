@@ -83,7 +83,17 @@ func (c *MultiHostClient) StreamContainerEvents(ctx context.Context) <-chan mode
 		wg.Add(1)
 		go func(name string, cl *client.Client) {
 			defer wg.Done()
-			watchHostEvents(ctx, name, cl, out)
+			options := events.ListOptions{Filters: containerEventFilters()}
+			watchHostEventStream(ctx, name, cl, options, func(msg events.Message) {
+				event, ok := mapContainerEvent(name, msg)
+				if !ok {
+					return
+				}
+				select {
+				case out <- event:
+				case <-ctx.Done():
+				}
+			})
 		}(hostName, apiClient)
 	}
 
@@ -95,9 +105,12 @@ func (c *MultiHostClient) StreamContainerEvents(ctx context.Context) <-chan mode
 	return out
 }
 
-func watchHostEvents(ctx context.Context, hostName string, cl *client.Client, out chan<- models.ContainerEvent) {
+// watchHostEventStream runs the per-host subscribe/receive/backoff loop shared
+// by all event consumers, invoking handle for every raw message received.
+// Stream errors are retried with exponential backoff (reset on each message);
+// the loop returns once ctx is cancelled.
+func watchHostEventStream(ctx context.Context, hostName string, cl *client.Client, options events.ListOptions, handle func(events.Message)) {
 	backoff := eventsInitialBackoff
-	options := events.ListOptions{Filters: containerEventFilters()}
 
 	for {
 		messages, errs := cl.Events(ctx, options)
@@ -109,15 +122,7 @@ func watchHostEvents(ctx context.Context, hostName string, cl *client.Client, ou
 				return
 			case msg := <-messages:
 				backoff = eventsInitialBackoff
-				event, ok := mapContainerEvent(hostName, msg)
-				if !ok {
-					continue
-				}
-				select {
-				case out <- event:
-				case <-ctx.Done():
-					return
-				}
+				handle(msg)
 			case err := <-errs:
 				if ctx.Err() != nil {
 					return

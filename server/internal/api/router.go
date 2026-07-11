@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/AmoabaKelvin/logdeck/internal/alerts"
 	"github.com/AmoabaKelvin/logdeck/internal/api/middleware"
 	"github.com/AmoabaKelvin/logdeck/internal/auth"
 	"github.com/AmoabaKelvin/logdeck/internal/config"
@@ -19,14 +20,16 @@ type APIRouter struct {
 	router   *chi.Mux
 	registry *services.Registry
 	manager  *config.Manager
+	engine   *alerts.Engine
 	version  string
 }
 
-func NewRouter(registry *services.Registry, manager *config.Manager, version string) *chi.Mux {
+func NewRouter(registry *services.Registry, manager *config.Manager, engine *alerts.Engine, version string) *chi.Mux {
 	r := &APIRouter{
 		router:   chi.NewRouter(),
 		registry: registry,
 		manager:  manager,
+		engine:   engine,
 		version:  version,
 	}
 
@@ -75,6 +78,9 @@ func (ar *APIRouter) Routes() *chi.Mux {
 
 		// Settings endpoints (follow same auth pattern as other routes)
 		ar.registerSettingsRoutes(r)
+
+		// Alert endpoints (follow same auth pattern as settings routes)
+		ar.registerAlertRoutes(r)
 
 		// All other routes go through dynamic auth middleware
 		r.Group(func(protected chi.Router) {
@@ -146,6 +152,23 @@ func (ar *APIRouter) registerSettingsRoutes(r chi.Router) {
 		r.Delete("/api-tokens/{prefix}", ar.DeleteAPIToken)
 		r.Post("/test/docker-host", ar.TestDockerHost)
 		r.Post("/test/coolify-host", ar.TestCoolifyHost)
+	})
+}
+
+func (ar *APIRouter) registerAlertRoutes(r chi.Router) {
+	r.Route("/alerts", func(r chi.Router) {
+		// Alerts follow the same auth pattern — protected when auth is enabled
+		r.Use(auth.DynamicMiddleware(ar.registry.Auth, ar.lookupAPIToken))
+
+		r.Get("/rules", ar.ListAlertRules)
+		r.Post("/rules", ar.CreateAlertRule)
+		r.Put("/rules/{id}", ar.UpdateAlertRule)
+		r.Delete("/rules/{id}", ar.DeleteAlertRule)
+		r.Get("/webhook", ar.GetAlertsWebhook)
+		r.Put("/webhook", ar.UpdateAlertsWebhook)
+		r.Post("/test", ar.TestAlertsWebhook)
+		r.Get("/history", ar.GetAlertHistory)
+		r.Delete("/history", ar.ClearAlertHistory)
 	})
 }
 

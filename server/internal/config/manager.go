@@ -16,6 +16,7 @@ type FileConfig struct {
 	ReadOnly     *bool               `json:"readOnly,omitempty"`
 	Auth         *FileAuthConfig     `json:"auth,omitempty"`
 	APITokens    []APIToken          `json:"apiTokens,omitempty"`
+	Alerts       *AlertsConfig       `json:"alerts,omitempty"`
 }
 
 // APIToken represents a stored API access token. Only the SHA256 hash of the
