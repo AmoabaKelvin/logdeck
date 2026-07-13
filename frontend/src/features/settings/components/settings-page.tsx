@@ -1,6 +1,7 @@
 import { Spinner } from "@/components/ui/spinner";
 
 import { useSettings } from "../hooks/use-settings";
+import { AlertsSection } from "./alerts-section";
 import { ApiTokensSection } from "./api-tokens-section";
 import { AuthSection } from "./auth-section";
 import { CoolifyHostsSection } from "./coolify-hosts-section";
@@ -54,6 +55,7 @@ export function SettingsPage() {
 				config={data.auth}
 			/>
 			<ApiTokensSection />
+			<AlertsSection />
 		</div>
 	);
 }

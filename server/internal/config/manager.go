@@ -16,6 +16,7 @@ type FileConfig struct {
 	ReadOnly     *bool               `json:"readOnly,omitempty"`
 	Auth         *FileAuthConfig     `json:"auth,omitempty"`
 	APITokens    []APIToken          `json:"apiTokens,omitempty"`
+	Alerts       *AlertsConfig       `json:"alerts,omitempty"`
 }
 
 // APIToken represents a stored API access token. Only the SHA256 hash of the
@@ -117,6 +118,12 @@ func (m *Manager) Sources() ConfigSources {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.sources
+}
+
+// ConfigFilePath returns the path of the JSON config file. The path is fixed
+// at construction and never changes, so no locking is needed.
+func (m *Manager) ConfigFilePath() string {
+	return m.filePath
 }
 
 // FileConfig returns the current file config (for reading stored secrets).

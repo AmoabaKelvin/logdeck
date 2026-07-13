@@ -207,6 +207,22 @@ logdeck volumes
 logdeck networks
 ```
 
+### alerts
+
+Manage alerting: rules, the webhook destination, and fired-alert history. Rules match container events (`die`, `oom`) or log lines (by minimum level and/or regex pattern), optionally firing only after a threshold of matches within a time window. Alerts are delivered to a single webhook URL.
+
+```bash
+logdeck alerts rules                          # list rules
+logdeck alerts rules create --type event --name oom-watch --events oom
+logdeck alerts rules create --type log --name errors --min-level ERROR --threshold 5 --window 60s
+logdeck alerts rules disable <id>             # or enable / delete
+logdeck alerts webhook set https://hooks.example.com/logdeck
+logdeck alerts test                           # send a test delivery; exits 1 on failure
+logdeck alerts history --limit 20             # recently fired alerts, newest first
+```
+
+Targeting flags (`--host`, `--container`, `--project`, all repeatable) narrow which containers a rule watches; an untargeted rule watches everything. `--window` and `--cooldown` accept Go durations (`60s`, `5m`) or bare seconds. When `--cooldown` is 0 or omitted, the server applies its default cooldown of 300 seconds between deliveries for the same rule and container.
+
 ## Using with AI Agents
 
 The CLI is designed so an agent can debug containerized services without a browser. A typical investigation:
