@@ -1,15 +1,18 @@
 import { authenticatedFetch } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 
-import type { CreatedAPIToken } from "../types";
+import type { APITokenScope, CreatedAPIToken } from "../types";
 
 const ENDPOINT = `${API_BASE_URL}/api/v1/settings/api-tokens`;
 
-export async function createApiToken(name: string): Promise<CreatedAPIToken> {
+export async function createApiToken(
+	name: string,
+	scope: APITokenScope,
+): Promise<CreatedAPIToken> {
 	const response = await authenticatedFetch(ENDPOINT, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ name }),
+		body: JSON.stringify({ name, scope }),
 	});
 
 	if (!response.ok) {
