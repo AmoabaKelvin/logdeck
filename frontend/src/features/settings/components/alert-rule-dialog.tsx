@@ -9,6 +9,7 @@ import {
 	RotateCcwIcon,
 	SlidersHorizontalIcon,
 	TrendingUpIcon,
+	XIcon,
 } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -663,12 +664,13 @@ function RuleEditor({
 						seconds
 						<Button
 							type="button"
-							variant="link"
-							size="sm"
+							variant="ghost"
+							size="icon"
 							onClick={disableRate}
-							className="h-auto p-0 text-xs text-muted-foreground"
+							aria-label="Remove rate condition"
+							className="ml-0.5 size-6 text-muted-foreground hover:text-foreground"
 						>
-							remove
+							<XIcon className="size-3.5" />
 						</Button>
 					</div>
 				) : (
