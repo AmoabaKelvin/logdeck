@@ -116,6 +116,12 @@ func (s *Store) writeLoop() {
 // row it touches, inserts the lines, and advances stored_bytes and the
 // per-stream watermarks together, so a crash can never leave a watermark ahead
 // of the rows it claims.
+//
+// Generation ids discovered inside the transaction are held in a local map and
+// published to the caller's cache only after the commit succeeds. A rolled-back
+// INSERT ... RETURNING id hands back a rowid SQLite will hand out again, so
+// caching it eagerly would file the *next* generation's lines against this key
+// — one container's lines landing in another container's timeline.
 func (s *Store) commit(batch []ingestMsg, refs map[genKey]int64) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -133,16 +139,20 @@ func (s *Store) commit(batch []ingestMsg, refs map[genKey]int64) error {
 		stderrWM int64
 	}
 	aggs := make(map[int64]*agg)
+	fresh := make(map[genKey]int64) // ids this transaction discovered
 	nowMS := time.Now().UnixMilli()
 
 	for _, msg := range batch {
 		ref, ok := refs[msg.key]
 		if !ok {
+			ref, ok = fresh[msg.key]
+		}
+		if !ok {
 			ref, err = upsertGeneration(ctx, tx, msg.key, msg.name, msg.project, nowMS)
 			if err != nil {
 				return err
 			}
-			refs[msg.key] = ref
+			fresh[msg.key] = ref
 		}
 
 		if msg.kind == msgDone {
@@ -190,7 +200,15 @@ func (s *Store) commit(batch []ingestMsg, refs map[genKey]int64) error {
 		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	// The ids are real only now.
+	for key, ref := range fresh {
+		refs[key] = ref
+	}
+	return nil
 }
 
 // upsertGeneration inserts or refreshes the generation row for one engine

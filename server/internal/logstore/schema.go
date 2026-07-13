@@ -8,7 +8,7 @@ import (
 
 // schemaVersion is the current schema generation, tracked in PRAGMA
 // user_version. Bump it and add a migration step when the schema changes.
-const schemaVersion = 1
+const schemaVersion = 2
 
 // schemaV1 is the initial schema.
 //
@@ -51,9 +51,33 @@ CREATE TABLE log_lines (
 CREATE INDEX log_lines_container_ts ON log_lines(container_ref, ts_ns);
 `
 
+// schemaV2 puts a foreign key on log_lines.container_ref. With
+// PRAGMA foreign_keys ON (set on every connection), a line can no longer be
+// filed against a generation row that does not exist: a stale ref fails the
+// write loudly instead of silently misattributing the line to whichever
+// generation SQLite handed that rowid to next. Rows that are already dangling
+// (written before this constraint existed) cannot be attributed to anything and
+// are dropped by the copy.
+const schemaV2 = `
+CREATE TABLE log_lines_v2 (
+  container_ref INTEGER NOT NULL REFERENCES containers(id),
+  ts_ns         INTEGER NOT NULL,
+  stream        INTEGER NOT NULL, -- 0 stdout, 1 stderr
+  level         INTEGER NOT NULL, -- models.LevelSeverity value
+  raw           TEXT NOT NULL
+);
+INSERT INTO log_lines_v2 (rowid, container_ref, ts_ns, stream, level, raw)
+SELECT rowid, container_ref, ts_ns, stream, level, raw FROM log_lines
+WHERE container_ref IN (SELECT id FROM containers);
+DROP TABLE log_lines;
+ALTER TABLE log_lines_v2 RENAME TO log_lines;
+CREATE INDEX log_lines_container_ts ON log_lines(container_ref, ts_ns);
+`
+
 // initSchema creates the schema on a fresh database and is a no-op on an
 // already-current one. Unknown (newer) versions are rejected rather than
-// silently downgraded.
+// silently downgraded. A fresh database walks the same migration path as an
+// existing one, so there is a single definition of every step.
 func initSchema(ctx context.Context, db *sql.DB) error {
 	var version int
 	if err := db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
@@ -73,9 +97,14 @@ func initSchema(ctx context.Context, db *sql.DB) error {
 	}
 	defer tx.Rollback()
 
-	if version == 0 {
+	if version < 1 {
 		if _, err := tx.ExecContext(ctx, schemaV1); err != nil {
 			return fmt.Errorf("create schema: %w", err)
+		}
+	}
+	if version < 2 {
+		if _, err := tx.ExecContext(ctx, schemaV2); err != nil {
+			return fmt.Errorf("migrate schema to version 2: %w", err)
 		}
 	}
 

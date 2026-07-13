@@ -3,7 +3,6 @@ package logstore
 import (
 	"context"
 	"log"
-	"strings"
 	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/models"
@@ -22,41 +21,97 @@ import (
 // stream in the process — the hub's.
 func (s *Store) syncLoop(ctx context.Context, source func() Engine) {
 	results := make(chan backfillResult, maxConcurrentBackfills)
-	attempts := make(map[genKey]int)
-	inFlight := make(map[genKey]bool)
+	track := newBackfillTracker()
 
 	ticker := time.NewTicker(syncInterval)
 	defer ticker.Stop()
 
-	s.sync(ctx, source(), attempts, inFlight, results)
+	s.sync(ctx, source(), track, results)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case res := <-results:
-			delete(inFlight, res.key)
+			delete(track.inFlight, res.key)
 			switch {
 			case res.excluded:
+				track.done[res.key] = true
 				log.Printf("logstore: %s/%s excluded from persistence: %v", res.key.host, short(res.key.id), res.err)
-			case res.err != nil && ctx.Err() == nil:
-				log.Printf("logstore: backfill of %s/%s failed (attempt %d/%d): %v",
-					res.key.host, short(res.key.id), attempts[res.key], maxBackfillAttempts, res.err)
+			case res.err != nil:
+				// Only a failure costs an attempt; a success must not consume the
+				// budget that later gap healing depends on.
+				track.attempts[res.key]++
+				if ctx.Err() == nil {
+					log.Printf("logstore: backfill of %s/%s failed (attempt %d/%d): %v",
+						res.key.host, short(res.key.id), track.attempts[res.key], maxBackfillAttempts, res.err)
+				}
+			default:
+				track.complete(s, res.key)
 			}
 		case <-ticker.C:
-			s.sync(ctx, source(), attempts, inFlight, results)
+			s.sync(ctx, source(), track, results)
 		}
 	}
 }
 
+// backfillTracker is the sync loop's per-generation bookkeeping: which
+// generations have been read, which are being read, how many times reading them
+// has failed, and which dropped-line gap the current read is healing.
+type backfillTracker struct {
+	attempts map[genKey]int
+	done     map[genKey]bool
+	inFlight map[genKey]bool
+	healing  map[genKey]int64
+}
+
+func newBackfillTracker() *backfillTracker {
+	return &backfillTracker{
+		attempts: make(map[genKey]int),
+		done:     make(map[genKey]bool),
+		inFlight: make(map[genKey]bool),
+		healing:  make(map[genKey]int64),
+	}
+}
+
+// schedule reports whether a generation should be (re-)read now. A generation
+// is read once; a fresh dropped-line gap makes it eligible again with a fresh
+// retry budget, so a spent budget can never block gap healing.
+func (t *backfillTracker) schedule(s *Store, key genKey, excluded bool) bool {
+	if gap := s.gapAt(key); gap != 0 && gap != t.healing[key] {
+		t.healing[key] = gap
+		delete(t.done, key)
+		delete(t.attempts, key)
+	}
+	if excluded || t.inFlight[key] || t.done[key] || t.attempts[key] >= maxBackfillAttempts {
+		return false
+	}
+	t.inFlight[key] = true
+	return true
+}
+
+// complete retires a generation that was read successfully, along with the
+// startup resume snapshot and the gap the read healed.
+func (t *backfillTracker) complete(s *Store, key genKey) {
+	t.done[key] = true
+	delete(t.attempts, key)
+	s.clearResume(key)
+	if healed := t.healing[key]; healed != 0 {
+		s.clearGap(key, healed)
+		delete(t.healing, key)
+	}
+}
+
 // sync reconciles one container listing against the stored generations.
-func (s *Store) sync(ctx context.Context, engine Engine, attempts map[genKey]int, inFlight map[genKey]bool, results chan backfillResult) {
+func (s *Store) sync(ctx context.Context, engine Engine, track *backfillTracker, results chan backfillResult) {
 	snapshot, hostErrs, err := engine.ListContainersAllHosts(ctx)
 	if err != nil {
 		log.Printf("logstore: container listing failed: %v", err)
 		return
 	}
+	failed := make(map[string]bool, len(hostErrs))
 	for _, hostErr := range hostErrs {
+		failed[hostErr.HostName] = true
 		log.Printf("logstore: listing containers on host %s failed: %v", hostErr.HostName, hostErr.Err)
 	}
 
@@ -73,24 +128,16 @@ func (s *Store) sync(ctx context.Context, engine Engine, attempts map[genKey]int
 				log.Printf("logstore: recording container %s/%s failed: %v", host, short(info.ID), err)
 				continue
 			}
-			if excluded || inFlight[key] || attempts[key] >= maxBackfillAttempts {
+			if !track.schedule(s, key, excluded) {
 				continue
 			}
 
-			attempts[key]++
-			inFlight[key] = true
 			s.producers.Add(1)
 			go s.backfill(ctx, engine, info, results)
 		}
 	}
 
-	// Hosts that failed to list keep their generations untouched: an
-	// unreachable host must not look like a mass container removal.
-	listed := make([]string, 0, len(snapshot))
-	for host := range snapshot {
-		listed = append(listed, host)
-	}
-	if err := s.markRemoved(ctx, listed, live, nowMS); err != nil {
+	if err := s.markRemoved(ctx, failed, live, nowMS); err != nil {
 		log.Printf("logstore: marking removed containers failed: %v", err)
 	}
 }
@@ -126,23 +173,16 @@ func (s *Store) upsertMeta(ctx context.Context, key genKey, info models.Containe
 	return reason != "", err
 }
 
-// markRemoved stamps removed_ms on every stored generation of a listed host
-// that the engine no longer reports. The generation row and its lines stay:
-// that is what keeps a rebuilt container's history readable under its name.
-func (s *Store) markRemoved(ctx context.Context, listedHosts []string, live map[genKey]bool, nowMS int64) error {
-	if len(listedHosts) == 0 {
-		return nil
-	}
-
-	args := make([]any, 0, len(listedHosts))
-	for _, host := range listedHosts {
-		args = append(args, host)
-	}
-	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(listedHosts)), ",")
-
+// markRemoved stamps removed_ms on every stored generation the engine no longer
+// reports: a container gone from a host that listed successfully, and every
+// generation of a host that is no longer configured at all (it appears in
+// neither the listing nor the host errors). A host that merely failed to list is
+// left untouched — an unreachable host must not look like a mass container
+// removal. The generation row and its lines stay either way: that is what keeps
+// a rebuilt container's history readable under its name.
+func (s *Store) markRemoved(ctx context.Context, failedHosts map[string]bool, live map[genKey]bool, nowMS int64) error {
 	rows, err := s.db.QueryContext(ctx,
-		"SELECT host, container_id FROM containers WHERE removed_ms IS NULL AND host IN ("+placeholders+")",
-		args...)
+		"SELECT host, container_id FROM containers WHERE removed_ms IS NULL")
 	if err != nil {
 		return err
 	}
@@ -154,7 +194,7 @@ func (s *Store) markRemoved(ctx context.Context, listedHosts []string, live map[
 		if err := rows.Scan(&key.host, &key.id); err != nil {
 			return err
 		}
-		if !live[key] {
+		if !live[key] && !failedHosts[key.host] {
 			gone = append(gone, key)
 		}
 	}

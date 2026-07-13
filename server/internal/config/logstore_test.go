@@ -54,6 +54,24 @@ func TestLogStoreFileConfig(t *testing.T) {
 	}
 }
 
+// A cap of zero or less in the config file would make every janitor pass evict
+// the entire store, so it must fall back to the default rather than delete the
+// user's logs.
+func TestLogStoreClampsNonPositiveFileLimits(t *testing.T) {
+	zero, negative := 0, -5
+	manager := writeLogStoreConfig(t, FileConfig{
+		LogStore: &LogStoreConfig{PerContainerMB: &zero, TotalMB: &negative},
+	})
+
+	got := manager.LogStore()
+	if got.PerContainerMB != DefaultLogStorePerContainerMB {
+		t.Fatalf("PerContainerMB = %d, want the default (a cap of 0 wipes the store)", got.PerContainerMB)
+	}
+	if got.TotalMB != DefaultLogStoreTotalMB {
+		t.Fatalf("TotalMB = %d, want the default (a negative cap wipes the store)", got.TotalMB)
+	}
+}
+
 func TestLogStoreEnvOverridesFile(t *testing.T) {
 	enabled := true
 	perContainer := 10

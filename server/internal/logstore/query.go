@@ -19,9 +19,11 @@ const (
 	// DefaultQueryLimit and MaxQueryLimit clamp LogQuery.Limit.
 	DefaultQueryLimit = 500
 	MaxQueryLimit     = 1000
-	// maxRegexScan bounds how many rows one regex query reads before it
-	// returns a cursor and lets the caller continue.
-	maxRegexScan = 50000
+	// scanChunk is how many rows a filtered query reads per round. Level and
+	// search filters run on *grouped* entries, so a page is filled by scanning
+	// backwards until it holds a full page or history runs out; a page is never
+	// both empty and continuable.
+	scanChunk = 1000
 )
 
 // ErrInvalidCursor is returned when LogQuery.Cursor is not a cursor this store
@@ -196,6 +198,11 @@ type generation struct {
 // generation of the name is read as one timeline, which is what makes history
 // survive a container rebuild: the caller asks for "web" and gets the lines of
 // every engine container that has ever been called "web" on that host.
+//
+// Rows are read unfiltered and only then grouped and filtered, which is the
+// order the live path uses. Filtering rows in SQL first would delete the
+// continuation lines of every multi-line entry — they classify as UNKNOWN — and
+// a level-filtered stack trace would come back as its first line with no body.
 func (s *Store) Query(ctx context.Context, q LogQuery) (LogPage, error) {
 	limit := q.Limit
 	if limit <= 0 {
@@ -203,13 +210,9 @@ func (s *Store) Query(ctx context.Context, q LogQuery) (LogPage, error) {
 	}
 	limit = min(limit, MaxQueryLimit)
 
-	var search *regexp.Regexp
-	if q.Regex && q.Search != "" {
-		compiled, err := regexp.Compile(q.Search)
-		if err != nil {
-			return LogPage{}, fmt.Errorf("invalid search pattern: %w", err)
-		}
-		search = compiled
+	match, err := newMatcher(q)
+	if err != nil {
+		return LogPage{}, err
 	}
 
 	generations, err := s.generations(ctx, q.Host, q.Container)
@@ -227,71 +230,101 @@ func (s *Store) Query(ctx context.Context, q LogQuery) (LogPage, error) {
 		byRef[gen.ref] = gen
 	}
 
-	statement, args, err := buildSelect(refs, q, search != nil, limit)
-	if err != nil {
-		return LogPage{}, err
+	var (
+		from   cursorPos
+		hasPos bool
+	)
+	if q.Cursor != "" {
+		tsNS, rowid, err := decodeCursor(q.Cursor)
+		if err != nil {
+			return LogPage{}, err
+		}
+		from, hasPos = cursorPos{tsNS: tsNS, rowid: rowid}, true
 	}
+
+	// One extra entry beyond the page is what proves an older page exists; an
+	// unfiltered query needs exactly one extra row to find out.
+	chunk := limit + 1
+	if match.active() {
+		chunk = max(chunk, scanChunk)
+	}
+
+	var window []storedRow // newest-first, accumulated across rounds
+	for {
+		rows, err := s.scanRows(ctx, refs, q, from, hasPos, chunk, byRef)
+		if err != nil {
+			return LogPage{}, err
+		}
+		window = append(window, rows...)
+
+		entries, anchors := match.filter(groupRows(window))
+		// Stop once the page is provably full, or once history runs out — never
+		// hand back a page that is empty but still carries a cursor.
+		if len(entries) > limit || len(rows) < chunk {
+			return newPage(entries, anchors, limit), nil
+		}
+		from, hasPos = rows[len(rows)-1].pos, true
+	}
+}
+
+// newPage keeps the newest limit entries of the scanned window. Pages walk
+// backwards through history, so an entry older than the page is not truncated
+// data: it is the proof that another page exists, and its position is the
+// cursor the next page resumes from.
+func newPage(entries []models.LogEntry, anchors []cursorPos, limit int) LogPage {
+	if len(entries) <= limit {
+		if entries == nil {
+			entries = []models.LogEntry{}
+		}
+		return LogPage{Entries: entries}
+	}
+	cut := len(entries) - limit
+	return LogPage{
+		Entries:    entries[cut:],
+		NextCursor: encodeCursor(anchors[cut].tsNS, anchors[cut].rowid),
+	}
+}
+
+// cursorPos is the keyset position of one stored row.
+type cursorPos struct {
+	tsNS  int64
+	rowid int64
+}
+
+// storedRow is one scanned row: the entry it parses to and where it sits.
+type storedRow struct {
+	entry models.LogEntry
+	pos   cursorPos
+}
+
+// scanRows reads one chunk of rows, newest-first, strictly older than from.
+func (s *Store) scanRows(ctx context.Context, refs []int64, q LogQuery, from cursorPos, hasPos bool, chunk int, byRef map[int64]generation) ([]storedRow, error) {
+	statement, args := buildSelect(refs, q, from, hasPos, chunk)
 
 	rows, err := s.db.QueryContext(ctx, statement, args...)
 	if err != nil {
-		return LogPage{}, err
+		return nil, err
 	}
 	defer rows.Close()
 
-	var (
-		entries    []models.LogEntry
-		scanned    int
-		lastTS     int64
-		lastRowID  int64
-		matchedTS  int64
-		matchedRow int64
-		hitLimit   bool
-	)
+	scanned := make([]storedRow, 0, chunk)
 	for rows.Next() {
 		var (
 			rowid  int64
 			ref    int64
 			tsNS   int64
 			stream int
-			level  int
 			raw    string
 		)
-		if err := rows.Scan(&rowid, &ref, &tsNS, &stream, &level, &raw); err != nil {
-			return LogPage{}, err
+		if err := rows.Scan(&rowid, &ref, &tsNS, &stream, &raw); err != nil {
+			return nil, err
 		}
-		scanned++
-		lastTS, lastRowID = tsNS, rowid
-
-		if search != nil && !search.MatchString(raw) {
-			continue
-		}
-
-		gen := byRef[ref]
-		entries = append(entries, entryFromRow(tsNS, stream, raw, gen))
-		matchedTS, matchedRow = tsNS, rowid
-		if len(entries) >= limit {
-			hitLimit = true
-			break
-		}
+		scanned = append(scanned, storedRow{
+			entry: entryFromRow(tsNS, stream, raw, byRef[ref]),
+			pos:   cursorPos{tsNS: tsNS, rowid: rowid},
+		})
 	}
-	if err := rows.Err(); err != nil {
-		return LogPage{}, err
-	}
-
-	// Rows arrive newest-first (backward page traversal); a page reads
-	// oldest-first, like the live view.
-	slices.Reverse(entries)
-
-	page := LogPage{Entries: groupByContainer(entries)}
-	switch {
-	case hitLimit:
-		page.NextCursor = encodeCursor(matchedTS, matchedRow)
-	case search != nil && scanned >= maxRegexScan:
-		// The scan budget ran out before the page filled; hand back a cursor
-		// so the caller can keep walking instead of silently truncating.
-		page.NextCursor = encodeCursor(lastTS, lastRowID)
-	}
-	return page, nil
+	return scanned, rows.Err()
 }
 
 // generations resolves a logical container name to its generation rows. An
@@ -325,10 +358,11 @@ func (s *Store) generations(ctx context.Context, host, name string) ([]generatio
 	return generations, rows.Err()
 }
 
-// buildSelect renders the keyset page query: newest-first over every
-// generation of the container, with the time, level, and substring filters
-// pushed into SQL. A regex search is applied in Go over a bounded scan.
-func buildSelect(refs []int64, q LogQuery, regexSearch bool, limit int) (string, []any, error) {
+// buildSelect renders the keyset page query: newest-first over every generation
+// of the container, bounded by the time window and the cursor. Only filters that
+// cannot delete part of a multi-line entry live in SQL — level and search are
+// applied in Go, on grouped entries.
+func buildSelect(refs []int64, q LogQuery, from cursorPos, hasPos bool, chunk int) (string, []any) {
 	placeholders, args := refArgs(refs)
 	where := []string{"container_ref IN (" + placeholders + ")"}
 
@@ -340,36 +374,75 @@ func buildSelect(refs []int64, q LogQuery, regexSearch bool, limit int) (string,
 		where = append(where, "ts_ns <= ?")
 		args = append(args, q.Until.UnixNano())
 	}
-	if severities := levelSeverities(q.Levels); len(severities) > 0 {
-		marks := strings.TrimSuffix(strings.Repeat("?,", len(severities)), ",")
-		where = append(where, "level IN ("+marks+")")
-		for _, severity := range severities {
-			args = append(args, severity)
-		}
-	}
-	if q.Search != "" && !regexSearch {
-		where = append(where, "instr(raw, ?) > 0")
-		args = append(args, q.Search)
-	}
-	if q.Cursor != "" {
-		tsNS, rowid, err := decodeCursor(q.Cursor)
-		if err != nil {
-			return "", nil, err
-		}
+	if hasPos {
 		where = append(where, "(ts_ns < ? OR (ts_ns = ? AND rowid < ?))")
-		args = append(args, tsNS, tsNS, rowid)
+		args = append(args, from.tsNS, from.tsNS, from.rowid)
 	}
+	args = append(args, chunk)
 
-	scanLimit := limit
-	if regexSearch {
-		scanLimit = maxRegexScan
-	}
-	args = append(args, scanLimit)
-
-	statement := "SELECT rowid, container_ref, ts_ns, stream, level, raw FROM log_lines WHERE " +
+	statement := "SELECT rowid, container_ref, ts_ns, stream, raw FROM log_lines WHERE " +
 		strings.Join(where, " AND ") +
 		" ORDER BY ts_ns DESC, rowid DESC LIMIT ?"
-	return statement, args, nil
+	return statement, args
+}
+
+// matcher applies the level and search filters to grouped entries, with the
+// same semantics as the live view: case-insensitive, over the parsed message
+// rather than the raw line, so History finds what Live finds and a search for a
+// timestamp-like string cannot match the engine's timestamp prefix.
+type matcher struct {
+	levels []int
+	needle string         // lowercased substring search
+	regex  *regexp.Regexp // case-insensitive pattern search
+}
+
+func newMatcher(q LogQuery) (matcher, error) {
+	m := matcher{levels: levelSeverities(q.Levels)}
+	switch {
+	case q.Search == "":
+	case q.Regex:
+		compiled, err := regexp.Compile("(?i)" + q.Search)
+		if err != nil {
+			return matcher{}, fmt.Errorf("invalid search pattern: %w", err)
+		}
+		m.regex = compiled
+	default:
+		m.needle = strings.ToLower(q.Search)
+	}
+	return m, nil
+}
+
+func (m matcher) active() bool {
+	return len(m.levels) > 0 || m.needle != "" || m.regex != nil
+}
+
+func (m matcher) matches(entry models.LogEntry) bool {
+	if len(m.levels) > 0 && !slices.Contains(m.levels, models.LevelSeverity(entry.Level)) {
+		return false
+	}
+	switch {
+	case m.regex != nil:
+		return m.regex.MatchString(entry.Message)
+	case m.needle != "":
+		return strings.Contains(strings.ToLower(entry.Message), m.needle)
+	}
+	return true
+}
+
+// filter keeps the matching entries and their anchors, in order.
+func (m matcher) filter(entries []models.LogEntry, anchors []cursorPos) ([]models.LogEntry, []cursorPos) {
+	if !m.active() {
+		return entries, anchors
+	}
+	keptEntries := make([]models.LogEntry, 0, len(entries))
+	keptAnchors := make([]cursorPos, 0, len(anchors))
+	for i, entry := range entries {
+		if m.matches(entry) {
+			keptEntries = append(keptEntries, entry)
+			keptAnchors = append(keptAnchors, anchors[i])
+		}
+	}
+	return keptEntries, keptAnchors
 }
 
 // levelSeverities maps level names to the severities stored on each row,
@@ -406,20 +479,31 @@ func entryFromRow(tsNS int64, stream int, raw string, gen generation) models.Log
 	return entry
 }
 
-// groupByContainer folds continuation lines into their parent entry exactly
-// like the live historical path, but only within a run of lines from the same
+// groupRows folds continuation lines into their parent entry exactly like the
+// live historical path, but only within a run of lines from the same
 // generation, so a rebuild boundary can never merge two containers' lines.
-func groupByContainer(entries []models.LogEntry) []models.LogEntry {
-	grouped := make([]models.LogEntry, 0, len(entries))
-	for start := 0; start < len(entries); {
-		end := start + 1
-		for end < len(entries) && entries[end].ContainerID == entries[start].ContainerID {
-			end++
+//
+// Rows arrive newest-first; entries come back oldest-first, each paired with the
+// position of its *first* row. That is what the next page resumes from: a
+// continuation line is always newer than its parent, so resuming at the parent
+// keeps the entry whole rather than splitting its body across two pages.
+func groupRows(rows []storedRow) ([]models.LogEntry, []cursorPos) {
+	entries := make([]models.LogEntry, 0, len(rows))
+	anchors := make([]cursorPos, 0, len(rows))
+
+	for i := len(rows) - 1; i >= 0; i-- {
+		row := rows[i]
+		if last := len(entries) - 1; last >= 0 && entries[last].ContainerID == row.entry.ContainerID {
+			// The live grouper decides; a folded pair comes back as one entry.
+			if merged := models.GroupRelatedLogEntries([]models.LogEntry{entries[last], row.entry}); len(merged) == 1 {
+				entries[last] = merged[0]
+				continue
+			}
 		}
-		grouped = append(grouped, models.GroupRelatedLogEntries(entries[start:end])...)
-		start = end
+		entries = append(entries, row.entry)
+		anchors = append(anchors, row.pos)
 	}
-	return grouped
+	return entries, anchors
 }
 
 // encodeCursor renders the keyset position of the oldest entry on a page.

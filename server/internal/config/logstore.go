@@ -49,10 +49,11 @@ func (m *Manager) LogStore() ResolvedLogStoreConfig {
 			resolved.Enabled = *file.Enabled
 		}
 		if file.PerContainerMB != nil {
-			resolved.PerContainerMB = *file.PerContainerMB
+			resolved.PerContainerMB = positiveMB("logStore.perContainerMB",
+				*file.PerContainerMB, DefaultLogStorePerContainerMB)
 		}
 		if file.TotalMB != nil {
-			resolved.TotalMB = *file.TotalMB
+			resolved.TotalMB = positiveMB("logStore.totalMB", *file.TotalMB, DefaultLogStoreTotalMB)
 		}
 	}
 
@@ -93,6 +94,17 @@ func (m *Manager) UpdateLogStore(mutate func(current LogStoreConfig) (LogStoreCo
 		return err
 	}
 	return nil
+}
+
+// positiveMB rejects a non-positive retention cap from the config file. A cap of
+// zero or less would make every janitor pass evict the whole store, so it falls
+// back to the default rather than quietly deleting the user's logs.
+func positiveMB(field string, value, fallback int) int {
+	if value <= 0 {
+		log.Printf("Warning: ignoring %s=%d (expected a positive integer), using %d", field, value, fallback)
+		return fallback
+	}
+	return value
 }
 
 func envBool(key string) (bool, bool) {

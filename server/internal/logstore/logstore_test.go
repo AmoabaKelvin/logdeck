@@ -2,10 +2,12 @@ package logstore
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -783,7 +785,7 @@ func TestUnreadableDriverIsExcludedAndNotRetried(t *testing.T) {
 	})
 
 	// Re-sync: an excluded generation must never be re-read.
-	store.sync(ctx, engine, map[genKey]int{}, map[genKey]bool{}, make(chan backfillResult, 1))
+	store.sync(ctx, engine, newBackfillTracker(), make(chan backfillResult, 1))
 	time.Sleep(50 * time.Millisecond)
 
 	cancel()
@@ -821,7 +823,7 @@ func TestRemovedContainerKeepsItsHistory(t *testing.T) {
 	engine.mu.Lock()
 	engine.containers = nil
 	engine.mu.Unlock()
-	store.sync(context.Background(), engine, map[genKey]int{}, map[genKey]bool{}, make(chan backfillResult, 1))
+	store.sync(context.Background(), engine, newBackfillTracker(), make(chan backfillResult, 1))
 
 	containers, err := store.ListContainers(context.Background())
 	if err != nil {
@@ -872,5 +874,452 @@ func TestLiveIngestionThroughHub(t *testing.T) {
 	}
 	if len(containers) != 1 || containers[0].ComposeProject != "demostack" {
 		t.Fatalf("compose project not taken from the podman label: %+v", containers)
+	}
+}
+
+// --- data integrity regressions --------------------------------------------
+
+// TestMigrationFromV1AddsTheForeignKey upgrades a database written by the
+// previous schema: the lines are kept, rows that were already misfiled against a
+// generation that does not exist are dropped, and new dangling refs are rejected.
+func TestMigrationFromV1AddsTheForeignKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "logs.db")
+
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatalf("open raw: %v", err)
+	}
+	if _, err := db.Exec(schemaV1 + `
+		INSERT INTO containers (id, host, container_id, name, first_seen_ms, last_seen_ms)
+		VALUES (1, 'local', 'aaa', 'web', 1, 1);
+		INSERT INTO log_lines (container_ref, ts_ns, stream, level, raw) VALUES (1, 10, 0, 0, 'kept');
+		INSERT INTO log_lines (container_ref, ts_ns, stream, level, raw) VALUES (77, 20, 0, 0, 'orphan');
+		PRAGMA user_version = 1;`); err != nil {
+		t.Fatalf("write a v1 database: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close raw: %v", err)
+	}
+
+	store, err := Open(path, testLimits)
+	if err != nil {
+		t.Fatalf("Open (migration): %v", err)
+	}
+	defer store.Close()
+
+	var version int
+	if err := store.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
+		t.Fatalf("read user_version: %v", err)
+	}
+	if version != schemaVersion {
+		t.Fatalf("user_version = %d, want %d", version, schemaVersion)
+	}
+
+	page, err := store.Query(context.Background(), LogQuery{Container: "web"})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if got := messages(page.Entries); len(got) != 1 || got[0] != "kept" {
+		t.Fatalf("the migration lost attributable history: %v", got)
+	}
+	if got := countLines(t, store); got != 1 {
+		t.Fatalf("stored %d lines, want 1: the unattributable row must not survive", got)
+	}
+	if _, err := store.db.Exec(
+		"INSERT INTO log_lines (container_ref, ts_ns, stream, level, raw) VALUES (77, 30, 0, 0, 'orphan')",
+	); err == nil {
+		t.Fatal("after the migration a dangling container_ref must be rejected")
+	}
+}
+
+// commitThrough writes a batch through the writer's own generation-id cache,
+// the way writeLoop does across batches.
+func commitThrough(t *testing.T, s *Store, refs map[genKey]int64, key genKey, name string, entries ...models.LogEntry) {
+	t.Helper()
+	batch := make([]ingestMsg, 0, len(entries))
+	for _, entry := range entries {
+		batch = append(batch, ingestMsg{kind: msgLine, key: key, name: name, line: lineFromEntry(entry)})
+	}
+	if err := s.commit(batch, refs); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+}
+
+// TestFailedCommitDoesNotPoisonTheRefCache covers the worst failure this store
+// can have: one container's lines landing in another container's timeline.
+//
+// A transaction that dies after INSERT ... RETURNING id (disk full, a lock held
+// past the busy timeout, an I/O error) is rolled back, and SQLite hands the very
+// same rowid to the next generation that is created. Caching that id before the
+// commit succeeds therefore files the lines of the generation that failed
+// against whatever generation inherited the rowid.
+func TestFailedCommitDoesNotPoisonTheRefCache(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	refs := map[genKey]int64{} // the writer's cache, alive across batches
+	alpha := genKey{"local", "container-a"}
+	beta := genKey{"local", "container-b"}
+
+	// Make the next write transaction fail, after the generation row was
+	// inserted and its id returned.
+	if _, err := store.db.Exec(
+		"CREATE TRIGGER fail_writes BEFORE INSERT ON log_lines BEGIN SELECT RAISE(ABORT, 'disk full'); END",
+	); err != nil {
+		t.Fatalf("install failing trigger: %v", err)
+	}
+	batch := []ingestMsg{{
+		kind: msgLine, key: alpha, name: "alpha",
+		line: lineFromEntry(entryAt(baseTime, "stdout", "alpha line 1")),
+	}}
+	if err := store.commit(batch, refs); err == nil {
+		t.Fatal("the batch must fail while the trigger is installed")
+	}
+	if len(refs) != 0 {
+		t.Fatalf("a rolled-back transaction published %v into the ref cache: SQLite reuses that rowid", refs)
+	}
+	if _, err := store.db.Exec("DROP TRIGGER fail_writes"); err != nil {
+		t.Fatalf("drop trigger: %v", err)
+	}
+
+	// A different container is created next and takes the rowid the rolled-back
+	// row had been handed.
+	commitThrough(t, store, refs, beta, "beta", entryAt(baseTime.Add(time.Second), "stdout", "beta line 1"))
+	// alpha writes again, through the same cache.
+	commitThrough(t, store, refs, alpha, "alpha", entryAt(baseTime.Add(2*time.Second), "stdout", "alpha line 2"))
+
+	page, err := store.Query(ctx, LogQuery{Container: "beta"})
+	if err != nil {
+		t.Fatalf("Query beta: %v", err)
+	}
+	if got := messages(page.Entries); len(got) != 1 || got[0] != "beta line 1" {
+		t.Fatalf("beta's timeline = %v, want only its own line (it was given alpha's)", got)
+	}
+	page, err = store.Query(ctx, LogQuery{Container: "alpha"})
+	if err != nil {
+		t.Fatalf("Query alpha: %v", err)
+	}
+	if got := messages(page.Entries); len(got) != 1 || got[0] != "alpha line 2" {
+		t.Fatalf("alpha's timeline = %v, want its own line", got)
+	}
+
+	// And a dangling ref can no longer be written at all: the foreign key turns
+	// a misattribution into a loud failure.
+	if _, err := store.db.Exec(
+		"INSERT INTO log_lines (container_ref, ts_ns, stream, level, raw) VALUES (9999, 1, 0, 0, 'orphan')",
+	); err == nil {
+		t.Fatal("a line with a container_ref that does not exist must be rejected")
+	}
+}
+
+// TestRestartDoesNotLoseTheDowntimeWindow is the regression for the gap this
+// whole feature exists to heal: logdeck is down, the container keeps logging,
+// and on restart live ingestion starts before the first backfill. If the
+// backfill read its resume point from the live watermark columns, they would
+// already have jumped to "now" and the entire downtime window would be lost.
+func TestRestartDoesNotLoseTheDowntimeWindow(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "logs.db")
+	key := genKey{"local", "aaa"}
+
+	// A previous process stored history up to baseTime, then stopped.
+	previous, err := Open(path, testLimits)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	writeEntries(t, previous, key, "web", entryAt(baseTime, "stdout", "before the restart"))
+	if err := previous.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	store, err := Open(path, testLimits)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer store.Close()
+
+	engine := newFakeEngine(containerInfo("local", "aaa", "web", baseTime.Add(-time.Hour)))
+	engine.tail = func(_, _ string, _ models.LogOptions, emit func(models.LogEntry)) error {
+		emit(entryAt(baseTime.Add(30*time.Minute), "stdout", "written while logdeck was down"))
+		return nil
+	}
+
+	// The sync loop cannot reach the engine until the gate opens, so a live line
+	// is guaranteed to be committed before the first backfill computes its
+	// resume point — the exact ordering the bug needed.
+	hub := &fakeHub{}
+	gate := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	store.start(ctx, hub, func() Engine {
+		<-gate
+		return engine
+	})
+
+	hub.emit(logstream.Record{
+		Host: "local", ContainerID: "aaa", ContainerName: "web",
+		Entry: entryAt(baseTime.Add(time.Hour), "stdout", "live line after the restart"),
+	})
+	waitFor(t, "the live line to be committed", func() bool { return countLines(t, store) == 2 })
+
+	close(gate)
+	waitFor(t, "the backfill to land", func() bool { return countLines(t, store) == 3 })
+	cancel()
+	store.Wait()
+
+	wantSince := baseTime.Add(-backfillOverlap).UTC().Format(time.RFC3339Nano)
+	if since := engine.opts("aaa").Since; since != wantSince {
+		t.Fatalf("backfill Since = %s, want the watermark stored before the restart (%s): the downtime window is lost",
+			since, wantSince)
+	}
+
+	page, err := store.Query(context.Background(), LogQuery{Container: "web"})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	want := []string{"before the restart", "written while logdeck was down", "live line after the restart"}
+	if got := messages(page.Entries); !slices.Equal(got, want) {
+		t.Fatalf("timeline = %v, want %v", got, want)
+	}
+}
+
+// TestLevelFilterKeepsMultiLineEntriesWhole covers the history/live divergence
+// that a SQL-side level filter causes: the continuation lines of a stack trace
+// classify as UNKNOWN, so filtering rows before grouping strips the body out of
+// the very entry the user filtered for.
+func TestLevelFilterKeepsMultiLineEntriesWhole(t *testing.T) {
+	store := newTestStore(t)
+	key := genKey{"local", "aaa"}
+
+	writeEntries(t, store, key, "web",
+		entryAt(baseTime, "stdout", "level=info request served"),
+		entryAt(baseTime.Add(time.Second), "stderr", "level=error unhandled exception"),
+		entryAt(baseTime.Add(2*time.Second), "stderr", "at com.example.Service.handle(Service.java:42)"),
+		entryAt(baseTime.Add(3*time.Second), "stderr", "at com.example.Server.dispatch(Server.java:17)"),
+		entryAt(baseTime.Add(4*time.Second), "stdout", "level=info recovered"),
+	)
+
+	page, err := store.Query(context.Background(), LogQuery{Container: "web", Levels: []string{"ERROR"}})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if len(page.Entries) != 1 {
+		t.Fatalf("level filter returned %d entries, want the single grouped ERROR: %v",
+			len(page.Entries), messages(page.Entries))
+	}
+	want := "level=error unhandled exception\n" +
+		"at com.example.Service.handle(Service.java:42)\n" +
+		"at com.example.Server.dispatch(Server.java:17)"
+	if got := page.Entries[0].Message; got != want {
+		t.Fatalf("the filtered entry lost its body:\n got %q\nwant %q", got, want)
+	}
+}
+
+// TestSearchMatchesLikeTheLiveView pins the search semantics to the live path's:
+// case-insensitive, over the parsed message rather than the raw line.
+func TestSearchMatchesLikeTheLiveView(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	key := genKey{"local", "aaa"}
+
+	writeEntries(t, store, key, "web",
+		entryAt(baseTime, "stderr", "ERROR database is on fire"),
+		entryAt(baseTime.Add(time.Second), "stdout", "all good"),
+	)
+
+	page, err := store.Query(ctx, LogQuery{Container: "web", Search: "error"})
+	if err != nil {
+		t.Fatalf("substring Query: %v", err)
+	}
+	if got := messages(page.Entries); len(got) != 1 || got[0] != "ERROR database is on fire" {
+		t.Fatalf("case-insensitive substring search returned %v", got)
+	}
+
+	page, err = store.Query(ctx, LogQuery{Container: "web", Search: "^error db?atabase", Regex: true})
+	if err != nil {
+		t.Fatalf("regex Query: %v", err)
+	}
+	if got := messages(page.Entries); len(got) != 1 {
+		t.Fatalf("case-insensitive regex search returned %v", got)
+	}
+
+	// The engine's timestamp prefix is not part of the message, so a search for a
+	// timestamp-like string must not match every line.
+	page, err = store.Query(ctx, LogQuery{Container: "web", Search: baseTime.UTC().Format("2006-01-02")})
+	if err != nil {
+		t.Fatalf("timestamp Query: %v", err)
+	}
+	if len(page.Entries) != 0 {
+		t.Fatalf("search matched the engine timestamp prefix: %v", messages(page.Entries))
+	}
+}
+
+// TestPageThatExhaustsHistoryHasNoCursor covers both cursor defects: a page that
+// exactly empties history must not offer a phantom "load older", and a filtered
+// query must keep scanning rather than return an empty page with a cursor.
+func TestPageThatExhaustsHistoryHasNoCursor(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	key := genKey{"local", "aaa"}
+
+	entries := make([]models.LogEntry, 0, 10)
+	for i := range 10 {
+		entries = append(entries, entryAt(baseTime.Add(time.Duration(i)*time.Second), "stdout",
+			fmt.Sprintf("line %02d", i)))
+	}
+	writeEntries(t, store, key, "web", entries...)
+
+	page, err := store.Query(ctx, LogQuery{Container: "web", Limit: 10})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if len(page.Entries) != 10 {
+		t.Fatalf("got %d entries, want the whole history", len(page.Entries))
+	}
+	if page.NextCursor != "" {
+		t.Fatalf("a page that exhausts history must not offer another one (cursor %q)", page.NextCursor)
+	}
+
+	// A filter that matches nothing: an empty page must be a final page.
+	page, err = store.Query(ctx, LogQuery{Container: "web", Limit: 10, Search: "nothing matches this"})
+	if err != nil {
+		t.Fatalf("filtered Query: %v", err)
+	}
+	if len(page.Entries) != 0 || page.NextCursor != "" {
+		t.Fatalf("empty page carries cursor %q with %d entries", page.NextCursor, len(page.Entries))
+	}
+
+	// A filter that matches more than one page still pages cleanly.
+	page, err = store.Query(ctx, LogQuery{Container: "web", Limit: 4})
+	if err != nil {
+		t.Fatalf("paged Query: %v", err)
+	}
+	if len(page.Entries) != 4 || page.NextCursor == "" {
+		t.Fatalf("a page with older history behind it must carry a cursor: %v", messages(page.Entries))
+	}
+	if got := messages(page.Entries); got[0] != "line 06" || got[3] != "line 09" {
+		t.Fatalf("first page = %v, want the newest four lines", got)
+	}
+}
+
+// TestDroppedLinesAreReReadFromTheEngine covers the ingest buffer overflowing:
+// the sink has to drop the record, but the loss must be recoverable — the next
+// sync re-reads the generation from the dropped line's timestamp.
+func TestDroppedLinesAreReReadFromTheEngine(t *testing.T) {
+	store := newTestStore(t)
+	key := genKey{"local", "aaa"}
+	dropped := entryAt(baseTime.Add(time.Minute), "stdout", "dropped by a full buffer")
+
+	// The sink drops when the queue is full; fill it without a writer running.
+	for len(store.ingestCh) < cap(store.ingestCh) {
+		store.ingestCh <- ingestMsg{kind: msgLine, key: key, name: "web",
+			line: lineFromEntry(entryAt(baseTime, "stdout", "filler"))}
+	}
+	store.sink(logstream.Record{
+		Host: "local", ContainerID: "aaa", ContainerName: "web", Entry: dropped,
+	})
+	if got := store.gapAt(key); got != dropped.Timestamp.UnixNano() {
+		t.Fatalf("gap mark = %d, want the dropped line's timestamp %d", got, dropped.Timestamp.UnixNano())
+	}
+
+	// The next backfill resumes from the drop, even though the watermark is newer.
+	writeEntries(t, store, key, "web", entryAt(baseTime.Add(2*time.Minute), "stdout", "later line"))
+	since, err := store.backfillSince(context.Background(), key, 0)
+	if err != nil {
+		t.Fatalf("backfillSince: %v", err)
+	}
+	want := dropped.Timestamp.Add(-backfillOverlap).UTC().Format(time.RFC3339Nano)
+	if since != want {
+		t.Fatalf("backfill Since = %s, want the dropped line's timestamp (%s): the drop is unrecoverable", since, want)
+	}
+
+	// A fresh drop makes an already-read generation eligible for another read,
+	// even after its retry budget was spent.
+	track := newBackfillTracker()
+	track.done[key] = true
+	track.attempts[key] = maxBackfillAttempts
+	if !track.schedule(store, key, false) {
+		t.Fatal("a dropped line must schedule a re-read of the generation")
+	}
+	delete(track.inFlight, key)
+	track.complete(store, key)
+	if got := store.gapAt(key); got != 0 {
+		t.Fatalf("the healed gap was not retired: %d", got)
+	}
+	if track.schedule(store, key, false) {
+		t.Fatal("a healed generation must not be re-read forever")
+	}
+}
+
+// TestSuccessfulBackfillIsNotRetried: the attempt budget counts failures, not
+// successes. Re-reading a healthy generation every sync would re-scan its whole
+// engine log, and would burn the budget that gap healing depends on.
+func TestSuccessfulBackfillIsNotRetried(t *testing.T) {
+	store := newTestStore(t)
+	engine := newFakeEngine(containerInfo("local", "aaa", "web", baseTime))
+	engine.tail = func(_, _ string, _ models.LogOptions, emit func(models.LogEntry)) error {
+		emit(entryAt(baseTime, "stdout", "from the engine"))
+		return nil
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	track := newBackfillTracker()
+	results := make(chan backfillResult, 1)
+
+	store.sync(ctx, engine, track, results)
+	res := <-results
+	if res.err != nil {
+		t.Fatalf("backfill failed: %v", res.err)
+	}
+	delete(track.inFlight, res.key)
+	track.complete(store, res.key)
+
+	// Two more lifecycle passes: a generation that has already been read must not
+	// be read again.
+	store.sync(ctx, engine, track, results)
+	store.sync(ctx, engine, track, results)
+	time.Sleep(50 * time.Millisecond)
+
+	if calls := engine.calls("aaa"); calls != 1 {
+		t.Fatalf("the engine was tailed %d times, want exactly 1 (a success must not be retried)", calls)
+	}
+}
+
+// TestGenerationsOfAnUnconfiguredHostAreMarkedRemoved: a host taken out of the
+// config is gone, but a host that merely failed to list is not — that
+// distinction is what keeps an unreachable host from looking like a mass
+// container removal.
+func TestGenerationsOfAnUnconfiguredHostAreMarkedRemoved(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	writeEntries(t, store, genKey{"local", "aaa"}, "web", entryAt(baseTime, "stdout", "local line"))
+	writeEntries(t, store, genKey{"staging", "bbb"}, "api", entryAt(baseTime, "stdout", "staging line"))
+	writeEntries(t, store, genKey{"prod", "ccc"}, "api", entryAt(baseTime, "stdout", "prod line"))
+
+	// local lists and still has its container; staging is unreachable; prod is no
+	// longer configured at all.
+	live := map[genKey]bool{{host: "local", id: "aaa"}: true}
+	failed := map[string]bool{"staging": true}
+	if err := store.markRemoved(ctx, failed, live, time.Now().UnixMilli()); err != nil {
+		t.Fatalf("markRemoved: %v", err)
+	}
+
+	removed := func(key genKey) bool {
+		t.Helper()
+		var stamp *int64
+		if err := store.db.QueryRow(
+			"SELECT removed_ms FROM containers WHERE host = ? AND container_id = ?", key.host, key.id,
+		).Scan(&stamp); err != nil {
+			t.Fatalf("read removed_ms: %v", err)
+		}
+		return stamp != nil
+	}
+	if removed(genKey{"local", "aaa"}) {
+		t.Fatal("a live container was marked removed")
+	}
+	if removed(genKey{"staging", "bbb"}) {
+		t.Fatal("a host that failed to list must keep its generations: an outage is not a removal")
+	}
+	if !removed(genKey{"prod", "ccc"}) {
+		t.Fatal("a host that is no longer configured must have its generations marked removed")
 	}
 }

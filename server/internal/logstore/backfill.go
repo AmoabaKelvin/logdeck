@@ -104,21 +104,38 @@ func (s *Store) backfill(ctx context.Context, engine Engine, info models.Contain
 // independently; the safe resume point is the lowest mark that has actually
 // advanced, minus the overlap. A generation with no stored lines is read from
 // container creation.
+//
+// The watermarks come from the snapshot taken at startup, not from the live
+// columns: live ingestion starts before the first backfill runs, so by the time
+// the backfill reads the database the watermark has already jumped to "now" and
+// the whole downtime window — the gap this backfill exists to heal — would be
+// skipped. Once a generation has been read once, the snapshot is retired and
+// the stored watermark is the truth.
+//
+// A generation with a dropped-line gap resumes from the drop instead, whenever
+// that is older.
 func (s *Store) backfillSince(ctx context.Context, key genKey, createdUnix int64) (string, error) {
-	var stdoutWM, stderrWM int64
-	err := s.db.QueryRowContext(ctx,
-		"SELECT stdout_wm_ns, stderr_wm_ns FROM containers WHERE host = ? AND container_id = ?",
-		key.host, key.id,
-	).Scan(&stdoutWM, &stderrWM)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return "", err
+	point, ok := s.takeResume(key)
+	if !ok {
+		err := s.db.QueryRowContext(ctx,
+			"SELECT stdout_wm_ns, stderr_wm_ns FROM containers WHERE host = ? AND container_id = ?",
+			key.host, key.id,
+		).Scan(&point.stdoutWM, &point.stderrWM)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return "", err
+		}
 	}
 
-	wm := watermark(stdoutWM, stderrWM)
-	if wm == 0 {
-		return time.Unix(createdUnix, 0).UTC().Format(time.RFC3339Nano), nil
+	since := time.Unix(createdUnix, 0)
+	if wm := watermark(point.stdoutWM, point.stderrWM); wm != 0 {
+		since = time.Unix(0, wm).Add(-backfillOverlap)
 	}
-	return time.Unix(0, wm).Add(-backfillOverlap).UTC().Format(time.RFC3339Nano), nil
+	if gap := s.gapAt(key); gap != 0 {
+		if from := time.Unix(0, gap).Add(-backfillOverlap); from.Before(since) {
+			since = from
+		}
+	}
+	return since.UTC().Format(time.RFC3339Nano), nil
 }
 
 // watermark is the backfill resume point for a generation: the minimum of the

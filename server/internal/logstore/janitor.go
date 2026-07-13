@@ -171,6 +171,11 @@ func (s *Store) oldestLine(ctx context.Context, refs []int64) (int64, bool, erro
 // if more is needed). It returns how many bytes it freed. The row deletion and
 // the stored_bytes adjustment share a transaction, and stored_bytes is updated
 // relative to its current value so it composes with concurrent ingestion.
+//
+// The transaction takes the write lock up front (_txlock=immediate on the DSN):
+// as a deferred read-then-write transaction it would fail with
+// SQLITE_BUSY_SNAPSHOT whenever a line was ingested between its SELECT and its
+// DELETE, so retention would stop working exactly when the store is busiest.
 func (s *Store) evictOldest(ctx context.Context, refs []int64, excess int64) (int64, error) {
 	placeholders, args := refArgs(refs)
 
