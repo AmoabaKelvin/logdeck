@@ -1,9 +1,19 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { LogEntry } from "@/features/containers/api/get-container-logs-parsed";
 import { LogViewer } from "./log-viewer";
 import { useLocalLogViewState } from "./use-log-view-state";
+
+// These tests cover the live path; with persistence off the viewer never
+// leaves it and the source toggle stays hidden.
+vi.mock("@/features/containers/api/get-history", () => ({
+	getHistoryStatus: vi.fn().mockResolvedValue({ enabled: false }),
+	getHistoryContainers: vi.fn().mockResolvedValue([]),
+	getHistoryLogs: vi.fn().mockResolvedValue({ logs: [], count: 0 }),
+}));
 
 const mocks = vi.hoisted(() => ({
 	getLogs: vi.fn<() => Promise<LogEntry[]>>(),
@@ -85,13 +95,21 @@ async function drainMicrotasks(iterations = 100) {
 
 function Harness() {
 	const viewState = useLocalLogViewState();
+	const [queryClient] = useState(
+		() =>
+			new QueryClient({
+				defaultOptions: { queries: { retry: false } },
+			}),
+	);
 	return (
-		<LogViewer
-			variant="page"
-			containerId="container-1"
-			host="host-1"
-			viewState={viewState}
-		/>
+		<QueryClientProvider client={queryClient}>
+			<LogViewer
+				variant="page"
+				containerId="container-1"
+				host="host-1"
+				viewState={viewState}
+			/>
+		</QueryClientProvider>
 	);
 }
 

@@ -16,6 +16,10 @@ interface LogListProps {
 	// Grouped rows before filtering; distinguishes "no logs" from "all
 	// filtered out".
 	totalCount: number;
+	// Shown when nothing was returned at all. Defaults to the live wording.
+	emptyMessage?: string;
+	// Rendered above the scroll area (history mode uses it for "Load older").
+	topSlot?: React.ReactNode;
 	filteredLogs: LogEntry[];
 	filteredToOriginalIndex: number[];
 	wrapText: boolean;
@@ -50,6 +54,8 @@ export function LogList({
 	rowVirtualizer,
 	isLoadingLogs,
 	totalCount,
+	emptyMessage = "No logs available",
+	topSlot,
 	filteredLogs,
 	filteredToOriginalIndex,
 	wrapText,
@@ -81,7 +87,7 @@ export function LogList({
 	} else if (totalCount === 0) {
 		body = (
 			<div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
-				No logs available
+				{emptyMessage}
 			</div>
 		);
 	} else if (filteredLogs.length === 0) {
@@ -148,6 +154,7 @@ export function LogList({
 				pinActionLabel={allSelectedArePinned ? "unpin" : "pin"}
 				onClear={onClearSelection}
 			/>
+			{topSlot}
 			<div
 				ref={parentRef}
 				className={
