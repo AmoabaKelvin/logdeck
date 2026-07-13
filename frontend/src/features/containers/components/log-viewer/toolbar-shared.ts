@@ -17,7 +17,7 @@ export interface LogViewerToolbarProps {
 	setExcludeMatches: (value: boolean) => void;
 	autoScroll: boolean;
 	setAutoScroll: (value: boolean) => void;
-	availableLogLevels: LogLevel[];
+	availableLogLevels: readonly LogLevel[];
 	searchMatches: number[];
 	currentMatchIndex: number;
 	onPreviousMatch: () => void;

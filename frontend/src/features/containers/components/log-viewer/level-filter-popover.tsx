@@ -14,8 +14,9 @@ import { getLogLevelBadgeColor } from "@/features/containers/api/get-container-l
 interface LevelFilterPopoverProps {
 	selectedLevels: Set<LogLevel>;
 	setSelectedLevels: (value: Set<LogLevel>) => void;
-	// Levels actually present in the loaded logs.
-	availableLogLevels: LogLevel[];
+	// Levels offered for filtering: those present in the loaded logs (live), or
+	// the full set the server accepts (history, where it already filtered).
+	availableLogLevels: readonly LogLevel[];
 }
 
 export function LevelFilterPopover({

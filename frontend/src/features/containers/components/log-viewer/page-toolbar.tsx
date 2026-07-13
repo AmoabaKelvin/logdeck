@@ -159,7 +159,9 @@ export function PageToolbar({
 				>
 					.*
 				</Button>
-				{searchText && !excludeMatches && (
+				{/* History searches server-side: the non-matching lines were never
+				    sent, so there is nothing to step through. */}
+				{!isHistory && searchText && !excludeMatches && (
 					<div className="flex items-center gap-0.5 shrink-0">
 						<span className="text-xs tabular-nums text-muted-foreground whitespace-nowrap px-1">
 							{searchMatches.length > 0
@@ -317,7 +319,7 @@ export function PageToolbar({
 			</p>
 			{/* Row 2: Options bar */}
 			<div className="flex flex-wrap items-center gap-2">
-				{searchText && (
+				{!isHistory && searchText && (
 					<Select
 						value={excludeMatches ? "exclude" : "highlight"}
 						onValueChange={(v) => setExcludeMatches(v === "exclude")}

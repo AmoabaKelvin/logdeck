@@ -29,6 +29,7 @@ import {
 	streamContainerLogsParsed,
 } from "@/features/containers/api/get-container-logs-parsed";
 import { useContainerLogStream } from "@/features/containers/hooks/use-container-log-stream";
+import { useDebouncedValue } from "@/features/containers/hooks/use-debounced-value";
 import { useHistoryLogs } from "@/features/containers/hooks/use-history-logs";
 import { useHistoryStatus } from "@/features/containers/hooks/use-history-status";
 import { mapRawRangeToGroupedRange } from "./animated-range";
@@ -42,7 +43,11 @@ import type { LogViewerToolbarProps } from "./toolbar-shared";
 import { useLogFiltering } from "./use-log-filtering";
 import { navigatePins, useLogPins } from "./use-log-pins";
 import { useLogSearch, useSearchMatches } from "./use-log-search";
-import type { LogViewState } from "./use-log-view-state";
+import { LOG_LEVELS, type LogViewState } from "./use-log-view-state";
+
+// Typing in the search box changes a server query key in history mode; wait
+// for the user to pause before spending a round-trip.
+const HISTORY_SEARCH_DEBOUNCE_MS = 300;
 
 export interface LogViewerHandle {
 	// Used after a container recreate: restart the stream (or refetch) so the
@@ -183,6 +188,10 @@ export function LogViewer({
 	// the server would drop, and an invalid regex has nothing to send.
 	const historySearch =
 		excludeMatches || (useRegex && searchParsed.error) ? "" : searchText;
+	const debouncedHistorySearch = useDebouncedValue(
+		historySearch,
+		HISTORY_SEARCH_DEBOUNCE_MS,
+	);
 
 	const {
 		logs: historyLogs,
@@ -199,7 +208,7 @@ export function LogViewer({
 		since,
 		until,
 		levels: selectedLevels,
-		search: historySearch,
+		search: debouncedHistorySearch,
 		regex: useRegex,
 	});
 
@@ -268,6 +277,11 @@ export function LogViewer({
 		searchParsed,
 	});
 
+	// History filters by level server-side, so the loaded entries only ever show
+	// the levels already selected — deriving the options from them would make the
+	// filter a one-way door. Offer the full set the server accepts instead.
+	const levelFilterOptions = isHistory ? LOG_LEVELS : availableLogLevels;
+
 	const {
 		pinnedLogIndices,
 		setPinnedLogIndices,
@@ -284,6 +298,16 @@ export function LogViewer({
 	useEffect(() => {
 		resetPinsRef.current = resetPins;
 	}, [resetPins]);
+
+	// Pins and selection are row indices, and live rows and stored rows are
+	// different data: carrying them across a source switch would highlight
+	// arbitrary lines. "Exclude matches" goes too — it is hidden in history.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: reset on source switch only
+	useEffect(() => {
+		resetPinsRef.current();
+		clearSelection();
+		setExcludeMatches(false);
+	}, [isHistory]);
 
 	const {
 		searchMatches,
@@ -720,6 +744,17 @@ export function LogViewer({
 		void fetchOlder();
 	}, [fetchOlder]);
 
+	// The layout effect below consumes the anchor when a page lands. If it is
+	// still set once the fetch has settled, nothing arrived (an empty page or a
+	// failure), so drop it rather than let a later render restore a stale
+	// scroll position. Passive effects run after layout effects in the commit
+	// where the page did land, so this never steals a live anchor.
+	useEffect(() => {
+		if (!isFetchingOlder) {
+			historyScrollAnchorRef.current = null;
+		}
+	}, [isFetchingOlder]);
+
 	useLayoutEffect(() => {
 		if (!isHistory) {
 			previousHistoryCountRef.current = 0;
@@ -742,8 +777,11 @@ export function LogViewer({
 		previousHistoryCountRef.current = historyLogs.length;
 	}, [isHistory, historyLogs]);
 
+	// A page can come back empty with a cursor still pointing further back, so
+	// the slot must render on "more to load" as well as on content — otherwise
+	// there is no way to continue.
 	const historyTopSlot =
-		isHistory && logs.length > 0 ? (
+		isHistory && (hasOlder || logs.length > 0) ? (
 			<div className="flex items-center justify-center border-b px-3 py-2">
 				{hasOlder ? (
 					<Button
@@ -778,7 +816,7 @@ export function LogViewer({
 		setExcludeMatches,
 		autoScroll,
 		setAutoScroll,
-		availableLogLevels,
+		availableLogLevels: levelFilterOptions,
 		searchMatches,
 		currentMatchIndex,
 		onPreviousMatch: goToPreviousMatch,
@@ -808,7 +846,9 @@ export function LogViewer({
 			totalCount={logs.length}
 			emptyMessage={
 				isHistory
-					? (historyError?.message ?? "No stored logs match these filters")
+					? historyError
+						? "Could not load stored logs. Adjust the filters or try again."
+						: "No stored logs match these filters"
 					: undefined
 			}
 			topSlot={historyTopSlot}
@@ -816,6 +856,7 @@ export function LogViewer({
 			filteredToOriginalIndex={filteredToOriginalIndex}
 			wrapText={wrapText}
 			showTimestamps={showTimestamps}
+			showContainerName={targets !== undefined}
 			searchMatches={searchMatches}
 			searchMatchSet={searchMatchSet}
 			currentMatchIndex={currentMatchIndex}
