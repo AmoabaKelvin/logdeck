@@ -2,11 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import {
 	ArrowLeftIcon,
 	CheckIcon,
-	ChevronRightIcon,
 	type LucideIcon,
 	MemoryStickIcon,
 	OctagonXIcon,
-	PlusIcon,
 	RegexIcon,
 	RotateCcwIcon,
 	SlidersHorizontalIcon,
@@ -44,6 +42,7 @@ import { cn } from "@/lib/utils";
 import type { AlertRulePayload } from "../api/create-alert-rule";
 import type { AlertEventKind, AlertRule } from "../api/get-alert-rules";
 import { useCreateAlertRule, useUpdateAlertRule } from "../hooks/use-alerts";
+import { MultiCombobox } from "./multi-combobox";
 
 const LOG_LEVELS = [
 	"TRACE",
@@ -335,111 +334,6 @@ function ToggleChip({
 	);
 }
 
-function TargetPicker({
-	label,
-	placeholder,
-	options,
-	selected,
-	onChange,
-}: {
-	label: string;
-	placeholder: string;
-	options: string[];
-	selected: string[];
-	onChange: (values: string[]) => void;
-}) {
-	const [open, setOpen] = useState(selected.length > 0);
-	const [manual, setManual] = useState("");
-
-	const values = useMemo(() => {
-		const all = new Set([...options, ...selected]);
-		return [...all].sort((a, b) => a.localeCompare(b));
-	}, [options, selected]);
-
-	function toggle(value: string) {
-		if (selected.includes(value)) {
-			onChange(selected.filter((v) => v !== value));
-		} else {
-			onChange([...selected, value]);
-		}
-	}
-
-	function addManual() {
-		const value = manual.trim();
-		if (!value) return;
-		if (!selected.includes(value)) onChange([...selected, value]);
-		setManual("");
-	}
-
-	return (
-		<div>
-			<button
-				type="button"
-				aria-expanded={open}
-				onClick={() => setOpen((prev) => !prev)}
-				className={cn(
-					"flex h-9 w-full items-center gap-1.5 text-sm font-medium transition-colors hover:text-foreground",
-					HIT_AREA,
-					open ? "text-foreground" : "text-muted-foreground",
-				)}
-			>
-				<ChevronRightIcon
-					className={cn(
-						"size-3.5 shrink-0 text-muted-foreground transition-transform duration-150",
-						open && "rotate-90",
-					)}
-				/>
-				{label}
-				{selected.length > 0 && (
-					<span className="text-xs font-normal text-muted-foreground tabular-nums">
-						({selected.length})
-					</span>
-				)}
-			</button>
-			{open && (
-				<div className="space-y-2.5 pt-1 pb-2 pl-5">
-					{values.length > 0 && (
-						<div className="flex flex-wrap gap-1.5">
-							{values.map((value) => (
-								<ToggleChip
-									key={value}
-									label={value}
-									pressed={selected.includes(value)}
-									onToggle={() => toggle(value)}
-								/>
-							))}
-						</div>
-					)}
-					<div className="flex items-center gap-1.5">
-						<Input
-							value={manual}
-							onChange={(e) => setManual(e.target.value)}
-							onKeyDown={(e) => {
-								if (e.key === "Enter") {
-									e.preventDefault();
-									addManual();
-								}
-							}}
-							placeholder={placeholder}
-							className="h-8 max-w-56 text-xs"
-						/>
-						<Button
-							type="button"
-							variant="ghost"
-							size="sm"
-							disabled={!manual.trim()}
-							onClick={addManual}
-						>
-							<PlusIcon className="size-3.5" />
-							Add
-						</Button>
-					</div>
-				</div>
-			)}
-		</div>
-	);
-}
-
 function InlineNumberInput({
 	id,
 	value,
@@ -510,7 +404,15 @@ export function AlertRuleDialog({
 }: AlertRuleDialogProps) {
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
+			<DialogContent
+				className="max-h-[85vh] overflow-y-auto sm:max-w-xl"
+				onEscapeKeyDown={(e) => {
+					// Escape while a target combobox list is open should close the
+					// list (handled by the combobox itself), not dismiss the dialog.
+					const target = e.target as HTMLElement | null;
+					if (target?.closest("[data-combobox-open]")) e.preventDefault();
+				}}
+			>
 				{open && <RuleEditor rule={rule} onClose={() => onOpenChange(false)} />}
 			</DialogContent>
 		</Dialog>
@@ -786,7 +688,7 @@ function RuleEditor({
 			</div>
 
 			{/* Where */}
-			<div className="space-y-1">
+			<div className="space-y-3">
 				<div className="space-y-1.5">
 					<SectionLabel>Where</SectionLabel>
 					{form.containers.length === 0 &&
@@ -797,27 +699,36 @@ function RuleEditor({
 							</p>
 						)}
 				</div>
-				<TargetPicker
-					label="Containers"
-					placeholder="container name"
-					options={targetOptions.containers}
-					selected={form.containers}
-					onChange={(values) => set("containers", values)}
-				/>
-				<TargetPicker
-					label="Compose projects"
-					placeholder="project name"
-					options={targetOptions.projects}
-					selected={form.projects}
-					onChange={(values) => set("projects", values)}
-				/>
-				<TargetPicker
-					label="Hosts"
-					placeholder="host name"
-					options={targetOptions.hosts}
-					selected={form.hosts}
-					onChange={(values) => set("hosts", values)}
-				/>
+				<div className="space-y-1.5">
+					<Label htmlFor="alert-rule-containers">Containers</Label>
+					<MultiCombobox
+						id="alert-rule-containers"
+						placeholder="Add container..."
+						options={targetOptions.containers}
+						selected={form.containers}
+						onChange={(values) => set("containers", values)}
+					/>
+				</div>
+				<div className="space-y-1.5">
+					<Label htmlFor="alert-rule-projects">Compose projects</Label>
+					<MultiCombobox
+						id="alert-rule-projects"
+						placeholder="Add compose project..."
+						options={targetOptions.projects}
+						selected={form.projects}
+						onChange={(values) => set("projects", values)}
+					/>
+				</div>
+				<div className="space-y-1.5">
+					<Label htmlFor="alert-rule-hosts">Hosts</Label>
+					<MultiCombobox
+						id="alert-rule-hosts"
+						placeholder="Add host..."
+						options={targetOptions.hosts}
+						selected={form.hosts}
+						onChange={(values) => set("hosts", values)}
+					/>
+				</div>
 			</div>
 
 			{/* Then */}
