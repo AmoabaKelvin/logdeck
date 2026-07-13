@@ -1,4 +1,4 @@
-import { CheckIcon } from "lucide-react";
+import { PencilIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -22,13 +22,6 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
@@ -41,31 +34,20 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 
-import type { AlertRulePayload } from "../api/create-alert-rule";
 import type { AlertHistoryEntry } from "../api/get-alert-history";
-import type { AlertEventKind, AlertRule } from "../api/get-alert-rules";
+import type { AlertRule } from "../api/get-alert-rules";
 import {
 	useAlertHistory,
 	useAlertRules,
 	useAlertWebhook,
 	useClearAlertHistory,
-	useCreateAlertRule,
 	useDeleteAlertRule,
 	useTestAlertWebhook,
 	useUpdateAlertRule,
 	useUpdateAlertWebhook,
 } from "../hooks/use-alerts";
+import { AlertRuleDialog } from "./alert-rule-dialog";
 import { showResultToast } from "./mutation-toast";
-
-const LOG_LEVELS = [
-	"TRACE",
-	"DEBUG",
-	"INFO",
-	"WARN",
-	"ERROR",
-	"FATAL",
-	"PANIC",
-];
 
 const HISTORY_LIMIT = 50;
 
@@ -190,113 +172,6 @@ function WebhookBlock() {
 	);
 }
 
-interface RuleFormState {
-	name: string;
-	type: "log" | "event";
-	minLevel: string;
-	pattern: string;
-	die: boolean;
-	oom: boolean;
-	threshold: string;
-	windowSeconds: string;
-	containers: string;
-	projects: string;
-	hosts: string;
-	cooldownSeconds: string;
-}
-
-const EMPTY_FORM: RuleFormState = {
-	name: "",
-	type: "log",
-	minLevel: "any",
-	pattern: "",
-	die: false,
-	oom: false,
-	threshold: "1",
-	windowSeconds: "",
-	containers: "",
-	projects: "",
-	hosts: "",
-	cooldownSeconds: "",
-};
-
-function splitList(value: string): string[] {
-	return value
-		.split(",")
-		.map((s) => s.trim())
-		.filter(Boolean);
-}
-
-function ruleToForm(rule: AlertRule): RuleFormState {
-	return {
-		name: rule.name,
-		type: rule.type,
-		minLevel: rule.minLevel ?? "any",
-		pattern: rule.pattern ?? "",
-		die: rule.events?.includes("die") ?? false,
-		oom: rule.events?.includes("oom") ?? false,
-		threshold: String(rule.threshold),
-		windowSeconds: rule.windowSeconds ? String(rule.windowSeconds) : "",
-		containers: rule.containers?.join(", ") ?? "",
-		projects: rule.projects?.join(", ") ?? "",
-		hosts: rule.hosts?.join(", ") ?? "",
-		cooldownSeconds: rule.cooldownSeconds ? String(rule.cooldownSeconds) : "",
-	};
-}
-
-function buildPayload(
-	form: RuleFormState,
-): { error: string } | { payload: AlertRulePayload } {
-	const name = form.name.trim();
-	if (!name) return { error: "Rule name is required" };
-
-	const payload: AlertRulePayload = {
-		name,
-		enabled: true,
-		type: form.type,
-		threshold: 1,
-	};
-
-	if (form.type === "log") {
-		const pattern = form.pattern.trim();
-		if (form.minLevel === "any" && !pattern) {
-			return { error: "Log rules need a minimum level or a pattern" };
-		}
-		if (form.minLevel !== "any") payload.minLevel = form.minLevel;
-		if (pattern) payload.pattern = pattern;
-	} else {
-		const events: AlertEventKind[] = [];
-		if (form.die) events.push("die");
-		if (form.oom) events.push("oom");
-		if (events.length === 0) {
-			return { error: "Event rules need at least one event" };
-		}
-		payload.events = events;
-	}
-
-	const threshold = Number.parseInt(form.threshold, 10);
-	if (!Number.isNaN(threshold) && threshold > 0) payload.threshold = threshold;
-
-	const windowSeconds = Number.parseInt(form.windowSeconds, 10);
-	if (!Number.isNaN(windowSeconds) && windowSeconds > 0) {
-		payload.windowSeconds = windowSeconds;
-	}
-
-	const cooldownSeconds = Number.parseInt(form.cooldownSeconds, 10);
-	if (!Number.isNaN(cooldownSeconds) && cooldownSeconds > 0) {
-		payload.cooldownSeconds = cooldownSeconds;
-	}
-
-	const containers = splitList(form.containers);
-	if (containers.length > 0) payload.containers = containers;
-	const projects = splitList(form.projects);
-	if (projects.length > 0) payload.projects = projects;
-	const hosts = splitList(form.hosts);
-	if (hosts.length > 0) payload.hosts = hosts;
-
-	return { payload };
-}
-
 function renderTarget(rule: AlertRule): string {
 	const parts: string[] = [];
 	if (rule.hosts?.length) parts.push(`hosts: ${rule.hosts.join(", ")}`);
@@ -328,94 +203,25 @@ function renderTrigger(rule: AlertRule): string {
 	return parts.filter(Boolean).join(" · ");
 }
 
-function EventCheckbox({
-	label,
-	checked,
-	onToggle,
-}: {
-	label: string;
-	checked: boolean;
-	onToggle: () => void;
-}) {
-	return (
-		<label className="flex items-center gap-2 cursor-pointer text-sm">
-			<button
-				type="button"
-				onClick={onToggle}
-				aria-pressed={checked}
-				className={`size-4 rounded border flex items-center justify-center ${
-					checked ? "bg-primary border-primary" : "border-input"
-				}`}
-			>
-				{checked && <CheckIcon className="size-3 text-primary-foreground" />}
-			</button>
-			{label}
-		</label>
-	);
-}
-
 function RulesBlock() {
 	const { data, isLoading, error } = useAlertRules();
-	const createMutation = useCreateAlertRule();
 	const updateMutation = useUpdateAlertRule();
 	const deleteMutation = useDeleteAlertRule();
 
-	const [isFormOpen, setIsFormOpen] = useState(false);
+	const [isDialogOpen, setIsDialogOpen] = useState(false);
 	const [editingRule, setEditingRule] = useState<AlertRule | null>(null);
-	const [form, setForm] = useState<RuleFormState>(EMPTY_FORM);
 	const [ruleToDelete, setRuleToDelete] = useState<AlertRule | null>(null);
 
 	const rules = data?.rules ?? [];
 
-	function set<K extends keyof RuleFormState>(key: K, value: RuleFormState[K]) {
-		setForm((prev) => ({ ...prev, [key]: value }));
-	}
-
 	function openCreate() {
 		setEditingRule(null);
-		setForm(EMPTY_FORM);
-		setIsFormOpen(true);
+		setIsDialogOpen(true);
 	}
 
 	function openEdit(rule: AlertRule) {
 		setEditingRule(rule);
-		setForm(ruleToForm(rule));
-		setIsFormOpen(true);
-	}
-
-	function closeForm() {
-		setIsFormOpen(false);
-		setEditingRule(null);
-		setForm(EMPTY_FORM);
-	}
-
-	function handleSave() {
-		const result = buildPayload(form);
-		if ("error" in result) {
-			toast.error(result.error);
-			return;
-		}
-		if (editingRule) {
-			const payload = { ...result.payload, enabled: editingRule.enabled };
-			updateMutation.mutate(
-				{ id: editingRule.id, rule: payload },
-				{
-					onSuccess: (rule) => {
-						toast.success(`Rule "${rule.name}" updated`);
-						closeForm();
-					},
-					onError: (err) => toast.error(err.message),
-				},
-			);
-		} else {
-			createMutation.mutate(result.payload, {
-				onSuccess: (rule) => {
-					toast.success(`Rule "${rule.name}" created`);
-					closeForm();
-				},
-				onError: (err) => toast.error(err.message),
-			});
-		}
+		setIsDialogOpen(true);
 	}
 
 	function handleToggle(rule: AlertRule, enabled: boolean) {
@@ -438,8 +244,6 @@ function RulesBlock() {
 		deleteMutation.mutate(ruleToDelete.id, showResultToast);
 		setRuleToDelete(null);
 	}
-
-	const isSaving = createMutation.isPending || updateMutation.isPending;
 
 	return (
 		<div className="space-y-3">
@@ -497,8 +301,9 @@ function RulesBlock() {
 											variant="ghost"
 											size="sm"
 											onClick={() => openEdit(rule)}
+											aria-label={`Edit rule ${rule.name}`}
 										>
-											Edit
+											<PencilIcon className="size-3.5" />
 										</Button>
 										<Button
 											variant="ghost"
@@ -517,217 +322,15 @@ function RulesBlock() {
 				</Table>
 			)}
 
-			{isFormOpen ? (
-				<div className="border rounded-md p-3 space-y-3">
-					<div className="flex items-end gap-3">
-						<div className="space-y-1.5 flex-1">
-							<Label htmlFor="alert-rule-name">Name</Label>
-							<Input
-								id="alert-rule-name"
-								value={form.name}
-								onChange={(e) => set("name", e.target.value)}
-								placeholder="api errors"
-								className="h-8"
-								maxLength={64}
-							/>
-						</div>
-						<div className="flex gap-1">
-							<Button
-								type="button"
-								size="sm"
-								variant={form.type === "log" ? "default" : "outline"}
-								onClick={() => set("type", "log")}
-							>
-								Log
-							</Button>
-							<Button
-								type="button"
-								size="sm"
-								variant={form.type === "event" ? "default" : "outline"}
-								onClick={() => set("type", "event")}
-							>
-								Event
-							</Button>
-						</div>
-					</div>
+			<Button variant="outline" size="sm" onClick={openCreate}>
+				Create rule
+			</Button>
 
-					{form.type === "log" ? (
-						<div className="flex items-end gap-3 flex-wrap">
-							<div className="space-y-1.5">
-								<Label>Min level</Label>
-								<Select
-									value={form.minLevel}
-									onValueChange={(v) => set("minLevel", v)}
-								>
-									<SelectTrigger size="sm" className="w-32">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="any">any</SelectItem>
-										{LOG_LEVELS.map((level) => (
-											<SelectItem key={level} value={level}>
-												{level}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-							</div>
-							<div className="space-y-1.5 flex-1 min-w-40">
-								<Label htmlFor="alert-rule-pattern">Pattern (regex)</Label>
-								<Input
-									id="alert-rule-pattern"
-									value={form.pattern}
-									onChange={(e) => set("pattern", e.target.value)}
-									placeholder="connection refused"
-									className="h-8 font-mono"
-								/>
-							</div>
-							<div className="space-y-1.5 w-24">
-								<Label htmlFor="alert-rule-threshold">Threshold</Label>
-								<Input
-									id="alert-rule-threshold"
-									type="number"
-									min={1}
-									max={1000}
-									value={form.threshold}
-									onChange={(e) => set("threshold", e.target.value)}
-									className="h-8"
-								/>
-							</div>
-							<div className="space-y-1.5 w-28">
-								<Label htmlFor="alert-rule-window">Window (s)</Label>
-								<Input
-									id="alert-rule-window"
-									type="number"
-									min={5}
-									max={3600}
-									value={form.windowSeconds}
-									onChange={(e) => set("windowSeconds", e.target.value)}
-									placeholder="60"
-									className="h-8"
-								/>
-							</div>
-						</div>
-					) : (
-						<div className="space-y-2">
-							<div className="flex items-end gap-3 flex-wrap">
-								<div className="flex items-center gap-4 h-8">
-									<EventCheckbox
-										label="die"
-										checked={form.die}
-										onToggle={() => set("die", !form.die)}
-									/>
-									<EventCheckbox
-										label="oom"
-										checked={form.oom}
-										onToggle={() => set("oom", !form.oom)}
-									/>
-								</div>
-								<div className="space-y-1.5 w-24">
-									<Label htmlFor="alert-rule-threshold">Threshold</Label>
-									<Input
-										id="alert-rule-threshold"
-										type="number"
-										min={1}
-										max={1000}
-										value={form.threshold}
-										onChange={(e) => set("threshold", e.target.value)}
-										className="h-8"
-									/>
-								</div>
-								<div className="space-y-1.5 w-28">
-									<Label htmlFor="alert-rule-window">Window (s)</Label>
-									<Input
-										id="alert-rule-window"
-										type="number"
-										min={5}
-										max={3600}
-										value={form.windowSeconds}
-										onChange={(e) => set("windowSeconds", e.target.value)}
-										placeholder="120"
-										className="h-8"
-									/>
-								</div>
-							</div>
-							<p className="text-xs text-muted-foreground">
-								Tip: threshold 3 in a 120s window catches crash-loops.
-							</p>
-						</div>
-					)}
-
-					<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-						<div className="space-y-1.5">
-							<Label htmlFor="alert-rule-containers">Containers</Label>
-							<Input
-								id="alert-rule-containers"
-								value={form.containers}
-								onChange={(e) => set("containers", e.target.value)}
-								placeholder="api, worker"
-								className="h-8"
-							/>
-						</div>
-						<div className="space-y-1.5">
-							<Label htmlFor="alert-rule-projects">Projects</Label>
-							<Input
-								id="alert-rule-projects"
-								value={form.projects}
-								onChange={(e) => set("projects", e.target.value)}
-								placeholder="myapp"
-								className="h-8"
-							/>
-						</div>
-						<div className="space-y-1.5">
-							<Label htmlFor="alert-rule-hosts">Hosts</Label>
-							<Input
-								id="alert-rule-hosts"
-								value={form.hosts}
-								onChange={(e) => set("hosts", e.target.value)}
-								placeholder="local"
-								className="h-8"
-							/>
-						</div>
-						<div className="space-y-1.5">
-							<Label htmlFor="alert-rule-cooldown">Cooldown (s)</Label>
-							<Input
-								id="alert-rule-cooldown"
-								type="number"
-								min={0}
-								max={86400}
-								value={form.cooldownSeconds}
-								onChange={(e) => set("cooldownSeconds", e.target.value)}
-								placeholder="300 (default)"
-								className="h-8"
-							/>
-						</div>
-					</div>
-					<p className="text-xs text-muted-foreground">
-						Containers, projects, and hosts are comma-separated. Leave empty to
-						match all containers.
-					</p>
-
-					<div className="flex gap-1">
-						<Button size="sm" disabled={isSaving} onClick={handleSave}>
-							{isSaving ? (
-								<>
-									<Spinner className="size-3" />
-									Saving...
-								</>
-							) : editingRule ? (
-								"Save"
-							) : (
-								"Create"
-							)}
-						</Button>
-						<Button size="sm" variant="ghost" onClick={closeForm}>
-							Cancel
-						</Button>
-					</div>
-				</div>
-			) : (
-				<Button variant="outline" size="sm" onClick={openCreate}>
-					Create rule
-				</Button>
-			)}
+			<AlertRuleDialog
+				open={isDialogOpen}
+				onOpenChange={setIsDialogOpen}
+				rule={editingRule}
+			/>
 
 			<AlertDialog
 				open={ruleToDelete !== null}
