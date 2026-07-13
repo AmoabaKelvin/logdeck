@@ -9,6 +9,7 @@ import (
 	"github.com/AmoabaKelvin/logdeck/internal/api/middleware"
 	"github.com/AmoabaKelvin/logdeck/internal/auth"
 	"github.com/AmoabaKelvin/logdeck/internal/config"
+	"github.com/AmoabaKelvin/logdeck/internal/logstore"
 	"github.com/AmoabaKelvin/logdeck/internal/services"
 	"github.com/AmoabaKelvin/logdeck/internal/static"
 	"github.com/go-chi/chi/v5"
@@ -21,15 +22,18 @@ type APIRouter struct {
 	registry *services.Registry
 	manager  *config.Manager
 	engine   *alerts.Engine
+	// logStore is nil when log persistence is disabled or unusable.
+	logStore *logstore.Store
 	version  string
 }
 
-func NewRouter(registry *services.Registry, manager *config.Manager, engine *alerts.Engine, version string) *chi.Mux {
+func NewRouter(registry *services.Registry, manager *config.Manager, engine *alerts.Engine, logStore *logstore.Store, version string) *chi.Mux {
 	r := &APIRouter{
 		router:   chi.NewRouter(),
 		registry: registry,
 		manager:  manager,
 		engine:   engine,
+		logStore: logStore,
 		version:  version,
 	}
 
@@ -94,6 +98,7 @@ func (ar *APIRouter) Routes() *chi.Mux {
 			protected.Get("/hosts/stats", ar.GetHostsStats)
 			ar.registerContainerRoutes(protected)
 			ar.registerComposeRoutes(protected)
+			ar.registerHistoryRoutes(protected)
 		})
 	})
 
@@ -135,6 +140,14 @@ func (ar *APIRouter) registerContainerRoutes(r chi.Router) {
 			mutating.Get("/exec", ar.HandleTerminal)
 		})
 	})
+}
+
+// registerHistoryRoutes exposes the stored-log query API. All reads, so they
+// sit in the plain protected group alongside the live log routes.
+func (ar *APIRouter) registerHistoryRoutes(r chi.Router) {
+	r.Get("/history/status", ar.GetHistoryStatus)
+	r.Get("/history/containers", ar.GetHistoryContainers)
+	r.Get("/history/logs", ar.GetHistoryLogs)
 }
 
 func (ar *APIRouter) registerSettingsRoutes(r chi.Router) {

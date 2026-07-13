@@ -106,7 +106,7 @@ func main() {
 		log.Println("Configuration reloaded successfully")
 	})
 
-	apiRouter := api.NewRouter(registry, manager, alertEngine, version)
+	apiRouter := api.NewRouter(registry, manager, alertEngine, logStore, version)
 
 	// No WriteTimeout/IdleTimeout: log streaming and terminal WebSockets are
 	// long-lived connections and would be killed by them. ReadTimeout only
