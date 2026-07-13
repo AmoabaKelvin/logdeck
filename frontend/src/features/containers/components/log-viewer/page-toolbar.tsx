@@ -35,11 +35,21 @@ import {
 	activeToggleButtonClass,
 	type LogViewerToolbarProps,
 } from "./toolbar-shared";
+import type { LogSource } from "./use-log-view-state";
 
 interface PageToolbarProps extends LogViewerToolbarProps {
 	totalCount: number;
 	filteredCount: number;
+	// Reading from the log store instead of the live container: streaming and
+	// tail controls make no sense there and are hidden.
+	isHistory: boolean;
+	// The toggle only appears when the server persists logs and the view has a
+	// live counterpart to switch back to.
+	showSourceToggle: boolean;
 }
+
+const sourceToggleButtonClass =
+	"h-7 rounded-sm px-2.5 text-xs shadow-none data-[active=true]:bg-muted data-[active=true]:text-foreground dark:data-[active=true]:bg-primary/15";
 
 // Full-width toolbar with labelled controls, used on the log routes.
 export function PageToolbar({
@@ -71,8 +81,12 @@ export function PageToolbar({
 	onShowShortcutHelp,
 	totalCount,
 	filteredCount,
+	isHistory,
+	showSourceToggle,
 }: PageToolbarProps) {
 	const {
+		source,
+		setSource,
 		searchText,
 		setSearchText,
 		useRegex,
@@ -101,6 +115,24 @@ export function PageToolbar({
 						</span>
 					)}
 				</CardTitle>
+
+				{showSourceToggle && (
+					<div className="flex shrink-0 items-center gap-0.5 rounded-md border p-0.5">
+						{(["live", "history"] as LogSource[]).map((value) => (
+							<Button
+								key={value}
+								variant="ghost"
+								size="sm"
+								data-active={source === value}
+								onClick={() => setSource(value)}
+								aria-pressed={source === value}
+								className={sourceToggleButtonClass}
+							>
+								{value === "live" ? "Live" : "History"}
+							</Button>
+						))}
+					</div>
+				)}
 
 				<div className="relative flex-1 min-w-[140px]">
 					<SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
@@ -183,76 +215,80 @@ export function PageToolbar({
 					</div>
 				)}
 
-				<div className="flex items-center gap-2 shrink-0">
-					<Label
-						htmlFor={logLinesInputId}
-						className="text-xs text-muted-foreground"
-					>
-						Lines
-					</Label>
-					<Input
-						id={logLinesInputId}
-						type="text"
-						inputMode="numeric"
-						pattern="[0-9]*"
-						value={logLines}
-						onChange={(e) => onLogLinesChange(e.target.value)}
-						disabled={isStreaming}
-						className="h-8 w-20 text-xs"
-					/>
-				</div>
-				{isReconnecting && (
-					<span className="shrink-0 text-xs text-muted-foreground animate-pulse">
-						Reconnecting…
-					</span>
-				)}
-				<Button
-					variant="outline"
-					size="sm"
-					data-active={isStreaming}
-					onClick={onToggleStreaming}
-					disabled={isLoadingLogs && !isStreaming}
-					aria-pressed={isStreaming}
-					className={`shrink-0 ${activeToggleButtonClass}`}
-				>
-					{isStreaming ? (
-						<>
-							<SquareIcon className="mr-2 size-4" />
-							Stop
-						</>
-					) : (
-						<>
-							<PlayIcon className="mr-2 size-4" />
-							Stream
-						</>
-					)}
-				</Button>
-				<Button
-					variant="outline"
-					size="sm"
-					data-active={isStreamPaused}
-					onClick={onTogglePause}
-					disabled={!isStreaming}
-					aria-pressed={isStreamPaused}
-					className={`shrink-0 ${activeToggleButtonClass}`}
-				>
-					{isStreamPaused ? (
-						<>
-							<PlayIcon className="mr-2 size-4" />
-							Resume
-							{bufferedCount > 0 && (
-								<span className="ml-1 text-[10px] tabular-nums">
-									({bufferedCount})
-								</span>
+				{!isHistory && (
+					<>
+						<div className="flex items-center gap-2 shrink-0">
+							<Label
+								htmlFor={logLinesInputId}
+								className="text-xs text-muted-foreground"
+							>
+								Lines
+							</Label>
+							<Input
+								id={logLinesInputId}
+								type="text"
+								inputMode="numeric"
+								pattern="[0-9]*"
+								value={logLines}
+								onChange={(e) => onLogLinesChange(e.target.value)}
+								disabled={isStreaming}
+								className="h-8 w-20 text-xs"
+							/>
+						</div>
+						{isReconnecting && (
+							<span className="shrink-0 text-xs text-muted-foreground animate-pulse">
+								Reconnecting…
+							</span>
+						)}
+						<Button
+							variant="outline"
+							size="sm"
+							data-active={isStreaming}
+							onClick={onToggleStreaming}
+							disabled={isLoadingLogs && !isStreaming}
+							aria-pressed={isStreaming}
+							className={`shrink-0 ${activeToggleButtonClass}`}
+						>
+							{isStreaming ? (
+								<>
+									<SquareIcon className="mr-2 size-4" />
+									Stop
+								</>
+							) : (
+								<>
+									<PlayIcon className="mr-2 size-4" />
+									Stream
+								</>
 							)}
-						</>
-					) : (
-						<>
-							<PauseIcon className="mr-2 size-4" />
-							Pause
-						</>
-					)}
-				</Button>
+						</Button>
+						<Button
+							variant="outline"
+							size="sm"
+							data-active={isStreamPaused}
+							onClick={onTogglePause}
+							disabled={!isStreaming}
+							aria-pressed={isStreamPaused}
+							className={`shrink-0 ${activeToggleButtonClass}`}
+						>
+							{isStreamPaused ? (
+								<>
+									<PlayIcon className="mr-2 size-4" />
+									Resume
+									{bufferedCount > 0 && (
+										<span className="ml-1 text-[10px] tabular-nums">
+											({bufferedCount})
+										</span>
+									)}
+								</>
+							) : (
+								<>
+									<PauseIcon className="mr-2 size-4" />
+									Pause
+								</>
+							)}
+						</Button>
+					</>
+				)}
 				<Button
 					variant="outline"
 					size="sm"
@@ -330,21 +366,23 @@ export function PageToolbar({
 					Wrap
 				</Button>
 
-				<Button
-					variant="outline"
-					size="sm"
-					data-active={autoScroll}
-					onClick={() => setAutoScroll(!autoScroll)}
-					aria-pressed={autoScroll}
-					className={activeToggleButtonClass}
-				>
-					{autoScroll ? (
-						<ArrowDownToLineIcon className="mr-1.5 size-3.5" />
-					) : (
-						<ArrowDownIcon className="mr-1.5 size-3.5" />
-					)}
-					Auto-scroll
-				</Button>
+				{!isHistory && (
+					<Button
+						variant="outline"
+						size="sm"
+						data-active={autoScroll}
+						onClick={() => setAutoScroll(!autoScroll)}
+						aria-pressed={autoScroll}
+						className={activeToggleButtonClass}
+					>
+						{autoScroll ? (
+							<ArrowDownToLineIcon className="mr-1.5 size-3.5" />
+						) : (
+							<ArrowDownIcon className="mr-1.5 size-3.5" />
+						)}
+						Auto-scroll
+					</Button>
+				)}
 
 				<div className="flex-1" />
 

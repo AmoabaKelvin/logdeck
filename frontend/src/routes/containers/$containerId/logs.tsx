@@ -34,6 +34,7 @@ import { useUrlLogViewState } from "@/features/containers/components/log-viewer/
 import { ResourceLimits } from "@/features/containers/components/resource-limits";
 import { Terminal } from "@/features/containers/components/terminal";
 import { useContainerStats } from "@/features/containers/hooks/use-container-stats";
+import { useHistoryContainers } from "@/features/containers/hooks/use-history-containers";
 import { useLiveContainersQuery } from "@/features/containers/hooks/use-live-containers-query";
 import { requireAuthIfEnabled } from "@/lib/auth-guard";
 
@@ -80,6 +81,18 @@ function ContainerLogsPage() {
 	// the container list is still loading.
 	const actualContainerId = container?.id || containerIdentifier;
 
+	// The container may have been removed or recreated under a new ID while its
+	// logs live on in the store. Once the live list has loaded without a match,
+	// look the name up there before treating it as gone.
+	const isUnresolved = containersData !== undefined && !container;
+	const { data: storedContainers } = useHistoryContainers(isUnresolved);
+	const storedContainer = isUnresolved
+		? storedContainers?.find(
+				(stored) => stored.name.replace(/^\//, "") === containerIdentifier,
+			)
+		: undefined;
+	const isRemoved = storedContainer !== undefined;
+
 	const handleContainerRecreated = async (_newContainerId: string) => {
 		await queryClient.invalidateQueries({ queryKey: ["containers"] });
 		await logViewerRef.current?.refreshAfterRecreate();
@@ -107,11 +120,18 @@ function ContainerLogsPage() {
 						</Tooltip>
 						<div className="flex-1">
 							<h1 className="text-2xl font-bold">Container Logs</h1>
-							{container && (
-								<p className="text-sm text-muted-foreground">
-									{container.names?.[0]?.replace(/^\//, "") ||
-										containerIdentifier}
-								</p>
+							{(container || isRemoved) && (
+								<div className="flex items-center gap-2">
+									<p className="text-sm text-muted-foreground">
+										{container?.names?.[0]?.replace(/^\//, "") ||
+											containerIdentifier}
+									</p>
+									{isRemoved && (
+										<Badge variant="outline" className="text-muted-foreground">
+											Removed
+										</Badge>
+									)}
+								</div>
 							)}
 						</div>
 						<ThemeToggle />
@@ -314,9 +334,10 @@ function ContainerLogsPage() {
 						ref={logViewerRef}
 						variant="page"
 						containerId={actualContainerId}
-						host={container?.host}
-						containerName={container?.names?.[0]}
+						host={container?.host ?? storedContainer?.host}
+						containerName={container?.names?.[0] ?? storedContainer?.name}
 						viewState={logViewState}
+						historyOnly={isRemoved}
 					/>
 				</div>
 			</div>

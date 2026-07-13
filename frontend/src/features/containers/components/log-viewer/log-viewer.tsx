@@ -4,13 +4,16 @@ import {
 	useCallback,
 	useEffect,
 	useImperativeHandle,
+	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState,
 } from "react";
 import { toast } from "sonner";
 
+import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
+import { Spinner } from "@/components/ui/spinner";
 import type { AggregateLogTarget } from "@/features/containers/api/get-aggregated-logs";
 import {
 	getAggregatedLogs,
@@ -26,6 +29,8 @@ import {
 	streamContainerLogsParsed,
 } from "@/features/containers/api/get-container-logs-parsed";
 import { useContainerLogStream } from "@/features/containers/hooks/use-container-log-stream";
+import { useHistoryLogs } from "@/features/containers/hooks/use-history-logs";
+import { useHistoryStatus } from "@/features/containers/hooks/use-history-status";
 import { mapRawRangeToGroupedRange } from "./animated-range";
 import { downloadLogs, formatLogEntryLine } from "./log-export";
 import { LogList } from "./log-list";
@@ -60,6 +65,9 @@ interface LogViewerProps {
 	// Aggregate mode: merge these containers' logs into one view instead of
 	// containerId/host. Entries carry containerName for the per-row badge.
 	targets?: AggregateLogTarget[];
+	// The container no longer exists: stored logs are the only source, so the
+	// viewer is locked to history and the source toggle is hidden.
+	historyOnly?: boolean;
 	ref?: React.Ref<LogViewerHandle>;
 }
 
@@ -70,9 +78,11 @@ export function LogViewer({
 	containerName,
 	viewState,
 	targets,
+	historyOnly = false,
 	ref,
 }: LogViewerProps) {
 	const {
+		source,
 		searchText,
 		useRegex,
 		selectedLevels,
@@ -96,6 +106,8 @@ export function LogViewer({
 	const parentRef = useRef<HTMLDivElement>(null);
 	const searchInputRef = useRef<HTMLInputElement>(null);
 	const autoScrollRef = useRef(autoScroll);
+	const historyScrollAnchorRef = useRef<number | null>(null);
+	const previousHistoryCountRef = useRef(0);
 
 	const { searchParsed, highlightSearchText } = useLogSearch(
 		searchText,
@@ -152,22 +164,63 @@ export function LogViewer({
 		: containerId;
 	const streamHost = targets ? "aggregate" : host;
 
+	// History reads a single container's stored logs by name, so it is offered
+	// on the page variant only (the sheet stays live; aggregate views have no
+	// per-container store to read).
+	const supportsHistory = variant === "page" && !targets;
+	const { data: historyStatus } = useHistoryStatus(supportsHistory);
+	const historyEnabled = supportsHistory && historyStatus?.enabled === true;
+	const isHistory =
+		supportsHistory &&
+		(historyOnly || (historyEnabled && source === "history"));
+
+	const historyContainer = (containerName ?? containerId ?? "").replace(
+		/^\//,
+		"",
+	);
+	// The store filters server-side, so search goes with the request. Two cases
+	// stay client-side instead: "exclude matches" needs the non-matching lines
+	// the server would drop, and an invalid regex has nothing to send.
+	const historySearch =
+		excludeMatches || (useRegex && searchParsed.error) ? "" : searchText;
+
 	const {
-		animatedRange,
+		logs: historyLogs,
+		error: historyError,
+		isLoading: isLoadingHistory,
+		isFetchingOlder,
+		hasOlder,
+		fetchOlder,
+		refetch: refetchHistory,
+	} = useHistoryLogs({
+		enabled: isHistory,
+		container: historyContainer,
+		host,
+		since,
+		until,
+		levels: selectedLevels,
+		search: historySearch,
+		regex: useRegex,
+	});
+
+	const {
+		animatedRange: liveAnimatedRange,
 		bufferedCount,
 		droppedCount,
 		fetchLogs,
-		isLoadingLogs,
+		isLoadingLogs: isLoadingLiveLogs,
 		isReconnecting,
 		isStreamPaused,
 		isStreaming,
-		logs: rawLogs,
+		logs: liveLogs,
 		startStreaming,
 		stopStreaming,
 		togglePauseStreaming,
 		toggleStreaming,
 	} = useContainerLogStream<LogEntry>({
-		containerId: streamContainerId,
+		// Dropping the id parks the live hook: it neither fetches nor streams,
+		// which is exactly what history mode wants from it.
+		containerId: isHistory ? undefined : streamContainerId,
 		host: streamHost,
 		tail: logLines,
 		since,
@@ -185,6 +238,12 @@ export function LogViewer({
 			toast.error(`Failed to start streaming: ${error.message}`);
 		},
 	});
+
+	const rawLogs = isHistory ? historyLogs : liveLogs;
+	const isLoadingLogs = isHistory ? isLoadingHistory : isLoadingLiveLogs;
+	// Row animations mark lines a live stream just appended; stored pages are
+	// not "new" in that sense.
+	const animatedRange = isHistory ? null : liveAnimatedRange;
 
 	const logs = useMemo(() => groupRelatedLogEntries(rawLogs), [rawLogs]);
 
@@ -234,6 +293,10 @@ export function LogViewer({
 	} = useSearchMatches({ filteredLogs, searchText, useRegex, searchParsed });
 
 	const handleRefresh = () => {
+		if (isHistory) {
+			void refetchHistory();
+			return;
+		}
 		if (!isStreaming) {
 			fetchLogs();
 		}
@@ -244,6 +307,14 @@ export function LogViewer({
 			fetchLogs();
 		}
 	}, [isStreaming, fetchLogs]);
+
+	// Switching to history while a stream is running leaves it with no way to
+	// be stopped from the toolbar, so stop it here.
+	useEffect(() => {
+		if (isHistory && isStreaming) {
+			stopStreaming();
+		}
+	}, [isHistory, isStreaming, stopStreaming]);
 
 	// Teardown must run on unmount only. If stopStreaming were cleanup of the
 	// fetch effect above, every isStreaming transition would re-run it and
@@ -638,6 +709,67 @@ export function LogViewer({
 		};
 	}, []);
 
+	const handleLoadOlder = useCallback(() => {
+		const container = parentRef.current;
+		// Older entries are prepended, which would push the current lines down the
+		// viewport. Remember the distance to the bottom and restore it once the
+		// page lands, so the line the user was reading stays put.
+		historyScrollAnchorRef.current = container
+			? container.scrollHeight - container.scrollTop
+			: null;
+		void fetchOlder();
+	}, [fetchOlder]);
+
+	useLayoutEffect(() => {
+		if (!isHistory) {
+			previousHistoryCountRef.current = 0;
+			return;
+		}
+		const container = parentRef.current;
+		if (!container) return;
+
+		const anchor = historyScrollAnchorRef.current;
+		if (anchor !== null) {
+			historyScrollAnchorRef.current = null;
+			container.scrollTop = container.scrollHeight - anchor;
+		} else if (
+			previousHistoryCountRef.current === 0 &&
+			historyLogs.length > 0
+		) {
+			// The first page is the newest window; open it on the newest line.
+			container.scrollTop = container.scrollHeight;
+		}
+		previousHistoryCountRef.current = historyLogs.length;
+	}, [isHistory, historyLogs]);
+
+	const historyTopSlot =
+		isHistory && logs.length > 0 ? (
+			<div className="flex items-center justify-center border-b px-3 py-2">
+				{hasOlder ? (
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={handleLoadOlder}
+						disabled={isFetchingOlder}
+						className="h-10 text-xs"
+					>
+						{isFetchingOlder ? (
+							<>
+								<Spinner className="mr-2 size-3.5" />
+								Loading older…
+							</>
+						) : (
+							"Load older"
+						)}
+					</Button>
+				) : (
+					<span className="text-xs text-muted-foreground">
+						Beginning of stored history
+					</span>
+				)}
+			</div>
+		) : null;
+
 	const toolbarProps: LogViewerToolbarProps = {
 		viewState,
 		searchParsed,
@@ -674,6 +806,12 @@ export function LogViewer({
 			rowVirtualizer={rowVirtualizer}
 			isLoadingLogs={isLoadingLogs}
 			totalCount={logs.length}
+			emptyMessage={
+				isHistory
+					? (historyError?.message ?? "No stored logs match these filters")
+					: undefined
+			}
+			topSlot={historyTopSlot}
 			filteredLogs={filteredLogs}
 			filteredToOriginalIndex={filteredToOriginalIndex}
 			wrapText={wrapText}
@@ -711,6 +849,8 @@ export function LogViewer({
 						{...toolbarProps}
 						totalCount={logs.length}
 						filteredCount={filteredLogs.length}
+						isHistory={isHistory}
+						showSourceToggle={historyEnabled && !historyOnly}
 					/>
 				</CardHeader>
 				{logList}
