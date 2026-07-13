@@ -12,6 +12,7 @@ export interface ContainerInfo {
 	created: number;
 	state: string;
 	status: string;
+	health?: string;
 	labels?: Record<string, string>;
 	host: string;
 }

@@ -73,6 +73,24 @@ type HostError struct {
 	Err      error
 }
 
+// healthFromStatus extracts the healthcheck state from a container list Status
+// string. Docker embeds "(healthy)", "(unhealthy)", or "(health: starting)" in
+// the list Status string, e.g. "Up 3 hours (healthy)"; Podman's Docker-compat
+// list API does not, so on Podman the field is absent. Returns "" when no
+// health suffix is present.
+func healthFromStatus(status string) string {
+	switch {
+	case strings.HasSuffix(status, "(healthy)"):
+		return "healthy"
+	case strings.HasSuffix(status, "(unhealthy)"):
+		return "unhealthy"
+	case strings.HasSuffix(status, "(health: starting)"):
+		return "starting"
+	default:
+		return ""
+	}
+}
+
 func (c *MultiHostClient) ListContainersAllHosts(ctx context.Context) (map[string][]models.ContainerInfo, []HostError, error) {
 	result := make(map[string][]models.ContainerInfo)
 	var hostErrors []HostError
@@ -104,6 +122,7 @@ func (c *MultiHostClient) ListContainersAllHosts(ctx context.Context) (map[strin
 					Created: ctr.Created,
 					State:   ctr.State,
 					Status:  ctr.Status,
+					Health:  healthFromStatus(ctr.Status),
 					Labels:  ctr.Labels,
 					Host:    name,
 				})

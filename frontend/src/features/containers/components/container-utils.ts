@@ -43,6 +43,17 @@ export function formatContainerName(names: string[]) {
 	return primary.startsWith("/") ? primary.slice(1) : primary;
 }
 
+export function formatImageName(image: string) {
+	const segments = image.split("/");
+	if (segments.length > 1 && /[.:]/.test(segments[0])) {
+		segments.shift();
+	}
+	if (segments.length > 1 && segments[0] === "library") {
+		segments.shift();
+	}
+	return segments.join("/");
+}
+
 export function formatCreatedDate(createdSeconds: number) {
 	const createdDate = new Date(createdSeconds * 1000);
 	return createdDate.toLocaleString(undefined, {
@@ -68,6 +79,19 @@ export function getStateBadgeClass(state: string) {
 			return "bg-rose-500/10 text-rose-700 dark:text-rose-400";
 		case "restarting":
 			return "bg-blue-500/10 text-blue-700 dark:text-blue-400";
+		default:
+			return "bg-muted text-muted-foreground";
+	}
+}
+
+export function getHealthBadgeClass(health: string) {
+	switch (health) {
+		case "healthy":
+			return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+		case "unhealthy":
+			return "bg-rose-500/10 text-rose-700 dark:text-rose-400";
+		case "starting":
+			return "bg-amber-500/10 text-amber-700 dark:text-amber-400";
 		default:
 			return "bg-muted text-muted-foreground";
 	}

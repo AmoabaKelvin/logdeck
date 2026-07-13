@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,6 +25,7 @@ var watchedContainerActions = []string{
 	"unpause",
 	"destroy",
 	"rename",
+	"health_status",
 }
 
 const (
@@ -46,8 +48,11 @@ func mapContainerEvent(hostName string, msg events.Message) (models.ContainerEve
 		return models.ContainerEvent{}, false
 	}
 
+	// Some actions arrive suffixed with detail, e.g. "health_status: healthy";
+	// match the watched set against the base action before ": ".
 	action := string(msg.Action)
-	if !slices.Contains(watchedContainerActions, action) {
+	base, _, _ := strings.Cut(action, ": ")
+	if !slices.Contains(watchedContainerActions, base) {
 		return models.ContainerEvent{}, false
 	}
 

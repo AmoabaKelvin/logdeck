@@ -22,6 +22,7 @@ import {
 	formatCPUPercent,
 	formatCreatedDate,
 	formatMemoryStats,
+	getHealthBadgeClass,
 	getStateBadgeClass,
 	isCoolifyManaged,
 	toTitleCase,
@@ -161,11 +162,20 @@ function ContainerLogsPage() {
 											<span className="text-muted-foreground block mb-1">
 												State
 											</span>
-											<Badge
-												className={`${getStateBadgeClass(container.state)} border-0`}
-											>
-												{toTitleCase(container.state)}
-											</Badge>
+											<div className="flex items-center gap-1.5">
+												<Badge
+													className={`${getStateBadgeClass(container.state)} border-0`}
+												>
+													{toTitleCase(container.state)}
+												</Badge>
+												{container.health && (
+													<Badge
+														className={`${getHealthBadgeClass(container.health)} border-0`}
+													>
+														{toTitleCase(container.health)}
+													</Badge>
+												)}
+											</div>
 										</div>
 										<div>
 											<span className="text-muted-foreground block mb-1">

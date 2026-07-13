@@ -38,8 +38,10 @@ import {
 	formatContainerName,
 	formatCPUPercent,
 	formatCreatedDate,
+	formatImageName,
 	formatMemoryStats,
 	getComposeProject,
+	getHealthBadgeClass,
 	getStateBadgeClass,
 	isCoolifyManaged,
 	toTitleCase,
@@ -172,12 +174,32 @@ export function ContainersTable({
 					</div>
 				</TableCell>
 				<TableCell className="h-16 px-4 text-sm text-muted-foreground">
-					{container.image}
+					<TooltipProvider>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<span className="block cursor-help truncate max-w-[240px]">
+									{formatImageName(container.image)}
+								</span>
+							</TooltipTrigger>
+							<TooltipContent>{container.image}</TooltipContent>
+						</Tooltip>
+					</TooltipProvider>
 				</TableCell>
 				<TableCell className="h-16 px-4">
-					<Badge className={`${getStateBadgeClass(container.state)} border-0`}>
-						{toTitleCase(container.state)}
-					</Badge>
+					<div className="flex items-center gap-1.5">
+						<Badge
+							className={`${getStateBadgeClass(container.state)} border-0`}
+						>
+							{toTitleCase(container.state)}
+						</Badge>
+						{container.health && (
+							<Badge
+								className={`${getHealthBadgeClass(container.health)} border-0`}
+							>
+								{toTitleCase(container.health)}
+							</Badge>
+						)}
+					</div>
 				</TableCell>
 				<TableCell className="h-16 px-4 text-sm">
 					{state !== "running" ? (
@@ -212,20 +234,6 @@ export function ContainersTable({
 				</TableCell>
 				<TableCell className="h-16 px-4 text-sm text-muted-foreground">
 					{formatCreatedDate(container.created)}
-				</TableCell>
-				<TableCell className="h-16 px-4 max-w-[300px] text-sm text-muted-foreground">
-					<TooltipProvider>
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<span className="block cursor-help truncate">
-									{container.command}
-								</span>
-							</TooltipTrigger>
-							<TooltipContent className="max-w-md">
-								{container.command}
-							</TooltipContent>
-						</Tooltip>
-					</TooltipProvider>
 				</TableCell>
 				<TableCell className="h-16 px-4">
 					<TooltipProvider>
@@ -296,7 +304,7 @@ export function ContainersTable({
 		if (isLoading) {
 			return (
 				<TableRow>
-					<TableCell colSpan={8} className="h-32">
+					<TableCell colSpan={7} className="h-32">
 						<div className="flex items-center justify-center text-sm text-muted-foreground">
 							<Spinner className="mr-2" />
 							Loading containers…
@@ -309,7 +317,7 @@ export function ContainersTable({
 		if (isError) {
 			return (
 				<TableRow>
-					<TableCell colSpan={8} className="h-32">
+					<TableCell colSpan={7} className="h-32">
 						<div className="flex flex-col items-center gap-3 text-center">
 							<p className="text-sm text-muted-foreground">
 								{(error instanceof Error && error.message) ||
@@ -327,7 +335,7 @@ export function ContainersTable({
 		if (filteredContainers.length === 0) {
 			return (
 				<TableRow>
-					<TableCell colSpan={8} className="h-32">
+					<TableCell colSpan={7} className="h-32">
 						<div className="text-center text-sm text-muted-foreground">
 							No containers found.
 						</div>
@@ -341,7 +349,7 @@ export function ContainersTable({
 				<Fragment key={group.project}>
 					<TableRow className="bg-muted/30 hover:bg-muted/30">
 						<TableCell
-							colSpan={8}
+							colSpan={7}
 							className="h-10 px-4 text-xs font-medium text-muted-foreground"
 						>
 							<div className="flex items-center justify-between">
@@ -420,7 +428,6 @@ export function ContainersTable({
 						</TableHead>
 						<TableHead className="h-12 px-4 font-medium">Uptime</TableHead>
 						<TableHead className="h-12 px-4 font-medium">Created</TableHead>
-						<TableHead className="h-12 px-4 font-medium">Command</TableHead>
 						<TableHead className="h-12 px-4 font-medium w-[120px]">
 							Actions
 						</TableHead>
