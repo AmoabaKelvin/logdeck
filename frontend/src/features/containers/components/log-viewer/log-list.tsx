@@ -24,6 +24,8 @@ interface LogListProps {
 	filteredToOriginalIndex: number[];
 	wrapText: boolean;
 	showTimestamps: boolean;
+	// Per-row container badge; only the aggregate view mixes containers.
+	showContainerName: boolean;
 	searchMatches: number[];
 	searchMatchSet: Set<number>;
 	currentMatchIndex: number;
@@ -60,6 +62,7 @@ export function LogList({
 	filteredToOriginalIndex,
 	wrapText,
 	showTimestamps,
+	showContainerName,
 	searchMatches,
 	searchMatchSet,
 	currentMatchIndex,
@@ -127,6 +130,7 @@ export function LogList({
 							measureRef={rowVirtualizer.measureElement}
 							wrapText={wrapText}
 							showTimestamps={showTimestamps}
+							showContainerName={showContainerName}
 							isSelected={selectedIndices.has(virtualRow.index)}
 							isPinned={pinnedFilteredIndices.has(virtualRow.index)}
 							isCurrentMatch={isCurrentMatch}

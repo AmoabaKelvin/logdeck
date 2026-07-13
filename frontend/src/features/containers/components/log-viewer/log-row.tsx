@@ -79,6 +79,9 @@ export interface LogRowProps {
 	measureRef: (node: Element | null) => void;
 	wrapText: boolean;
 	showTimestamps: boolean;
+	// Only meaningful in the aggregate view: a single-container view has one
+	// name, and stored entries carry it too.
+	showContainerName: boolean;
 	isSelected: boolean;
 	isPinned: boolean;
 	isCurrentMatch: boolean;
@@ -105,6 +108,7 @@ export function LogRow(props: LogRowProps) {
 		measureRef,
 		wrapText,
 		showTimestamps,
+		showContainerName,
 		isCurrentMatch,
 		hasMatch,
 		isNewRow,
@@ -162,7 +166,7 @@ export function LogRow(props: LogRowProps) {
 			>
 				{entry.level ?? "UNKNOWN"}
 			</Badge>
-			{entry.containerName && (
+			{showContainerName && entry.containerName && (
 				<Badge
 					variant="outline"
 					className={`shrink-0 text-xs px-1.5 py-0 h-5 ${getContainerNameBadgeColor(entry.containerName)}`}

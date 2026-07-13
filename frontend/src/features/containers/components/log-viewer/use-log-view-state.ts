@@ -74,12 +74,13 @@ export function useLocalLogViewState(): LogViewState {
 	};
 }
 
-const LOG_LEVELS: readonly LogLevel[] = [
+// The levels the wire actually carries: the log parser normalises "WARNING" to
+// "WARN", and the history endpoint rejects anything outside this set.
+export const LOG_LEVELS: readonly LogLevel[] = [
 	"TRACE",
 	"DEBUG",
 	"INFO",
 	"WARN",
-	"WARNING",
 	"ERROR",
 	"FATAL",
 	"PANIC",
