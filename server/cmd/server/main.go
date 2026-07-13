@@ -14,6 +14,7 @@ import (
 	"github.com/AmoabaKelvin/logdeck/internal/config"
 	"github.com/AmoabaKelvin/logdeck/internal/coolify"
 	"github.com/AmoabaKelvin/logdeck/internal/docker"
+	"github.com/AmoabaKelvin/logdeck/internal/logstore"
 	"github.com/AmoabaKelvin/logdeck/internal/logstream"
 	"github.com/AmoabaKelvin/logdeck/internal/services"
 	"github.com/AmoabaKelvin/logdeck/internal/system"
@@ -67,6 +68,9 @@ func main() {
 
 	logHub := logstream.New(registry)
 	alertEngine := alerts.NewEngine(registry, manager, logHub)
+	// logStore is nil when persistence is disabled or its database is
+	// unusable; every consumer must treat that as "no stored logs".
+	logStore := logstore.OpenFromConfig(manager)
 
 	// Register hot-reload callback.
 	manager.OnChange(func(newCfg *config.Config) {
@@ -126,6 +130,9 @@ func main() {
 
 	go logHub.Run(ctx)
 	alertEngine.Start(ctx)
+	if logStore != nil {
+		logStore.Start(ctx, logHub, registry)
+	}
 
 	go func() {
 		log.Println("Server starting on :8080")
@@ -144,7 +151,14 @@ func main() {
 	}
 
 	// Drain the alerting engine and the shared log tails after the server has
-	// stopped accepting requests.
+	// stopped accepting requests. The log store drains last: it feeds off the
+	// hub, so its final batch can only be complete once the hub has stopped.
 	alertEngine.Wait()
 	logHub.Wait()
+	if logStore != nil {
+		logStore.Wait()
+		if err := logStore.Close(); err != nil {
+			log.Printf("Closing the log store failed: %v", err)
+		}
+	}
 }
