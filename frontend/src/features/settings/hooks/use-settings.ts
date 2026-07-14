@@ -9,11 +9,16 @@ import { testDockerHost } from "../api/test-docker-host";
 import { type UpdateAuthPayload, updateAuth } from "../api/update-auth";
 import { updateCoolifyHosts } from "../api/update-coolify-hosts";
 import { updateDockerHosts } from "../api/update-docker-hosts";
+import {
+	type UpdateLogStoragePayload,
+	updateLogStorage,
+} from "../api/update-log-storage";
 import { updateReadOnly } from "../api/update-read-only";
 import type { APITokenScope } from "../types";
 
 const SETTINGS_KEY = ["settings"] as const;
 const API_TOKENS_KEY = ["settings", "api-tokens"] as const;
+const HISTORY_STATUS_KEY = ["history", "status"] as const;
 
 export function useSettings() {
 	return useQuery({
@@ -52,6 +57,19 @@ export function useUpdateReadOnly() {
 		mutationFn: (value: boolean) => updateReadOnly(value),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: SETTINGS_KEY });
+		},
+	});
+}
+
+// The usage bar and the per-container cap text read their limits from
+// /history/status, so that query is invalidated alongside the settings.
+export function useUpdateLogStorage() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (payload: UpdateLogStoragePayload) => updateLogStorage(payload),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: SETTINGS_KEY });
+			queryClient.invalidateQueries({ queryKey: HISTORY_STATUS_KEY });
 		},
 	});
 }

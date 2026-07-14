@@ -5,6 +5,16 @@ const features = [
       "Follow logs in real time with pause, auto-scroll, and timestamps. Thousands of lines stay smooth.",
   },
   {
+    title: "Log history",
+    description:
+      "Logs persist to a local store, so history survives a restart, a rebuild, and even removal.",
+  },
+  {
+    title: "Alerting",
+    description:
+      "Rules on container deaths, OOM kills, and log patterns, delivered to a webhook Slack and Discord accept as-is.",
+  },
+  {
     title: "Search and filtering",
     description:
       "Full-text search with match navigation, log level filters, and calendar-based time ranges.",
@@ -57,7 +67,7 @@ const features = [
   {
     title: "Auth and API tokens",
     description:
-      "Optional login, API tokens for external tools, and a read-only mode for production.",
+      "Optional login, admin and read-only API tokens for external tools, and a read-only mode for production.",
   },
 ];
 
@@ -69,8 +79,8 @@ export function Features() {
           Everything you need to run containers
         </h2>
         <p className="mt-3 text-muted-foreground">
-          One binary with the frontend embedded. No database, no agents on your
-          hosts.
+          One binary with the frontend embedded. No external database, no agents
+          on your hosts.
         </p>
       </div>
 

@@ -29,6 +29,7 @@ import type { CoolifyHostsConfig } from "../types";
 import { EnvBadge } from "./env-badge";
 import { showResultToast } from "./mutation-toast";
 import { SaveButton } from "./save-button";
+import { TruncatedValue } from "./truncated-value";
 
 interface CoolifyHostsSectionProps {
 	config: CoolifyHostsConfig;
@@ -262,13 +263,13 @@ export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
 		return (
 			<TableRow key={testKey}>
 				<TableCell className="font-medium">
-					<div className="flex items-center gap-2">
-						{h.hostName}
+					<div className="flex flex-wrap items-center gap-2">
+						<TruncatedValue value={h.hostName} className="max-w-[140px]" />
 						{isEnvRow && <EnvBadge />}
 					</div>
 				</TableCell>
 				<TableCell className="font-mono text-xs text-muted-foreground">
-					{h.apiURL}
+					<TruncatedValue value={h.apiURL} className="max-w-[160px]" />
 				</TableCell>
 				<TableCell className="text-muted-foreground">{h.apiToken}</TableCell>
 				<TableCell>

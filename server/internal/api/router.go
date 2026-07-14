@@ -9,6 +9,7 @@ import (
 	"github.com/AmoabaKelvin/logdeck/internal/api/middleware"
 	"github.com/AmoabaKelvin/logdeck/internal/auth"
 	"github.com/AmoabaKelvin/logdeck/internal/config"
+	"github.com/AmoabaKelvin/logdeck/internal/logstore"
 	"github.com/AmoabaKelvin/logdeck/internal/services"
 	"github.com/AmoabaKelvin/logdeck/internal/static"
 	"github.com/go-chi/chi/v5"
@@ -21,15 +22,18 @@ type APIRouter struct {
 	registry *services.Registry
 	manager  *config.Manager
 	engine   *alerts.Engine
+	// logStore is nil when log persistence is disabled or unusable.
+	logStore *logstore.Store
 	version  string
 }
 
-func NewRouter(registry *services.Registry, manager *config.Manager, engine *alerts.Engine, version string) *chi.Mux {
+func NewRouter(registry *services.Registry, manager *config.Manager, engine *alerts.Engine, logStore *logstore.Store, version string) *chi.Mux {
 	r := &APIRouter{
 		router:   chi.NewRouter(),
 		registry: registry,
 		manager:  manager,
 		engine:   engine,
+		logStore: logStore,
 		version:  version,
 	}
 
@@ -94,6 +98,7 @@ func (ar *APIRouter) Routes() *chi.Mux {
 			protected.Get("/hosts/stats", ar.GetHostsStats)
 			ar.registerContainerRoutes(protected)
 			ar.registerComposeRoutes(protected)
+			ar.registerHistoryRoutes(protected)
 		})
 	})
 
@@ -140,6 +145,22 @@ func (ar *APIRouter) registerContainerRoutes(r chi.Router) {
 	})
 }
 
+// registerHistoryRoutes exposes the stored-log API: the queries are reads and
+// sit in the plain protected group alongside the live log routes, while purging
+// a container's stored logs is destructive and irreversible, so it is treated
+// exactly like container removal — blocked in read-only mode and denied to
+// read-scoped API tokens.
+func (ar *APIRouter) registerHistoryRoutes(r chi.Router) {
+	r.Get("/history/status", ar.GetHistoryStatus)
+	r.Get("/history/containers", ar.GetHistoryContainers)
+	r.Get("/history/logs", ar.GetHistoryLogs)
+
+	r.With(
+		middleware.ReadOnly(func() bool { return ar.registry.Config().ReadOnly }),
+		auth.DenyReadScope,
+	).Delete("/history/containers/{name}", ar.DeleteHistoryContainer)
+}
+
 func (ar *APIRouter) registerSettingsRoutes(r chi.Router) {
 	r.Route("/settings", func(r chi.Router) {
 		// Settings follow the same auth pattern — protected when auth is enabled
@@ -153,6 +174,12 @@ func (ar *APIRouter) registerSettingsRoutes(r chi.Router) {
 		r.Put("/coolify-hosts", ar.UpdateCoolifyHosts)
 		r.Put("/read-only", ar.UpdateReadOnly)
 		r.Put("/auth", ar.UpdateAuth)
+		// Lowering a retention cap makes the next janitor pass evict stored
+		// logs, so this route is blocked in read-only mode like the purge route
+		// — the other settings mutations touch no data and are not.
+		r.With(
+			middleware.ReadOnly(func() bool { return ar.registry.Config().ReadOnly }),
+		).Put("/log-storage", ar.UpdateLogStorage)
 		r.Get("/api-tokens", ar.ListAPITokens)
 		r.Post("/api-tokens", ar.CreateAPIToken)
 		r.Delete("/api-tokens/{prefix}", ar.DeleteAPIToken)
@@ -165,6 +192,10 @@ func (ar *APIRouter) registerAlertRoutes(r chi.Router) {
 	r.Route("/alerts", func(r chi.Router) {
 		// Alerts follow the same auth pattern — protected when auth is enabled
 		r.Use(auth.DynamicMiddleware(ar.registry.Auth, ar.lookupAPIToken))
+		// The webhook URL is a secret (a Slack or Discord webhook lets its holder
+		// post to the channel), so alerts are denied to read-scoped tokens for the
+		// whole group, as settings are.
+		r.Use(auth.DenyReadScope)
 
 		r.Get("/rules", ar.ListAlertRules)
 		r.Post("/rules", ar.CreateAlertRule)

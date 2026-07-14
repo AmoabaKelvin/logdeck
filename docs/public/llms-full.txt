@@ -1,6 +1,6 @@
 # LogDeck — full documentation
 
-LogDeck is an open-source (GPL-3.0), self-hosted dashboard and CLI for Docker and Podman containers. It provides real-time log streaming with search and level filters, container stats with 5-minute sparklines, multi-host management (unix socket, TCP, or SSH), Compose stack tools, live resource-limit editing, a web terminal, environment-variable editing with optional Coolify sync, optional JWT authentication with API tokens, and a read-only mode.
+LogDeck is an open-source (GPL-3.0), self-hosted dashboard and CLI for Docker and Podman containers. It provides real-time log streaming with search and level filters, persistent log history that survives container restarts, rebuilds, and removal, alerting on container deaths, OOM kills, and log patterns, container stats with 5-minute sparklines, multi-host management (unix socket, TCP, or SSH), Compose stack tools, live resource-limit editing, a web terminal, environment-variable editing with optional Coolify sync, optional authentication with scoped API tokens, and a read-only mode.
 
 - Website: https://logdeck.dev
 - Source: https://github.com/AmoabaKelvin/logdeck
@@ -8,7 +8,7 @@ LogDeck is an open-source (GPL-3.0), self-hosted dashboard and CLI for Docker an
 - License: GPL-3.0
 - Author: Amoaba Kelvin
 
-The server is a single Go binary with the web frontend embedded. No database is required; all state comes from the Docker/Podman API.
+The server is a single Go binary with the web frontend embedded. There is no external database to run: LogDeck keeps everything it persists in one directory (`/data` by default) — a JSON config file, a SQLite log store, and the alert history. That directory must be a mounted volume, or all of it is lost when the container is recreated.
 
 ## Installation
 
@@ -25,11 +25,10 @@ services:
       # Optional: manage multiple Docker hosts
       # DOCKER_HOSTS: local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.example.com
 
-      # Optional: enable authentication
+      # Optional: enable authentication (or enable it later from the Settings page)
       # JWT_SECRET: your-super-secret-key-min-32-chars
       # ADMIN_USERNAME: admin
-      # ADMIN_PASSWORD_SALT: your-random-salt-change-this
-      # ADMIN_PASSWORD: your-sha256-hash
+      # ADMIN_PASSWORD: your-bcrypt-hash
 
       # Optional: Coolify integration (host names must match DOCKER_HOSTS)
       # COOLIFY_CONFIGS: local|https://your-coolify-instance.com|your-api-token
@@ -38,12 +37,21 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # /proc for system stats (CPU, memory)
       - /proc:/host/proc:ro
+      # Config file, stored log history, and alert history — do not skip this
+      - logdeck-data:/data
       # Mount SSH keys if you use ssh:// hosts
       # - ~/.ssh:/root/.ssh:ro
     restart: unless-stopped
+
+volumes:
+  logdeck-data:
 ```
 
 Start with `docker-compose up -d`, then open http://localhost:8123.
+
+The `/data` volume is not optional in practice: it holds the config file (hosts, API tokens, alert rules), the SQLite log store, and the alert history. Without it, all three are written inside the container and destroyed the next time it is recreated.
+
+The runtime image is minimal and contains no `curl` or `wget`, so a compose `healthcheck` cannot be run from inside the container. The server exposes `GET /api/v1/healthz` for external health checks.
 
 ### Docker run
 
@@ -53,6 +61,7 @@ docker run -d \
   -p 8123:8080 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /proc:/host/proc:ro \
+  -v logdeck-data:/data \
   --restart unless-stopped \
   amoabakelvin/logdeck:latest
 ```
@@ -61,41 +70,148 @@ To update: `docker-compose pull && docker-compose up -d`, or stop/remove the con
 
 Security notes: the Docker socket gives full access to the daemon — run LogDeck on trusted networks or enable authentication. If you only need log viewing, mount the socket read-only (`:ro`) and enable read-only mode. In production, put LogDeck behind a reverse proxy (Nginx, Traefik) with TLS; WebSocket upgrade headers must be forwarded.
 
-## Environment variables
+## Configuration
 
-All configuration is via environment variables.
+LogDeck reads configuration from environment variables and from a JSON config file that the Settings page writes (`/data/config.json` by default). Environment variables win: a value set in the environment is shown in the UI but cannot be changed there. Hosts, Coolify hosts, read-only mode, and authentication can come from either source. API tokens, alert rules, and log-store settings live only in the config file (set through the UI or CLI; log-store settings also accept an environment override).
 
-- `DOCKER_HOSTS` (optional): comma-separated hosts to manage, `name=host` format, supporting `unix://`, `tcp://`, and `ssh://` URLs. Default: `local=unix:///var/run/docker.sock`. Example: `DOCKER_HOSTS=local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.example.com`. For `ssh://` targets, mount SSH keys or forward an SSH agent into the container. Host names appear throughout the UI and CLI.
-- `JWT_SECRET` (required for auth): secret key used to sign JWT tokens, at least 32 characters. Generate with `openssl rand -base64 32`.
-- `ADMIN_USERNAME` (required for auth): admin username for logging in.
-- `ADMIN_PASSWORD_SALT` (required for auth): random salt for password hashing. Generate with `openssl rand -hex 32`.
-- `ADMIN_PASSWORD` (required for auth): SHA256 hash of (password + salt), concatenated directly — never plain text. Generate with `echo -n "YOUR_PASSWORDYOUR_SALT" | shasum -a 256 | awk '{print $1}'`.
-- `READONLY_MODE` (optional): `true` blocks all mutating operations (start, stop, restart, remove, env and resource updates). Can also be toggled from the Settings page in the UI; when the environment variable is set it takes precedence and the UI toggle is disabled.
+Every environment variable is optional — LogDeck runs with none of them set.
+
+### Environment variables
+
+- `DOCKER_HOSTS` (optional): comma-separated hosts to manage, `name=host` format, supporting `unix://`, `tcp://`, and `ssh://` URLs. Example: `DOCKER_HOSTS=local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.example.com`. For `ssh://` targets, mount SSH keys or forward an SSH agent into the container. Host names appear throughout the UI and CLI. Hosts defined here cannot be edited or removed from the Settings page; hosts added in Settings are merged with them. When unset, LogDeck probes for a local socket in order: Docker (`/var/run/docker.sock`), rootless Podman (`$XDG_RUNTIME_DIR/podman/podman.sock`), rootful Podman (`/run/podman/podman.sock`).
+- `CONFIG_PATH` (optional): path to the JSON config file. Its directory also holds `logs.db` (the log store) and `alerts-history.json`. Default: `/data/config.json`.
+- `JWT_SECRET` (required for env-configured auth): secret key used to sign session tokens. Sessions last 7 days. Generate with `openssl rand -base64 32`.
+- `ADMIN_USERNAME` (required for env-configured auth): admin username for logging in.
+- `ADMIN_PASSWORD` (required for env-configured auth): a **bcrypt hash** of the admin password — never plain text. LogDeck validates it at startup and refuses to start if it is malformed. Generate with `htpasswd -bnBC 10 '' yourPassword | tr -d ':'`. In a compose file, escape `$` as `$$` or use an `.env` file.
+- `ADMIN_PASSWORD_SALT` (legacy, optional): older deployments hashed the admin password as SHA256(password + salt). That combination — this variable set, with `ADMIN_PASSWORD` holding the hex digest — is still accepted so existing setups keep working. Use bcrypt for new deployments and leave this unset.
+- `READONLY_MODE` (optional): `true` blocks starting, stopping, restarting and removing containers, Compose stack actions, environment-variable and resource-limit edits, and the web terminal. Reading (logs, history, stats, events, container details) is unaffected, and LogDeck's own settings and alert rules remain editable. Can also be toggled from the Settings page; when the environment variable is set it takes precedence and the UI toggle is disabled. Default: `false`.
+- `LOG_STORE_ENABLED` (optional): `false` disables log persistence entirely — no database file, no History mode. Default: `true`.
+- `LOG_STORE_PER_CONTAINER_MB` (optional): retention cap per container, in MB. Default: `50`.
+- `LOG_STORE_TOTAL_MB` (optional): retention cap for the whole log store, in MB. Default: `1024`.
 - `COOLIFY_CONFIGS` (optional): per-host Coolify configuration in `hostName|apiURL|apiToken` format, comma-separated for multiple hosts. Host names must match `DOCKER_HOSTS`. When set, environment-variable changes made in LogDeck are synced to the Coolify API so they persist across redeployments. Coolify-managed containers are detected automatically via Docker labels and badged in the UI. Sync is best-effort: if the Coolify API is unreachable, the container update still succeeds.
+- `TRUST_PROXY_HEADERS` (optional): `true` trusts `X-Forwarded-For` / `X-Real-IP` when identifying the client, which LogDeck uses to rate-limit the login endpoint. Enable only behind a reverse proxy; on a directly exposed server a client could spoof these headers to sidestep the rate limit.
+- `CORS_ALLOWED_ORIGINS` (optional): comma-separated origins allowed to call the API from a browser. Only needed when the frontend is served from a different origin than the backend (e.g. a dev server); the shipped image serves both from the same origin. Default: `http://localhost:5173,http://127.0.0.1:5173`.
 
-Authentication is completely optional: if the auth variables are unset, LogDeck runs without authentication (fine for local development or trusted networks).
+The server always listens on port `8080` inside the container; there is no port environment variable. Publish it on whichever host port you like (`-p 8123:8080`).
+
+Authentication is completely optional: if the auth variables are unset and it is not enabled in Settings, LogDeck runs without authentication (fine for local development or trusted networks). Enabling it from the Settings page stores the credentials in the config file — no environment variables and no hash generation needed.
 
 ## Features
 
-- Real-time log streaming: WebSocket-based live logs with auto-scroll toggle, configurable line limits, timestamp visibility toggle, and stdout/stderr support.
-- Advanced filtering: full-text search, log-level filters (ERROR, WARN, INFO, DEBUG), regex pattern matching, date range filtering, color-coded levels.
-- Log export: download parsed or raw logs as text files with timestamps preserved.
-- Container discovery: real-time status, container details (name, image, status, uptime), host info, system resource usage, grouping by project, network, or label.
-- Multi-host management: connect to local sockets, remote TCP endpoints, or SSH hosts via `DOCKER_HOSTS`; unified container list with host badges; host-aware actions.
+- Real-time log streaming: WebSocket-based live logs with auto-scroll toggle, configurable tail size, pause with a buffered-line count, timestamp visibility toggle, and stdout/stderr support.
+- Log persistence and history: logs are stored in a local SQLite database and remain readable after a restart, a rebuild, or removal (see below).
+- Alerting: rules on container deaths, OOM kills, and log patterns, delivered to a webhook (see below).
+- Advanced filtering: full-text search with match navigation and highlight/exclude modes, log-level filters (TRACE, DEBUG, INFO, WARN, ERROR, FATAL, PANIC, and unclassified lines), regex matching, time range presets and a custom calendar range, color-coded levels, collapsible JSON lines, line pinning.
+- Log export: download the filtered view as JSON or TXT, in both Live and History mode; copy single lines or a multi-line selection.
+- Container discovery: real-time status driven by the engine's event stream, container details (name, image, status, uptime), health badges, host info, system resource usage, grouping by Compose project.
+- Container health: healthy / unhealthy / starting badges for containers that define a healthcheck. Caveat: LogDeck reads health from the engine's container list. Docker embeds it there; Podman's Docker-compatible list API does not, so containers on a Podman host show no health badge.
+- Multi-host management: connect to local sockets, remote TCP endpoints, or SSH hosts via `DOCKER_HOSTS`; unified container list with host badges; host-aware actions; per-host unreachable reporting.
 - Container management: start, stop, restart, remove (with confirmation), inspect details, environment variables, volumes, ports, and labels.
-- Environment variable management: add, edit, and delete variables with live container recreation; optional Coolify sync.
-- Compose stack tools: start, stop, or restart every container in a stack; aggregated stack logs merged by timestamp with color-coded container badges; works with Docker Compose and podman-compose.
+- Environment variable management: add, edit, and delete variables (the container is recreated, so there is brief downtime); bulk import from a `.env` file; optional Coolify sync.
+- Compose stack tools: start, stop, or restart every container in a stack; aggregated stack logs merged by timestamp with color-coded container badges; works with Docker Compose and podman-compose. Aggregated stack logs are live-only — there is no History mode for a stack.
 - Stats and trends: live CPU and memory per container, sparkline trends covering the last five minutes, per-host engine stats, system stats for the LogDeck machine.
 - Resource limits and restart policies: edit memory limits, CPU limits, and restart policy live via the engine's update API — no container restart. Human-friendly inputs (512m, 1g).
-- Images, volumes, and networks: read-only listings aggregated across all hosts with text filtering.
-- Web terminal: a real shell in any running container via WebSocket, full XTerm.js emulation, 10,000-line scrollback, copy-to-clipboard.
+- Images, volumes, and networks: read-only listings aggregated across all hosts with text filtering. No prune, delete, or pull actions.
+- Web terminal: a real shell in any running container via WebSocket, full XTerm.js emulation, 10,000-line scrollback, copy-to-clipboard. Blocked in read-only mode and for read-scoped tokens.
 - CLI: the scriptable `logdeck` command-line client (see below).
-- API access tokens: create and revoke under Settings -> API Tokens; prefixed `ldk_`, shown in full only once at creation; sent as `Authorization: Bearer <token>`.
-- Optional authentication: JWT-based, salted SHA256 password hashing, can be fully disabled.
-- Read-only mode: blocks all mutating operations; toggle in Settings or pin with `READONLY_MODE`.
-- UI: dark/light mode, responsive design, keyboard shortcuts (press `?` for the cheat sheet), virtualized log lists for large volumes.
+- Scoped API access tokens: create and revoke under Settings -> API Access; `admin` or `read` scope; prefixed `ldk_`, shown in full only once at creation; sent as `Authorization: Bearer <token>`.
+- Optional authentication: session login (7-day tokens) with a rate-limited login endpoint; enable it from Settings or pin it with environment variables; can be fully disabled.
+- Read-only mode: blocks container actions, stack actions, environment and resource edits, and the web terminal; toggle in Settings or pin with `READONLY_MODE`.
+- UI: dark/light mode, responsive design, keyboard shortcuts (press `?` for the cheat sheet), virtualized log lists for large volumes, URL-persisted view state.
 
-Planned: log persistence and history, alerting on log patterns, custom log parsing rules.
+## Log persistence and history
+
+LogDeck tails every container on every configured host and writes those lines to a SQLite database (`logs.db`, next to the config file — `/data/logs.db` by default). This is what powers History mode. It is a local convenience store, not a log aggregation platform: it is bounded by retention caps and is not replicated anywhere. It is enabled by default.
+
+What survives what — a container's stored history is keyed by host and container *name*, not by engine ID. Each engine container ID is recorded as a separate generation of that name, and queries stitch the generations together in timestamp order:
+
+- Restart (`docker restart`, a crash loop, a restart policy): one continuous timeline.
+- Rebuild or recreate (`docker compose up -d --build`, an image bump, an environment-variable edit made in LogDeck): the new container appends to the same timeline under the same name.
+- Removal: the lines already stored stay readable.
+- Restarting LogDeck itself: on startup it re-reads each container's engine logs from where it left off, so lines emitted while it was down are backfilled.
+
+Limitations, stated plainly:
+
+- Backfill reads what the *engine* still holds. If a container is removed while LogDeck is down, the engine discards its logs with it, and anything LogDeck had not already stored is unrecoverable.
+- Containers whose logging driver has no read API (`awslogs`, `syslog`, `none`, ...) cannot be read at all; they are excluded from the store and the reason is logged.
+- Renaming a container starts a new timeline, because the name is the identity.
+- Aggregated Compose stack logs are live-only; the dashboard's quick-look log sheet is live-only too. History is available on a container's own log page.
+
+Using History mode: the log page toolbar shows a Live | History toggle whenever the store is enabled. In History mode, search (plain or regex), level filter, and time range are applied server-side across everything stored for that container, not just the lines loaded in the browser. Results page backwards from the newest line via a "Load older" button (500 lines per page). Streaming controls (Stream, Pause, tail size, auto-scroll) are hidden. Timestamps, wrapping, selection, pinning, copying, and downloading all still work.
+
+Removed containers: when LogDeck holds stored logs for a container that no longer exists on any host, the dashboard's state summary grows a "Removed" chip. Removed containers are hidden under "All states" — click the chip (or select Removed in the state filter) to list them. Each shows its stored log size instead of CPU/memory and offers one action, "View stored logs". Their log page opens locked to History: no live stream, no terminal, no environment or resources tab.
+
+Retention: two caps, enforced by a sweep every minute that evicts the oldest lines first. Per container (default 50 MB) applies to a logical container — all generations of the same name together, so a rebuilt container does not get a fresh budget. Total (default 1024 MB) applies to the whole store. The database file is never vacuumed: SQLite reuses freed pages, so the file plateaus at its high-water mark rather than shrinking.
+
+Configuration: `logStore` in the config file, with environment overrides that win over it. There is no Settings UI for it.
+
+```json
+{
+  "logStore": {
+    "enabled": true,
+    "perContainerMB": 50,
+    "totalMB": 1024
+  }
+}
+```
+
+Environment overrides: `LOG_STORE_ENABLED`, `LOG_STORE_PER_CONTAINER_MB`, `LOG_STORE_TOTAL_MB`. Non-positive retention values are ignored with a warning. If the database cannot be opened (read-only volume, missing mount), LogDeck logs a warning and runs *without* stored logs — persistence never blocks startup.
+
+History API (read endpoints; a `read`-scoped token can call them):
+
+- `GET /api/v1/history/status` — whether persistence is available (`{"enabled": true}`).
+- `GET /api/v1/history/containers` — every logical container the store knows about, including removed ones, with stored size.
+- `GET /api/v1/history/logs` — one page of stored logs; returns 503 when persistence is disabled. Parameters: `container` (required), `host`, `search`, `regex` (boolean), `levels` (comma-separated, including `UNKNOWN`), `since` and `until` (RFC3339), `limit` (default 500, max 1000), `cursor`. Pages walk backwards; follow the returned `nextCursor` for older lines.
+
+## Alerting
+
+Alert rules match what LogDeck already watches — container events and log lines — and POST a JSON payload to one webhook URL. Manage them under Settings -> Alerts, or with `logdeck alerts`.
+
+Rule types:
+
+- Event rules watch container lifecycle events. Two are alertable: `die` (the container exited — only a **non-zero** exit code fires the rule; a clean exit is not an alert condition) and `oom` (killed by the OOM killer). An OOM kill usually emits `oom` followed by a `die` with code 137; for a rule watching both, LogDeck counts that pair as one incident rather than alerting twice.
+- Log rules match lines as they stream, on a minimum level (any line at that level or more severe; unclassified lines never pass a level filter), an RE2 regex pattern tested against the parsed message and the raw line, or both ANDed.
+
+Targeting: hosts, container names (exact), and Compose projects, combined with AND. An empty dimension matches everything; a rule with no targeting watches every container on every host.
+
+Rate thresholds and cooldowns:
+
+- Threshold and window: fire only after N matches within W seconds. The window defaults to 60 seconds. A threshold of 0 or 1 fires on every match.
+- Cooldown: the minimum time between deliveries for the same rule and container, defaulting to **300 seconds** when unset. Matches during a cooldown are counted, not discarded — the next alert reports how many were suppressed.
+- Threshold and cooldown state is in memory and resets when LogDeck restarts.
+
+The webhook: one URL for the whole instance. Every fired alert is POSTed as JSON:
+
+```json
+{
+  "source": "logdeck",
+  "version": 1,
+  "text": "LogDeck alert: error spike: 5 matches (level >= ERROR) within 60s (prod/api)",
+  "content": "LogDeck alert: error spike: 5 matches (level >= ERROR) within 60s (prod/api)",
+  "alert": {
+    "id": "...",
+    "ruleId": "...",
+    "ruleName": "error spike",
+    "type": "log",
+    "host": "prod",
+    "containerId": "...",
+    "containerName": "api",
+    "reason": "5 matches (level >= ERROR) within 60s",
+    "sample": "level=error msg=\"upstream timeout\"",
+    "count": 5,
+    "suppressed": 0,
+    "firedAt": "2026-07-14T09:31:04Z"
+  }
+}
+```
+
+The same summary is sent twice, as `text` and as `content`: Slack (and Mattermost) render `text`, Discord renders `content`, so their incoming-webhook URLs work as-is with no proxy or template. Anything else that accepts a JSON POST works too — the full alert object is in the body.
+
+Delivery has a 10-second timeout. Network errors and 5xx responses are retried once after 5 seconds; other statuses are permanent. The outcome (status, HTTP code, error) is recorded in the alert history. With no webhook configured, rules still evaluate and fire — alerts are recorded in history and delivered nowhere.
+
+Alert history: the most recent 500 fired alerts, newest first, mirrored to `alerts-history.json` next to the config file (so it survives a restart when that directory is a volume). Each entry records the rule, container and host, reason, a sample line for log rules, the suppressed count, and the delivery result. Available under Settings -> Alerts, via `logdeck alerts history`, or `GET /api/v1/alerts/history`.
+
+Alert rules and the webhook URL are persisted in the config file under `alerts`. There are no alert-related environment variables.
 
 ## CLI reference
 
@@ -167,6 +283,15 @@ Timestamps are RFC3339. No colors, spinners, prompts, or pagination.
 - `env`: print a container's environment variables as `KEY=value` lines. `logdeck env web`
 - `resources`: show or update a container's resource limits and restart policy. Memory accepts human units (`512m`, `1.5g`), CPUs accept fractions. `logdeck resources set web --memory 512m --cpus 1.5 --restart on-failure --max-retries 3`
 - `images` / `volumes` / `networks`: read-only listings across all hosts, with an optional `--host` filter.
+- `alerts`: manage alerting — rules, the webhook destination, and fired-alert history.
+  - `logdeck alerts rules` lists rules with their targets and triggers.
+  - `logdeck alerts rules create --type <log|event> --name <name>` creates one. Event rules take `--events die,oom`. Log rules take `--min-level ERROR` and/or `--pattern <regex>`. `--host`, `--container`, and `--project` (repeatable) narrow which containers the rule watches. `--threshold N` with `--window 60s` requires N matches in the window; `--cooldown 5m` sets the minimum time between deliveries (omitted means the server default of 300s). `--disabled` creates it disabled.
+  - `logdeck alerts rules enable|disable|delete <id>`.
+  - `logdeck alerts webhook` shows the URL; `webhook set <url>` and `webhook clear` change it.
+  - `logdeck alerts test` sends a test delivery and exits 1 if it fails.
+  - `logdeck alerts history [--limit N]` lists recently fired alerts, newest first; `history clear` deletes them.
+
+The CLI has no history/stored-log commands: History mode is a UI and HTTP API feature. Use `GET /api/v1/history/logs` directly for stored logs.
 
 ### Using with AI agents
 
@@ -205,8 +330,26 @@ Notes for agents:
 
 API tokens give the CLI and external tools their own credentials, so the admin login never has to be shared. They are managed entirely in the UI — no environment variables involved:
 
-- Create and revoke tokens under Settings -> API Tokens.
-- Tokens are prefixed `ldk_` and shown in full only once, at creation.
-- Each token has a scope: `admin` (full access) or `read` (read-only: logs, stats, container details, and events, but no mutations, no web terminal, and no access to container environment variables or settings).
+- Create and revoke tokens under Settings -> API Access.
+- Tokens are prefixed `ldk_` and shown in full only once, at creation. Only a hash is stored: a lost token cannot be recovered, only revoked and replaced.
 - Requests authenticate with an `Authorization: Bearer <token>` header.
 - Tokens only matter when authentication is enabled; on an open instance the API is reachable without them.
+
+Each token is created with one of two scopes.
+
+`admin` — full access, equivalent to a logged-in admin session.
+
+`read` — read-only. A read token **can**:
+
+- Read live logs, stored log history, container details, stats, and events.
+- List images, volumes, networks, and hosts.
+- Read alert rules, the alert webhook URL, and alert history.
+
+A read token **cannot**:
+
+- Mutate anything: every request that is not a `GET` is rejected with 403 — no start/stop/restart/remove, no Compose stack actions, no environment or resource edits, and no changes to settings or alert rules.
+- Open the web terminal (`GET /containers/{id}/exec` is denied explicitly).
+- Read a container's environment variables (`GET /containers/{id}/env` is denied explicitly, because they carry secrets).
+- Read the settings endpoint (`/settings/*` is denied for the whole group, because it exposes host topology and the token inventory).
+
+Note that the alert webhook URL *is* readable with a read token. If that URL embeds a secret (Slack and Discord webhook URLs do), treat a read token as sensitive accordingly.

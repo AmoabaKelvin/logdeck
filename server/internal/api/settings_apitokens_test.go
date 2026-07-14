@@ -370,7 +370,7 @@ func TestLegacyAPITokenWithoutScopeIsAdmin(t *testing.T) {
 	svc := newTestAuthService(t)
 	manager := config.NewManager()
 	registry := services.NewRegistry(nil, nil, svc, manager.Config())
-	router := NewRouter(registry, manager, "test")
+	router := NewRouter(registry, manager, nil, nil, "test")
 
 	// The legacy token is listed with an admin scope.
 	w := httptest.NewRecorder()

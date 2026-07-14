@@ -25,7 +25,7 @@ func newTestRouter(t *testing.T, authSvc *auth.Service) http.Handler {
 
 	manager := config.NewManager()
 	registry := services.NewRegistry(nil, nil, authSvc, manager.Config())
-	return NewRouter(registry, manager, nil, "test")
+	return NewRouter(registry, manager, nil, nil, "test")
 }
 
 func newTestAuthService(t *testing.T) *auth.Service {

@@ -426,7 +426,7 @@ func TestEngineDeliversToWebhook(t *testing.T) {
 	var payloads []webhookPayload
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var p webhookPayload
-		json.NewDecoder(r.Body).Decode(&p)
+		_ = json.NewDecoder(r.Body).Decode(&p)
 		mu.Lock()
 		payloads = append(payloads, p)
 		mu.Unlock()

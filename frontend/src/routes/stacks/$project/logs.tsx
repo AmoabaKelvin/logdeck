@@ -17,9 +17,14 @@ import type { AggregateLogTarget } from "@/features/containers/api/get-aggregate
 import {
 	formatContainerName,
 	getComposeProject,
+	selectStackMembers,
+	synthesizeRemovedContainers,
 } from "@/features/containers/components/container-utils";
 import { LogViewer } from "@/features/containers/components/log-viewer/log-viewer";
 import { useUrlLogViewState } from "@/features/containers/components/log-viewer/use-log-view-state";
+import { StackMembersCard } from "@/features/containers/components/stack-members-card";
+import { useHistoryContainers } from "@/features/containers/hooks/use-history-containers";
+import { useHistoryStatus } from "@/features/containers/hooks/use-history-status";
 import { useLiveContainersQuery } from "@/features/containers/hooks/use-live-containers-query";
 import { requireAuthIfEnabled } from "@/lib/auth-guard";
 
@@ -41,6 +46,19 @@ function StackLogsPage() {
 
 	const { data: containersData } = useLiveContainersQuery();
 	const containers = containersData?.containers ?? [];
+
+	// Members that were torn down keep their stored logs, so the stack still
+	// lists them — they just cannot join the live aggregated stream.
+	const { data: historyStatus } = useHistoryStatus();
+	const isHistoryEnabled = historyStatus?.enabled === true;
+	const { data: storedContainers } = useHistoryContainers(isHistoryEnabled);
+	const members = useMemo(() => {
+		const removed =
+			isHistoryEnabled && storedContainers
+				? synthesizeRemovedContainers(storedContainers, containers)
+				: [];
+		return selectStackMembers(containers, removed, project);
+	}, [containers, storedContainers, isHistoryEnabled, project]);
 
 	const targets: AggregateLogTarget[] | undefined = useMemo(() => {
 		const stackContainers = containers.filter(
@@ -85,6 +103,12 @@ function StackLogsPage() {
 						</div>
 						<ThemeToggle />
 					</div>
+
+					{/* Stack Members */}
+					<StackMembersCard
+						members={members}
+						isReadOnly={containersData?.readOnly ?? false}
+					/>
 
 					{/* Aggregated Logs Card */}
 					<LogViewer

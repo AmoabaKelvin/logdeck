@@ -7,19 +7,31 @@ import type { GetContainersResponse } from "../api/get-containers";
 import { useContainerActions } from "../hooks/use-container-actions";
 import { useContainerStats } from "../hooks/use-container-stats";
 import { useContainersDashboardUrlState } from "../hooks/use-containers-dashboard-url-state";
+import { useDeleteHistoryContainer } from "../hooks/use-delete-history-container";
+import { useHistoryContainers } from "../hooks/use-history-containers";
+import { useHistoryStatus } from "../hooks/use-history-status";
 import { useHostsStats } from "../hooks/use-hosts-stats";
 import { useLiveContainersQuery } from "../hooks/use-live-containers-query";
 import { useSystemUsageHistory } from "../hooks/use-stats-history";
 import { useSystemStats } from "../hooks/use-system-stats";
 import type { ContainerInfo } from "../types";
 import { ConfirmActionDialog } from "./confirm-action-dialog";
-import { getInitialStateCounts, groupByCompose } from "./container-utils";
+import {
+	countContainerStates,
+	getContainerUrlIdentifier,
+	groupByCompose,
+	REMOVED_STATE,
+	selectVisibleContainers,
+	synthesizeRemovedContainers,
+} from "./container-utils";
 import { ContainersLogsSheet } from "./containers-logs-sheet";
 import { ContainersPagination } from "./containers-pagination";
 import { ContainersStateSummary } from "./containers-state-summary";
 import { ContainersSummaryCards } from "./containers-summary-cards";
 import { ContainersTable } from "./containers-table";
 import { ContainersToolbar } from "./containers-toolbar";
+import type { PurgeHistoryTarget } from "./purge-history-dialog";
+import { PurgeHistoryDialog } from "./purge-history-dialog";
 
 export function ContainersDashboard() {
 	const queryClient = useQueryClient();
@@ -34,6 +46,19 @@ export function ContainersDashboard() {
 	const hosts = data?.hosts ?? [];
 	const hostErrors = data?.hostErrors ?? [];
 	const { data: hostsStatsData } = useHostsStats(hosts.length > 1);
+
+	// Containers that were removed but still have stored logs show up as an extra
+	// dashboard state. Without log persistence there is nothing to synthesize.
+	const { data: historyStatus } = useHistoryStatus();
+	const isHistoryEnabled = historyStatus?.enabled === true;
+	const { data: storedContainers } = useHistoryContainers(isHistoryEnabled);
+	const removedContainers = useMemo(
+		() =>
+			isHistoryEnabled && storedContainers
+				? synthesizeRemovedContainers(storedContainers, containers)
+				: [],
+		[isHistoryEnabled, storedContainers, containers],
+	);
 
 	useEffect(() => {
 		for (const he of hostErrors) {
@@ -79,6 +104,10 @@ export function ContainersDashboard() {
 	const [selectedContainer, setSelectedContainer] =
 		useState<ContainerInfo | null>(null);
 	const [isLogsSheetOpen, setIsLogsSheetOpen] = useState(false);
+	const [purgeTarget, setPurgeTarget] = useState<PurgeHistoryTarget | null>(
+		null,
+	);
+	const purgeHistory = useDeleteHistoryContainer();
 
 	const {
 		pendingActions,
@@ -136,18 +165,31 @@ export function ContainersDashboard() {
 				unique.add(container.state.toLowerCase());
 			}
 		});
+		if (removedContainers.length > 0) {
+			unique.add(REMOVED_STATE);
+		}
 		return Array.from(unique).sort();
-	}, [containers]);
+	}, [containers, removedContainers]);
 
 	const filteredContainers = useMemo(() => {
-		const filtered = containers.filter((container) =>
+		const filtered = selectVisibleContainers(
+			containers,
+			removedContainers,
+			stateFilter,
+		).filter((container) =>
 			matchesFilters(container, { includeStateFilter: true }),
 		);
 
 		return filtered.sort((a, b) =>
 			sortDirection === "desc" ? b.created - a.created : a.created - b.created,
 		);
-	}, [containers, matchesFilters, sortDirection]);
+	}, [
+		containers,
+		removedContainers,
+		stateFilter,
+		matchesFilters,
+		sortDirection,
+	]);
 
 	const totalPages =
 		filteredContainers.length === 0
@@ -177,25 +219,15 @@ export function ContainersDashboard() {
 		return groupByCompose(pageItems);
 	}, [pageItems, groupBy]);
 
-	const stateCounts = useMemo(() => {
-		const counts = getInitialStateCounts();
-
-		// Filter by host, search, and date - but NOT by state filter
-		// This way state counts reflect the current host selection
-		containers.forEach((container) => {
-			if (matchesFilters(container, { includeStateFilter: false })) {
-				const state = container.state.toLowerCase();
-				if (state === "running") counts.running++;
-				else if (state === "exited") counts.exited++;
-				else if (state === "paused") counts.paused++;
-				else if (state === "restarting") counts.restarting++;
-				else if (state === "dead") counts.dead++;
-				else counts.other++;
-			}
-		});
-
-		return counts;
-	}, [containers, matchesFilters]);
+	// Filter by host, search, and date - but NOT by state filter
+	// This way state counts reflect the current host selection
+	const stateCounts = useMemo(
+		() =>
+			countContainerStates(containers, removedContainers, (container) =>
+				Boolean(matchesFilters(container, { includeStateFilter: false })),
+			),
+		[containers, removedContainers, matchesFilters],
+	);
 
 	const handleViewLogs = (container: ContainerInfo) => {
 		setSelectedContainer(container);
@@ -207,6 +239,14 @@ export function ContainersDashboard() {
 		if (!open) {
 			setSelectedContainer(null);
 		}
+	};
+
+	const handleConfirmPurge = () => {
+		if (!purgeTarget) return;
+		purgeHistory.mutate(
+			{ name: purgeTarget.name, host: purgeTarget.host },
+			{ onSettled: () => setPurgeTarget(null) },
+		);
 	};
 
 	const handleContainerRecreated = async (newContainerId: string) => {
@@ -259,13 +299,22 @@ export function ContainersDashboard() {
 					isFetching={isFetching}
 				/>
 
-				<ContainersStateSummary stateCounts={stateCounts} />
+				<ContainersStateSummary
+					stateCounts={stateCounts}
+					stateFilter={stateFilter}
+					onStateFilterChange={setStateFilter}
+				/>
 
 				<ContainersTable
 					isLoading={isLoading}
 					isError={isError}
 					error={error}
 					groupBy={groupBy}
+					emptyMessage={
+						stateFilter === REMOVED_STATE
+							? "No removed containers with stored logs."
+							: "No containers found."
+					}
 					filteredContainers={filteredContainers}
 					groupedItems={groupedItems}
 					pageItems={pageItems}
@@ -280,6 +329,13 @@ export function ContainersDashboard() {
 					onDelete={deleteContainerAction}
 					onComposeAction={composeAction}
 					onViewLogs={handleViewLogs}
+					onPurgeHistory={(container) =>
+						setPurgeTarget({
+							name: getContainerUrlIdentifier(container),
+							host: container.host,
+							removed: true,
+						})
+					}
 					onRetry={() => {
 						void refetch();
 					}}
@@ -304,6 +360,15 @@ export function ContainersDashboard() {
 					void confirmPendingAction();
 				}}
 				onOpenChange={handleConfirmDialogOpenChange}
+			/>
+
+			<PurgeHistoryDialog
+				target={purgeTarget}
+				isPending={purgeHistory.isPending}
+				onConfirm={handleConfirmPurge}
+				onOpenChange={(open) => {
+					if (!open) setPurgeTarget(null);
+				}}
 			/>
 
 			<ContainersLogsSheet
