@@ -289,6 +289,43 @@ func TestOOMEventFires(t *testing.T) {
 	}
 }
 
+func TestUnhealthyEventFires(t *testing.T) {
+	te := startTestEngine(t, config.AlertRule{
+		ID: "e1", Name: "Health check failing", Enabled: true, Type: "event", Events: []string{"unhealthy"}, Threshold: 1,
+	})
+
+	te.events.ch <- docker.EngineEvent{
+		Host: "local", ContainerID: "c1", ContainerName: "web", Action: "health_status: unhealthy", HealthStatus: "unhealthy",
+	}
+
+	waitFor(t, "unhealthy alert", func() bool { return len(te.e.History(0)) == 1 })
+	a := te.e.History(0)[0]
+	if a.Type != "event" || a.RuleID != "e1" || a.Reason != "container became unhealthy" {
+		t.Fatalf("alert = %+v", a)
+	}
+	if a.Sample != "unhealthy" {
+		t.Fatalf("sample = %q", a.Sample)
+	}
+}
+
+func TestHealthyAndStartingTransitionsDoNotFire(t *testing.T) {
+	unhealthy := config.AlertRule{ID: "e1", Name: "unhealthy", Enabled: true, Type: "event", Events: []string{"unhealthy"}, Threshold: 1}
+	flush := config.AlertRule{ID: "e2", Name: "flush", Enabled: true, Type: "event", Events: []string{"die"}, Threshold: 1}
+	te := startTestEngine(t, unhealthy, flush)
+
+	// Recovery transitions must not fire the unhealthy rule.
+	te.events.ch <- docker.EngineEvent{Host: "local", ContainerID: "c1", ContainerName: "web", Action: "health_status: healthy", HealthStatus: "healthy"}
+	te.events.ch <- docker.EngineEvent{Host: "local", ContainerID: "c1", ContainerName: "web", Action: "health_status: starting", HealthStatus: "starting"}
+	// The die event proves the run loop has consumed the health events before
+	// we assert; only it may appear in history.
+	te.events.ch <- docker.EngineEvent{Host: "local", ContainerID: "c1", ContainerName: "web", Action: "die", ExitCode: "1"}
+
+	waitFor(t, "flush die alert", func() bool { return len(te.e.History(0)) == 1 })
+	if got := te.e.History(0)[0].RuleID; got != "e2" {
+		t.Fatalf("history = %+v, want only the die alert (healthy/starting must not fire)", te.e.History(0))
+	}
+}
+
 func TestOOMThenDieCountsOnceForRuleWatchingBoth(t *testing.T) {
 	both := config.AlertRule{ID: "both", Name: "both", Enabled: true, Type: "event", Events: []string{"die", "oom"}, Threshold: 2, WindowSeconds: 60}
 	dieOnly := config.AlertRule{ID: "die-only", Name: "die only", Enabled: true, Type: "event", Events: []string{"die"}, Threshold: 1}

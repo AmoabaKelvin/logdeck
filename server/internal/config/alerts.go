@@ -20,7 +20,7 @@ type AlertRule struct {
 	Projects   []string `json:"projects,omitempty"`   // compose projects
 
 	// Event rules.
-	Events []string `json:"events,omitempty"` // "die" | "oom"
+	Events []string `json:"events,omitempty"` // "die" | "oom" | "unhealthy"
 
 	// Log rules.
 	MinLevel string `json:"minLevel,omitempty"`

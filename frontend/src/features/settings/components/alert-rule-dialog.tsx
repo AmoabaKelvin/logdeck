@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
 	ArrowLeftIcon,
 	CheckIcon,
+	HeartPulseIcon,
 	type LucideIcon,
 	MemoryStickIcon,
 	OctagonXIcon,
@@ -62,6 +63,7 @@ interface FormState {
 	pattern: string;
 	die: boolean;
 	oom: boolean;
+	unhealthy: boolean;
 	rateEnabled: boolean;
 	threshold: string;
 	windowSeconds: string;
@@ -79,6 +81,7 @@ const EMPTY_FORM: FormState = {
 	pattern: "",
 	die: false,
 	oom: false,
+	unhealthy: false,
 	rateEnabled: false,
 	threshold: "1",
 	windowSeconds: "",
@@ -131,6 +134,14 @@ const PRESETS: Preset[] = [
 		focus: null,
 	},
 	{
+		id: "unhealthy",
+		icon: HeartPulseIcon,
+		title: "Health check failing",
+		description: "A container's health check transitions to unhealthy.",
+		form: { name: "Health check failing", type: "event", unhealthy: true },
+		focus: null,
+	},
+	{
 		id: "error-spike",
 		icon: TrendingUpIcon,
 		title: "Error spike",
@@ -172,6 +183,7 @@ function ruleToForm(rule: AlertRule): FormState {
 		pattern: rule.pattern ?? "",
 		die: rule.events?.includes("die") ?? false,
 		oom: rule.events?.includes("oom") ?? false,
+		unhealthy: rule.events?.includes("unhealthy") ?? false,
 		rateEnabled: rule.threshold > 1 || Boolean(rule.windowSeconds),
 		threshold: String(rule.threshold),
 		windowSeconds: rule.windowSeconds ? String(rule.windowSeconds) : "",
@@ -210,6 +222,7 @@ function buildPayload(
 		const events: AlertEventKind[] = [];
 		if (form.die) events.push("die");
 		if (form.oom) events.push("oom");
+		if (form.unhealthy) events.push("unhealthy");
 		if (events.length === 0) {
 			return { error: "Event rules need at least one event" };
 		}
@@ -273,7 +286,11 @@ function summarize(form: FormState): string {
 		}
 	} else {
 		const events =
-			[form.die ? "dies" : "", form.oom ? "runs out of memory" : ""]
+			[
+				form.die ? "dies" : "",
+				form.oom ? "runs out of memory" : "",
+				form.unhealthy ? "becomes unhealthy" : "",
+			]
 				.filter(Boolean)
 				.join(" or ") || "…";
 		condition = form.rateEnabled
@@ -636,6 +653,11 @@ function RuleEditor({
 							label="Out of memory"
 							pressed={form.oom}
 							onToggle={() => set("oom", !form.oom)}
+						/>
+						<ToggleChip
+							label="Unhealthy"
+							pressed={form.unhealthy}
+							onToggle={() => set("unhealthy", !form.unhealthy)}
 						/>
 					</div>
 				)}

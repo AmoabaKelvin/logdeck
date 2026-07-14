@@ -4,7 +4,7 @@ import { API_BASE_URL } from "@/types/api";
 const ENDPOINT = `${API_BASE_URL}/api/v1/alerts/rules`;
 
 export type AlertRuleType = "event" | "log";
-export type AlertEventKind = "die" | "oom";
+export type AlertEventKind = "die" | "oom" | "unhealthy";
 
 export interface AlertRule {
 	id: string;

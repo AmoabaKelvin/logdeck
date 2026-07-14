@@ -218,11 +218,11 @@ func newAlertRuleCreateCmd(a *app) *cobra.Command {
 				}
 			case "event":
 				if len(events) == 0 {
-					return fmt.Errorf("--events is required for --type event (die, oom)")
+					return fmt.Errorf("--events is required for --type event (die, oom, unhealthy)")
 				}
 				for _, e := range events {
-					if e != "die" && e != "oom" {
-						return fmt.Errorf("invalid event %q (must be die or oom)", e)
+					if e != "die" && e != "oom" && e != "unhealthy" {
+						return fmt.Errorf("invalid event %q (must be die, oom, or unhealthy)", e)
 					}
 				}
 				if minLevel != "" {
@@ -283,7 +283,7 @@ func newAlertRuleCreateCmd(a *app) *cobra.Command {
 	cmd.Flags().StringSliceVar(&hosts, "host", nil, "limit to these hosts (repeatable)")
 	cmd.Flags().StringSliceVar(&containers, "container", nil, "limit to these container names (repeatable)")
 	cmd.Flags().StringSliceVar(&projects, "project", nil, "limit to these compose projects (repeatable)")
-	cmd.Flags().StringSliceVar(&events, "events", nil, "events to match: die, oom (only with --type event)")
+	cmd.Flags().StringSliceVar(&events, "events", nil, "events to match: die, oom, unhealthy (only with --type event)")
 	cmd.Flags().StringVar(&minLevel, "min-level", "", "minimum log level to match, e.g. ERROR (only with --type log)")
 	cmd.Flags().StringVar(&pattern, "pattern", "", "regex the log message must match (only with --type log)")
 	cmd.Flags().IntVar(&threshold, "threshold", 0, "fire only after this many matches within --window")

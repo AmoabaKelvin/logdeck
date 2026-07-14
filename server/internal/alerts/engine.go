@@ -450,8 +450,9 @@ func (e *Engine) handleMatch(st *runState, m matchMsg) {
 	e.emit(m.rule, m.host, m.containerID, m.containerName, logReason(m.rule), m.sample, res.suppressed)
 }
 
-// handleEvent routes one engine event. Only die and oom can fire rules; the
-// other watched actions exist for the log hub and are ignored here.
+// handleEvent routes one engine event. Only die, oom, and unhealthy health
+// transitions can fire rules; the other watched actions exist for the log hub
+// and are ignored here.
 func (e *Engine) handleEvent(st *runState, ev docker.EngineEvent) {
 	base, _, _ := strings.Cut(ev.Action, ": ")
 	switch base {
@@ -466,6 +467,12 @@ func (e *Engine) handleEvent(st *runState, ev docker.EngineEvent) {
 		}
 	case "oom":
 		e.recordEventMatch(st, ev, "oom", "")
+	case "health_status":
+		// Only the unhealthy transition is an alert; healthy/starting are
+		// recoveries, not alerts.
+		if ev.HealthStatus == "unhealthy" {
+			e.recordEventMatch(st, ev, "unhealthy", "")
+		}
 	}
 }
 
@@ -672,10 +679,16 @@ func eventReason(rule *compiledRule, action, exitCode string) string {
 		if action == "oom" {
 			return "container OOM-killed"
 		}
+		if action == "unhealthy" {
+			return "container became unhealthy"
+		}
 		return fmt.Sprintf("container died (exit %s)", exitCode)
 	}
 	if action == "oom" {
 		return fmt.Sprintf("%d OOM kills within %ds", rule.threshold, int(rule.window.Seconds()))
+	}
+	if action == "unhealthy" {
+		return fmt.Sprintf("%d unhealthy transitions within %ds", rule.threshold, int(rule.window.Seconds()))
 	}
 	return fmt.Sprintf("%d container deaths within %ds (last exit %s)", rule.threshold, int(rule.window.Seconds()), exitCode)
 }
@@ -684,6 +697,9 @@ func eventReason(rule *compiledRule, action, exitCode string) string {
 func eventSample(action, exitCode string) string {
 	if action == "oom" {
 		return "oom"
+	}
+	if action == "unhealthy" {
+		return "unhealthy"
 	}
 	return "die (exit " + exitCode + ")"
 }

@@ -32,7 +32,7 @@ type compiledRule struct {
 	// logstream.ContainerSpec.Matches.
 	spec logstream.ContainerSpec
 
-	events []string // event rules: "die" | "oom"
+	events []string // event rules: "die" | "oom" | "unhealthy"
 
 	minLevel    string // normalized upper-case, "" when unset
 	minSeverity int    // >= 1 when minLevel is set; UNKNOWN (0) never passes

@@ -66,8 +66,9 @@ var validAlertMinLevels = map[string]bool{
 }
 
 var validAlertEvents = map[string]bool{
-	"die": true,
-	"oom": true,
+	"die":       true,
+	"oom":       true,
+	"unhealthy": true,
 }
 
 // buildAlertRule validates and normalizes a rule request into a config rule.
@@ -126,7 +127,7 @@ func buildAlertRule(req alertRuleRequest) (config.AlertRule, error) {
 		}
 		for _, ev := range rule.Events {
 			if !validAlertEvents[ev] {
-				return rule, fmt.Errorf("events contains invalid value %q (must be \"die\" or \"oom\")", ev)
+				return rule, fmt.Errorf("events contains invalid value %q (must be \"die\", \"oom\", or \"unhealthy\")", ev)
 			}
 		}
 		if rule.MinLevel != "" {

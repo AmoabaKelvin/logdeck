@@ -89,8 +89,47 @@ func TestMapEngineEventOOMPassesThrough(t *testing.T) {
 	}
 }
 
+func TestMapEngineEventHealthStatusDockerSuffix(t *testing.T) {
+	msg := events.Message{
+		Type:   events.ContainerEventType,
+		Action: "health_status: unhealthy",
+		Actor:  events.Actor{ID: "abc123", Attributes: map[string]string{"name": "web"}},
+		Time:   1700000000,
+	}
+
+	event, ok := mapEngineEvent("local", msg)
+	if !ok {
+		t.Fatal("expected health_status event to be mapped")
+	}
+	if event.HealthStatus != "unhealthy" {
+		t.Fatalf("expected health status %q, got %q", "unhealthy", event.HealthStatus)
+	}
+}
+
+func TestMapEngineEventHealthStatusPodmanAttribute(t *testing.T) {
+	// Podman emits the bare "health_status" action and carries the state in
+	// Actor.Attributes instead of the action suffix.
+	msg := events.Message{
+		Type:   events.ContainerEventType,
+		Action: "health_status",
+		Actor: events.Actor{
+			ID:         "abc123",
+			Attributes: map[string]string{"name": "web", "health_status": "unhealthy"},
+		},
+		Time: 1700000000,
+	}
+
+	event, ok := mapEngineEvent("local", msg)
+	if !ok {
+		t.Fatal("expected health_status event to be mapped")
+	}
+	if event.HealthStatus != "unhealthy" {
+		t.Fatalf("expected health status %q, got %q", "unhealthy", event.HealthStatus)
+	}
+}
+
 func TestMapEngineEventSkipsUnwatchedActions(t *testing.T) {
-	for _, action := range []events.Action{"create", "pause", "exec_start: bash", "health_status: unhealthy"} {
+	for _, action := range []events.Action{"create", "pause", "exec_start: bash"} {
 		msg := events.Message{
 			Type:   events.ContainerEventType,
 			Action: action,

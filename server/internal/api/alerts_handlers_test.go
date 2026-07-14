@@ -160,6 +160,14 @@ func TestAlertRulesCRUDRoundTrip(t *testing.T) {
 	}
 }
 
+func TestCreateAlertRuleAcceptsUnhealthyEvent(t *testing.T) {
+	router, _ := newAlertsTestRouter(t, nil)
+	created := createAlertRule(t, router, `{"name":"health check failing","type":"event","events":["unhealthy"]}`)
+	if len(created.Events) != 1 || created.Events[0] != "unhealthy" {
+		t.Fatalf("unexpected events: %v", created.Events)
+	}
+}
+
 var alertRuleValidationCases = []struct{ name, body string }{
 	{"invalid json", `{`},
 	{"missing name", `{"type":"log","minLevel":"ERROR"}`},

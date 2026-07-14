@@ -47,7 +47,7 @@ export default function AlertingPage() {
 
         <h3 className="mb-3 mt-8 text-xl font-semibold">Event rules</h3>
         <p className="mb-4 text-base">
-          Event rules watch container lifecycle events. Two are alertable:
+          Event rules watch container lifecycle events. Three are alertable:
         </p>
         <ul className="mb-4 space-y-2">
           <li>
@@ -58,6 +58,11 @@ export default function AlertingPage() {
           </li>
           <li>
             <code>oom</code> — the container was killed by the OOM killer.
+          </li>
+          <li>
+            <code>unhealthy</code> — the container&apos;s health check
+            transitioned to unhealthy. Recoveries (healthy/starting) do not
+            fire.
           </li>
         </ul>
         <p className="mb-6 text-base">

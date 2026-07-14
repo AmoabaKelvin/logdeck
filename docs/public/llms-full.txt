@@ -169,7 +169,7 @@ Alert rules match what LogDeck already watches — container events and log line
 
 Rule types:
 
-- Event rules watch container lifecycle events. Two are alertable: `die` (the container exited — only a **non-zero** exit code fires the rule; a clean exit is not an alert condition) and `oom` (killed by the OOM killer). An OOM kill usually emits `oom` followed by a `die` with code 137; for a rule watching both, LogDeck counts that pair as one incident rather than alerting twice.
+- Event rules watch container lifecycle events. Three are alertable: `die` (the container exited — only a **non-zero** exit code fires the rule; a clean exit is not an alert condition), `oom` (killed by the OOM killer), and `unhealthy` (the container's health check transitioned to unhealthy; recoveries do not fire). An OOM kill usually emits `oom` followed by a `die` with code 137; for a rule watching both, LogDeck counts that pair as one incident rather than alerting twice.
 - Log rules match lines as they stream, on a minimum level (any line at that level or more severe; unclassified lines never pass a level filter), an RE2 regex pattern tested against the parsed message and the raw line, or both ANDed.
 
 Targeting: hosts, container names (exact), and Compose projects, combined with AND. An empty dimension matches everything; a rule with no targeting watches every container on every host.
@@ -285,7 +285,7 @@ Timestamps are RFC3339. No colors, spinners, prompts, or pagination.
 - `images` / `volumes` / `networks`: read-only listings across all hosts, with an optional `--host` filter.
 - `alerts`: manage alerting — rules, the webhook destination, and fired-alert history.
   - `logdeck alerts rules` lists rules with their targets and triggers.
-  - `logdeck alerts rules create --type <log|event> --name <name>` creates one. Event rules take `--events die,oom`. Log rules take `--min-level ERROR` and/or `--pattern <regex>`. `--host`, `--container`, and `--project` (repeatable) narrow which containers the rule watches. `--threshold N` with `--window 60s` requires N matches in the window; `--cooldown 5m` sets the minimum time between deliveries (omitted means the server default of 300s). `--disabled` creates it disabled.
+  - `logdeck alerts rules create --type <log|event> --name <name>` creates one. Event rules take `--events die,oom,unhealthy`. Log rules take `--min-level ERROR` and/or `--pattern <regex>`. `--host`, `--container`, and `--project` (repeatable) narrow which containers the rule watches. `--threshold N` with `--window 60s` requires N matches in the window; `--cooldown 5m` sets the minimum time between deliveries (omitted means the server default of 300s). `--disabled` creates it disabled.
   - `logdeck alerts rules enable|disable|delete <id>`.
   - `logdeck alerts webhook` shows the URL; `webhook set <url>` and `webhook clear` change it.
   - `logdeck alerts test` sends a test delivery and exits 1 if it fails.
