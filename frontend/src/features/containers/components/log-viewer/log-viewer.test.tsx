@@ -4,16 +4,45 @@ import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { LogEntry } from "@/features/containers/api/get-container-logs-parsed";
+import type {
+	HistoryLogsPage,
+	HistoryStatus,
+} from "@/features/containers/api/get-history";
 import { LogViewer } from "./log-viewer";
 import { useLocalLogViewState } from "./use-log-view-state";
 
-// These tests cover the live path; with persistence off the viewer never
-// leaves it and the source toggle stays hidden.
-vi.mock("@/features/containers/api/get-history", () => ({
-	getHistoryStatus: vi.fn().mockResolvedValue({ enabled: false }),
-	getHistoryContainers: vi.fn().mockResolvedValue([]),
-	getHistoryLogs: vi.fn().mockResolvedValue({ logs: [], count: 0 }),
+const historyMocks = vi.hoisted(() => ({
+	getHistoryStatus: vi.fn<() => Promise<{ enabled: boolean }>>(),
+	getHistoryLogs: vi.fn<(params: { cursor?: string }) => Promise<unknown>>(),
 }));
+
+vi.mock("@/features/containers/api/get-history", () => ({
+	getHistoryStatus: historyMocks.getHistoryStatus,
+	getHistoryContainers: vi.fn().mockResolvedValue([]),
+	getHistoryLogs: historyMocks.getHistoryLogs,
+}));
+
+const toastMocks = vi.hoisted(() => ({
+	error: vi.fn(),
+	success: vi.fn(),
+	info: vi.fn(),
+}));
+
+vi.mock("sonner", () => ({ toast: toastMocks }));
+
+// Persistence off by default: the viewer never leaves the live path and the
+// source toggle stays hidden. The history suite overrides these.
+beforeEach(() => {
+	historyMocks.getHistoryStatus
+		.mockReset()
+		.mockResolvedValue({ enabled: false } satisfies HistoryStatus);
+	historyMocks.getHistoryLogs
+		.mockReset()
+		.mockResolvedValue({ logs: [], count: 0 } satisfies HistoryLogsPage);
+	toastMocks.error.mockReset();
+	toastMocks.success.mockReset();
+	toastMocks.info.mockReset();
+});
 
 const mocks = vi.hoisted(() => ({
 	getLogs: vi.fn<() => Promise<LogEntry[]>>(),
@@ -232,5 +261,162 @@ describe("LogViewer shortcut help overlay", () => {
 			fireEvent.keyDown(window, { key: "?", shiftKey: true });
 		});
 		expect(screen.queryByText("Keyboard shortcuts")).toBeNull();
+	});
+});
+
+describe("LogViewer history mode", () => {
+	const storedPage = (
+		messages: string[],
+		nextCursor?: string,
+	): HistoryLogsPage => ({
+		logs: messages.map((message) => ({
+			level: "INFO",
+			message,
+			timestamp: "2023-11-14T22:13:20.000Z",
+		})),
+		count: messages.length,
+		nextCursor,
+	});
+
+	// jsdom reports every element as zero-sized, and the virtualizer renders no
+	// rows when its scroll element measures 0px tall. Hand out a row-sized box so
+	// the stored entries actually reach the DOM.
+	const ROW_HEIGHT = 36;
+	const originalOffsetHeight = Object.getOwnPropertyDescriptor(
+		HTMLElement.prototype,
+		"offsetHeight",
+	);
+	const originalOffsetWidth = Object.getOwnPropertyDescriptor(
+		HTMLElement.prototype,
+		"offsetWidth",
+	);
+
+	beforeEach(() => {
+		vi.useFakeTimers();
+		mocks.getLogs.mockReset().mockResolvedValue([]);
+		mocks.streamLogs.mockReset();
+		historyMocks.getHistoryStatus.mockResolvedValue({ enabled: true });
+		Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+			configurable: true,
+			get: () => ROW_HEIGHT,
+		});
+		Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
+			configurable: true,
+			get: () => 800,
+		});
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		if (originalOffsetHeight) {
+			Object.defineProperty(
+				HTMLElement.prototype,
+				"offsetHeight",
+				originalOffsetHeight,
+			);
+		}
+		if (originalOffsetWidth) {
+			Object.defineProperty(
+				HTMLElement.prototype,
+				"offsetWidth",
+				originalOffsetWidth,
+			);
+		}
+	});
+
+	// React Query notifies its subscribers through setTimeout(0), which the fake
+	// timers hold: a resolved page only reaches the component once they advance.
+	async function settleQueries() {
+		await act(async () => {
+			await drainMicrotasks();
+			vi.advanceTimersByTime(1);
+			await drainMicrotasks();
+		});
+	}
+
+	// Renders the viewer (live, as always) and flips the source toggle to
+	// History, which is the only way into the stored-logs path.
+	async function switchToHistory() {
+		await act(async () => {
+			render(<Harness />);
+			await drainMicrotasks();
+		});
+		await settleQueries();
+
+		// The toggle is only offered once the server reports persistence is on.
+		expect(screen.getByRole("button", { name: "Live" })).toBeTruthy();
+		const historyButton = screen.getByRole("button", { name: "History" });
+
+		await act(async () => {
+			fireEvent.click(historyButton);
+		});
+		await settleQueries();
+	}
+
+	it("shows the source toggle and renders stored entries in history mode", async () => {
+		historyMocks.getHistoryLogs.mockResolvedValue(
+			storedPage(["stored one", "stored two"]),
+		);
+
+		await switchToHistory();
+
+		expect(historyMocks.getHistoryLogs).toHaveBeenCalledTimes(1);
+		expect(screen.getByText("stored one")).toBeTruthy();
+		expect(screen.getByText("stored two")).toBeTruthy();
+		// Nothing older to fetch, so the list says so instead of offering a button.
+		expect(screen.getByText("Beginning of stored history")).toBeTruthy();
+	});
+
+	it("appends an older page when Load older is clicked", async () => {
+		historyMocks.getHistoryLogs.mockImplementation(async ({ cursor }) =>
+			cursor
+				? storedPage(["older one", "older two"])
+				: storedPage(["newer one", "newer two"], "cursor-1"),
+		);
+
+		await switchToHistory();
+		expect(screen.queryByText("older one")).toBeNull();
+
+		await act(async () => {
+			fireEvent.click(screen.getByRole("button", { name: "Load older" }));
+		});
+		await settleQueries();
+
+		// Older entries land ahead of the ones already loaded.
+		expect(screen.getByText("older one")).toBeTruthy();
+		expect(screen.getByText("newer one")).toBeTruthy();
+		expect(screen.getByText("Beginning of stored history")).toBeTruthy();
+	});
+
+	it("toasts when loading an older page fails", async () => {
+		historyMocks.getHistoryLogs.mockImplementation(async ({ cursor }) => {
+			if (cursor) throw new Error("store unavailable");
+			return storedPage(["newer one"], "cursor-1");
+		});
+
+		await switchToHistory();
+		expect(toastMocks.error).not.toHaveBeenCalled();
+
+		await act(async () => {
+			fireEvent.click(screen.getByRole("button", { name: "Load older" }));
+		});
+		await settleQueries();
+
+		// The loaded page is still on screen, so the empty state cannot explain
+		// the failure: without the toast the spinner would just vanish.
+		expect(screen.getByText("newer one")).toBeTruthy();
+		expect(toastMocks.error).toHaveBeenCalledTimes(1);
+		expect(toastMocks.error).toHaveBeenCalledWith(
+			"Failed to load stored logs: store unavailable",
+		);
+	});
+
+	it("explains an empty store through the empty state", async () => {
+		historyMocks.getHistoryLogs.mockResolvedValue(storedPage([]));
+
+		await switchToHistory();
+
+		expect(screen.getByText("No stored logs match these filters")).toBeTruthy();
+		expect(toastMocks.error).not.toHaveBeenCalled();
 	});
 });

@@ -212,6 +212,21 @@ export function LogViewer({
 		regex: useRegex,
 	});
 
+	// A failure with nothing on screen already explains itself through the empty
+	// state; a failed "Load older" leaves the loaded pages up, so the only
+	// feedback would be the spinner disappearing. Toast that case. Keyed on the
+	// error object so one failure reports once, not once per render.
+	const reportedHistoryErrorRef = useRef<Error | null>(null);
+	useEffect(() => {
+		if (!isHistory || !historyError || historyLogs.length === 0) {
+			reportedHistoryErrorRef.current = null;
+			return;
+		}
+		if (reportedHistoryErrorRef.current === historyError) return;
+		reportedHistoryErrorRef.current = historyError;
+		toast.error(`Failed to load stored logs: ${historyError.message}`);
+	}, [isHistory, historyError, historyLogs.length]);
+
 	const {
 		animatedRange: liveAnimatedRange,
 		bufferedCount,
