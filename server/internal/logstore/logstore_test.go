@@ -1366,3 +1366,182 @@ func TestUnreachableHostDoesNotStallTheSyncLoop(t *testing.T) {
 		t.Fatal("sync never returned: an unreachable host stalls the lifecycle loop")
 	}
 }
+
+// TestFailedCommitMarksAGapSoTheLinesAreReRead covers the writer's own failure
+// path: a transaction that dies (disk I/O, a lock held past the busy timeout)
+// drops its whole batch. Without a gap mark those lines are gone for good, even
+// though the machinery to re-read them exists — the sink's full-queue path uses
+// it. The next backfill must resume from the earliest line the writer lost.
+func TestFailedCommitMarksAGapSoTheLinesAreReRead(t *testing.T) {
+	store := newTestStore(t)
+	key := genKey{"local", "aaa"}
+
+	// Every write transaction fails while this trigger is installed.
+	if _, err := store.db.Exec(
+		"CREATE TRIGGER fail_writes BEFORE INSERT ON log_lines BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END",
+	); err != nil {
+		t.Fatalf("install failing trigger: %v", err)
+	}
+
+	// The container was created long after the line the writer is about to lose,
+	// so only the gap can bring the backfill's resume point back far enough.
+	engine := newFakeEngine(containerInfo("local", "aaa", "web", baseTime.Add(time.Hour)))
+	engine.tail = func(_, _ string, _ models.LogOptions, emit func(models.LogEntry)) error {
+		emit(entryAt(baseTime, "stdout", "lost to a failed commit"))
+		return nil
+	}
+
+	hub := &fakeHub{}
+	gate := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	store.start(ctx, hub, func() Engine {
+		<-gate
+		return engine
+	})
+
+	hub.emit(logstream.Record{
+		Host: "local", ContainerID: "aaa", ContainerName: "web",
+		Entry: entryAt(baseTime, "stdout", "lost to a failed commit"),
+	})
+
+	waitFor(t, "the failed batch to mark a gap", func() bool { return store.gapAt(key) != 0 })
+	if gap := store.gapAt(key); gap != baseTime.UnixNano() {
+		t.Fatalf("gap = %d, want the earliest dropped line (%d)", gap, baseTime.UnixNano())
+	}
+	if n := countLines(t, store); n != 0 {
+		t.Fatalf("the failing transaction stored %d lines", n)
+	}
+
+	// The next backfill heals the gap.
+	if _, err := store.db.Exec("DROP TRIGGER fail_writes"); err != nil {
+		t.Fatalf("drop trigger: %v", err)
+	}
+	close(gate)
+	waitFor(t, "the dropped line to be re-read", func() bool { return countLines(t, store) == 1 })
+	cancel()
+	store.Wait()
+
+	wantSince := baseTime.Add(-backfillOverlap).UTC().Format(time.RFC3339Nano)
+	if since := engine.opts("aaa").Since; since != wantSince {
+		t.Fatalf("backfill Since = %s, want the dropped line's timestamp (%s): the batch is lost for good",
+			since, wantSince)
+	}
+
+	page, err := store.Query(context.Background(), LogQuery{Container: "web"})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if got := messages(page.Entries); !slices.Equal(got, []string{"lost to a failed commit"}) {
+		t.Fatalf("timeline = %v, want the re-read line", got)
+	}
+}
+
+// TestEmptyNameNeverBlanksTheStoredName covers both upsert paths. A snapshot
+// that carries no names hands the store an empty name; writing it over a stored
+// one would blank the (host, name) identity every logical container is keyed by
+// — the container's whole history would stop resolving.
+func TestEmptyNameNeverBlanksTheStoredName(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	key := genKey{"local", "aaa"}
+
+	writeEntries(t, store, key, "web", entryAt(baseTime, "stdout", "named"))
+
+	// The ingest path: a record whose name the hub could not resolve.
+	writeEntries(t, store, key, "", entryAt(baseTime.Add(time.Second), "stdout", "unnamed"))
+
+	// The lifecycle path: a listing with no names and no image.
+	unnamed := models.ContainerInfo{ID: "aaa", Host: "local", Created: baseTime.Unix()}
+	if _, err := store.upsertMeta(ctx, key, unnamed, time.Now().UnixMilli()); err != nil {
+		t.Fatalf("upsertMeta: %v", err)
+	}
+
+	var name string
+	if err := store.db.QueryRow(
+		"SELECT name FROM containers WHERE host = ? AND container_id = ?", key.host, key.id,
+	).Scan(&name); err != nil {
+		t.Fatalf("read name: %v", err)
+	}
+	if name != "web" {
+		t.Fatalf("stored name = %q, want %q: the logical container is no longer resolvable", name, "web")
+	}
+
+	page, err := store.Query(ctx, LogQuery{Container: "web"})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	want := []string{"named", "unnamed"}
+	if got := messages(page.Entries); !slices.Equal(got, want) {
+		t.Fatalf("timeline = %v, want %v", got, want)
+	}
+}
+
+// TestFilterMatchingOnlyDeepInHistory scans far past a single chunk: a filtered
+// query keeps reading until the page is full or history runs out, so the entries
+// it does find lie many rounds in. They must come back whole — including the
+// multi-line entry whose body sits in one chunk and whose first line sits in the
+// next.
+func TestFilterMatchingOnlyDeepInHistory(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	key := genKey{"local", "aaa"}
+
+	// Rows are read newest-first in chunks of scanChunk. Positions are counted
+	// from the oldest line, so the straddling entry is placed such that its
+	// continuation is the last row of the first chunk and its first line is the
+	// first row of the second.
+	const total = 3 + 2 + 2500
+	straddle := total - scanChunk - 1
+
+	lines := make([]string, 0, total)
+	lines = append(lines,
+		"level=error the oldest failure",
+		"at com.example.Deep.run(Deep.java:11)",
+		"at com.example.Deeper.run(Deeper.java:22)",
+	)
+	for len(lines) < straddle {
+		lines = append(lines, fmt.Sprintf("level=info filler %04d", len(lines)))
+	}
+	lines = append(lines,
+		"level=error the failure across the chunk boundary",
+		"at com.example.Edge.run(Edge.java:33)",
+	)
+	for len(lines) < total {
+		lines = append(lines, fmt.Sprintf("level=info filler %04d", len(lines)))
+	}
+
+	entries := make([]models.LogEntry, 0, total)
+	for i, line := range lines {
+		entries = append(entries, entryAt(baseTime.Add(time.Duration(i)*time.Second), "stderr", line))
+	}
+	writeEntries(t, store, key, "web", entries...)
+
+	page, err := store.Query(ctx, LogQuery{Container: "web", Levels: []string{"ERROR"}})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	want := []string{
+		"level=error the oldest failure\n" +
+			"at com.example.Deep.run(Deep.java:11)\n" +
+			"at com.example.Deeper.run(Deeper.java:22)",
+		"level=error the failure across the chunk boundary\n" +
+			"at com.example.Edge.run(Edge.java:33)",
+	}
+	if got := messages(page.Entries); !slices.Equal(got, want) {
+		t.Fatalf("deep filtered scan returned %d entries:\n got %q\nwant %q", len(got), got, want)
+	}
+	if page.NextCursor != "" {
+		t.Fatal("the scan reached the end of history, so the page must not offer an older one")
+	}
+
+	// A term that matches nothing at all scans every row and comes back empty,
+	// without a cursor that would hand the caller an endless "load older".
+	page, err = store.Query(ctx, LogQuery{Container: "web", Search: "no line says this"})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if len(page.Entries) != 0 || page.NextCursor != "" {
+		t.Fatalf("a search that matches nothing returned %d entries, cursor %q",
+			len(page.Entries), page.NextCursor)
+	}
+}

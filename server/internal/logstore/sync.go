@@ -26,6 +26,11 @@ func (s *Store) syncLoop(ctx context.Context, source func() Engine) {
 	ticker := time.NewTicker(syncInterval)
 	defer ticker.Stop()
 
+	// A sync started after cancellation would register new producers on a
+	// pipeline that is already shutting down.
+	if ctx.Err() != nil {
+		return
+	}
 	s.sync(ctx, source(), track, results)
 
 	for {
@@ -50,6 +55,11 @@ func (s *Store) syncLoop(ctx context.Context, source func() Engine) {
 				track.complete(s, res.key)
 			}
 		case <-ticker.C:
+			// select picks a ready case at random: a tick can win over a Done that
+			// is ready too.
+			if ctx.Err() != nil {
+				return
+			}
 			s.sync(ctx, source(), track, results)
 		}
 	}
@@ -137,6 +147,9 @@ func (s *Store) sync(ctx context.Context, engine Engine, track *backfillTracker,
 			if !track.schedule(s, key, excluded) {
 				continue
 			}
+			if ctx.Err() != nil {
+				return
+			}
 
 			s.producers.Add(1)
 			go s.backfill(ctx, engine, info, results)
@@ -149,7 +162,10 @@ func (s *Store) sync(ctx context.Context, engine Engine, track *backfillTracker,
 }
 
 // upsertMeta records the generation's engine metadata and reports whether the
-// generation is excluded from persistence.
+// generation is excluded from persistence. An empty incoming value never
+// overwrites a stored one: a listing that carries no names would otherwise
+// blank the name the logical container is keyed by, and an unnamed generation
+// is unresolvable.
 func (s *Store) upsertMeta(ctx context.Context, key genKey, info models.ContainerInfo, nowMS int64) (bool, error) {
 	firstSeenMS := nowMS
 	if info.Created > 0 {
@@ -160,9 +176,9 @@ func (s *Store) upsertMeta(ctx context.Context, key genKey, info models.Containe
 		INSERT INTO containers (host, container_id, name, compose_project, image, first_seen_ms, last_seen_ms, removed_ms)
 		VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
 		ON CONFLICT(host, container_id) DO UPDATE SET
-			name = excluded.name,
-			compose_project = excluded.compose_project,
-			image = excluded.image,
+			name = CASE WHEN excluded.name != '' THEN excluded.name ELSE containers.name END,
+			compose_project = CASE WHEN excluded.compose_project != '' THEN excluded.compose_project ELSE containers.compose_project END,
+			image = CASE WHEN excluded.image != '' THEN excluded.image ELSE containers.image END,
 			first_seen_ms = min(containers.first_seen_ms, excluded.first_seen_ms),
 			last_seen_ms = excluded.last_seen_ms,
 			removed_ms = NULL`,

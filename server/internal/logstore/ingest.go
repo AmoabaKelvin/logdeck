@@ -91,6 +91,11 @@ func (s *Store) writeLoop() {
 		}
 		if err := s.commit(batch, refs); err != nil {
 			log.Printf("logstore: write batch failed (%d messages dropped): %v", len(batch), err)
+			// A failed transaction drops the whole batch. Mark every generation it
+			// carried, exactly like the sink's full-queue path: the next sync
+			// re-reads each one from its earliest dropped line, and the insert
+			// dedup makes that re-read safe.
+			s.markBatchGaps(batch)
 		}
 		batch = batch[:0]
 	}
@@ -108,6 +113,17 @@ func (s *Store) writeLoop() {
 			}
 		case <-ticker.C:
 			flush()
+		}
+	}
+}
+
+// markBatchGaps records a dropped-line gap for every generation in a batch the
+// writer could not commit, so the lines it lost are re-read rather than gone.
+// markGap keeps the earliest timestamp per generation.
+func (s *Store) markBatchGaps(batch []ingestMsg) {
+	for _, msg := range batch {
+		if msg.kind == msgLine {
+			s.markGap(msg.key, msg.line.tsNS)
 		}
 	}
 }
@@ -213,13 +229,18 @@ func (s *Store) commit(batch []ingestMsg, refs map[genKey]int64) error {
 
 // upsertGeneration inserts or refreshes the generation row for one engine
 // container ID and returns its primary key.
+//
+// An empty incoming value never overwrites a stored one: a snapshot without
+// names would otherwise blank the name, and the logical container — (host,
+// name) — is what makes history survive a rebuild. An unnamed generation is
+// unresolvable, so a blank name is a loss, never an update.
 func upsertGeneration(ctx context.Context, tx *sql.Tx, key genKey, name, project string, nowMS int64) (int64, error) {
 	var ref int64
 	err := tx.QueryRowContext(ctx, `
 		INSERT INTO containers (host, container_id, name, compose_project, first_seen_ms, last_seen_ms)
 		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT(host, container_id) DO UPDATE SET
-			name = excluded.name,
+			name = CASE WHEN excluded.name != '' THEN excluded.name ELSE containers.name END,
 			compose_project = CASE WHEN excluded.compose_project != '' THEN excluded.compose_project ELSE containers.compose_project END,
 			last_seen_ms = excluded.last_seen_ms
 		RETURNING id`,

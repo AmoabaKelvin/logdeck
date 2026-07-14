@@ -242,28 +242,65 @@ func (s *Store) Query(ctx context.Context, q LogQuery) (LogPage, error) {
 		from, hasPos = cursorPos{tsNS: tsNS, rowid: rowid}, true
 	}
 
-	// One extra entry beyond the page is what proves an older page exists; an
-	// unfiltered query needs exactly one extra row to find out.
-	chunk := limit + 1
+	// One extra entry beyond the page is what proves an older page exists, and
+	// one more row covers the entry held back at the chunk boundary below, so an
+	// unfiltered query still settles in a single round.
+	chunk := limit + 2
 	if match.active() {
 		chunk = max(chunk, scanChunk)
 	}
 
-	var window []storedRow // newest-first, accumulated across rounds
+	var (
+		entries []models.LogEntry // matched, oldest-first
+		anchors []cursorPos
+		// carry holds the rows of the oldest entry of the previous round. That
+		// entry can still grow — its parent line may be one row older than the
+		// chunk reached — so it is regrouped with the next, older chunk instead of
+		// being filtered while incomplete.
+		carry []storedRow
+	)
 	for {
 		rows, err := s.scanRows(ctx, refs, q, from, hasPos, chunk, byRef)
 		if err != nil {
 			return LogPage{}, err
 		}
-		window = append(window, rows...)
+		// The scan resumes from the oldest row actually read this round; the
+		// carried rows were read before it and are newer.
+		exhausted := len(rows) < chunk
+		if !exhausted {
+			from, hasPos = rows[len(rows)-1].pos, true
+		}
 
-		entries, anchors := match.filter(groupRows(window))
+		// Rows are newest-first, so the carried rows lead the chunk they continue
+		// into.
+		combined := rows
+		if len(carry) > 0 {
+			combined = make([]storedRow, 0, len(carry)+len(rows))
+			combined = append(combined, carry...)
+			combined = append(combined, rows...)
+		}
+
+		// Each round groups only the rows it just read (plus the carried entry),
+		// so a filter that matches nothing for many rounds costs one grouping per
+		// row rather than one per row per round.
+		grouped, groupAnchors, open := groupRows(combined)
+		carry = nil
+		if !exhausted && len(grouped) > 0 {
+			carry = combined[open:]
+			grouped, groupAnchors = grouped[1:], groupAnchors[1:]
+		}
+
+		matched, matchedAnchors := match.filter(grouped, groupAnchors)
+		// This round read strictly older rows than the last, and pages are
+		// oldest-first.
+		entries = append(matched, entries...)
+		anchors = append(matchedAnchors, anchors...)
+
 		// Stop once the page is provably full, or once history runs out — never
 		// hand back a page that is empty but still carries a cursor.
-		if len(entries) > limit || len(rows) < chunk {
+		if len(entries) > limit || exhausted {
 			return newPage(entries, anchors, limit), nil
 		}
-		from, hasPos = rows[len(rows)-1].pos, true
 	}
 }
 
@@ -487,9 +524,14 @@ func entryFromRow(tsNS int64, stream int, raw string, gen generation) models.Log
 // position of its *first* row. That is what the next page resumes from: a
 // continuation line is always newer than its parent, so resuming at the parent
 // keeps the entry whole rather than splitting its body across two pages.
-func groupRows(rows []storedRow) ([]models.LogEntry, []cursorPos) {
+//
+// The third return is the index in rows at which the oldest entry begins. It is
+// the entry whose parent may lie beyond the scanned rows, so a caller that has
+// not reached the end of history hands those rows to the next, older chunk.
+func groupRows(rows []storedRow) ([]models.LogEntry, []cursorPos, int) {
 	entries := make([]models.LogEntry, 0, len(rows))
 	anchors := make([]cursorPos, 0, len(rows))
+	open := len(rows) - 1 // the oldest row starts the oldest entry
 
 	for i := len(rows) - 1; i >= 0; i-- {
 		row := rows[i]
@@ -497,13 +539,16 @@ func groupRows(rows []storedRow) ([]models.LogEntry, []cursorPos) {
 			// The live grouper decides; a folded pair comes back as one entry.
 			if merged := models.GroupRelatedLogEntries([]models.LogEntry{entries[last], row.entry}); len(merged) == 1 {
 				entries[last] = merged[0]
+				if last == 0 {
+					open = i // a continuation line of the oldest entry
+				}
 				continue
 			}
 		}
 		entries = append(entries, row.entry)
 		anchors = append(anchors, row.pos)
 	}
-	return entries, anchors
+	return entries, anchors, open
 }
 
 // encodeCursor renders the keyset position of the oldest entry on a page.

@@ -198,9 +198,13 @@ func (s *Store) start(ctx context.Context, hub Hub, source func() Engine) {
 		s.writeLoop()
 	}()
 
+	// syncStopped closes once the sync loop has returned, and with it the only
+	// code that registers new backfill producers.
+	syncStopped := make(chan struct{})
 	s.workers.Add(1)
 	go func() {
 		defer s.workers.Done()
+		defer close(syncStopped)
 		s.syncLoop(ctx, source)
 	}()
 
@@ -211,13 +215,19 @@ func (s *Store) start(ctx context.Context, hub Hub, source func() Engine) {
 	}()
 
 	// Shutdown: drop the subscription (after which the sink is never called
-	// again), let in-flight backfills finish, then close the queue so the
-	// writer flushes what is left and exits.
+	// again), wait for the sync loop to stop scheduling backfills, let the
+	// in-flight ones finish, then close the queue so the writer flushes what is
+	// left and exits.
+	//
+	// Waiting for the sync loop is what makes the producer count final: a
+	// backfill registered after the count reached zero would send on a closed
+	// queue.
 	s.workers.Add(1)
 	go func() {
 		defer s.workers.Done()
 		<-ctx.Done()
 		unsubscribe()
+		<-syncStopped
 		s.producers.Done()
 		s.producers.Wait()
 		close(s.ingestCh)

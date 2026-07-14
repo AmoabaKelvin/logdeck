@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"regexp/syntax"
 	"strconv"
@@ -42,7 +43,8 @@ func (ar *APIRouter) GetHistoryContainers(w http.ResponseWriter, r *http.Request
 	if ar.logStore != nil {
 		stored, err := ar.logStore.ListContainers(r.Context())
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			log.Printf("history: listing stored containers failed: %v", err)
+			http.Error(w, "failed to list stored containers", http.StatusInternalServerError)
 			return
 		}
 		containers = stored
@@ -70,11 +72,15 @@ func (ar *APIRouter) GetHistoryLogs(w http.ResponseWriter, r *http.Request) {
 
 	page, err := ar.logStore.Query(r.Context(), query)
 	if err != nil {
-		status := http.StatusInternalServerError
+		// A bad cursor or an uncompilable pattern is the caller's to fix, so it is
+		// reported verbatim. Anything else is ours: it would leak driver errors and
+		// file paths, so it is logged and answered generically.
 		if errors.Is(err, logstore.ErrInvalidCursor) || isInvalidSearchPattern(err) {
-			status = http.StatusBadRequest
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
-		http.Error(w, err.Error(), status)
+		log.Printf("history: querying stored logs failed: %v", err)
+		http.Error(w, "failed to query stored logs", http.StatusInternalServerError)
 		return
 	}
 
