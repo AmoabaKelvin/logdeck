@@ -75,7 +75,8 @@ type Store struct {
 	ingestCh chan ingestMsg
 	drops    atomic.Uint64
 
-	// mu guards resume and gaps, both read by backfill goroutines.
+	// mu guards resume, gaps, and invalidated, all read by goroutines other
+	// than the one that writes them.
 	mu sync.Mutex
 	// resume holds every generation's persisted backfill resume point as it
 	// stood before live ingestion started; see snapshotResume.
@@ -84,6 +85,9 @@ type Store struct {
 	// The sync loop re-reads the engine from there, so a full ingest buffer
 	// costs latency rather than history.
 	gaps map[genKey]int64
+	// invalidated holds the generations DeleteContainer removed, until the
+	// writer has dropped them from its ref cache. See DeleteContainer.
+	invalidated map[genKey]struct{}
 
 	// producers counts the goroutines that may still send on ingestCh (the
 	// hub sink and in-flight backfills); ingestCh is closed once they stop.
@@ -165,6 +169,7 @@ func Open(path string, limits Limits) (*Store, error) {
 		ingestCh:    make(chan ingestMsg, ingestBuffer),
 		resume:      make(map[genKey]resumePoint),
 		gaps:        make(map[genKey]int64),
+		invalidated: make(map[genKey]struct{}),
 		backfillSem: make(chan struct{}, maxConcurrentBackfills),
 	}, nil
 }

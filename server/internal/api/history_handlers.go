@@ -12,6 +12,7 @@ import (
 
 	"github.com/AmoabaKelvin/logdeck/internal/logstore"
 	"github.com/AmoabaKelvin/logdeck/internal/models"
+	"github.com/go-chi/chi/v5"
 )
 
 // validHistoryLevels are the level names accepted by the history log filter.
@@ -28,11 +29,74 @@ var validHistoryLevels = map[string]bool{
 	string(models.LogLevelUnknown): true,
 }
 
-// GetHistoryStatus reports whether log persistence is available. The frontend
-// hides History mode when it is not.
+// GetHistoryStatus reports whether log persistence is available, and how much
+// disk the stored logs occupy against the configured caps. The frontend hides
+// History mode when it is not enabled.
+//
+// With persistence disabled the response carries "enabled": false and nothing
+// else: there is no database to size and the caps are not in force.
 func (ar *APIRouter) GetHistoryStatus(w http.ResponseWriter, r *http.Request) {
-	WriteJsonResponse(w, http.StatusOK, map[string]bool{
-		"enabled": ar.logStore != nil,
+	if ar.logStore == nil {
+		WriteJsonResponse(w, http.StatusOK, map[string]any{"enabled": false})
+		return
+	}
+
+	// A failed stat is reported as a zero size rather than a 500: the status
+	// endpoint gates History mode in the frontend, and the store works whether
+	// or not its file can be measured.
+	size, err := ar.logStore.DBSize()
+	if err != nil {
+		log.Printf("history: measuring the log database failed: %v", err)
+	}
+
+	limits := ar.manager.LogStore()
+	WriteJsonResponse(w, http.StatusOK, map[string]any{
+		"enabled":        true,
+		"dbSizeBytes":    size,
+		"perContainerMB": limits.PerContainerMB,
+		"totalMB":        limits.TotalMB,
+	})
+}
+
+// DeleteHistoryContainer purges every stored generation of one logical
+// container. Destructive and irreversible, so the route is denied to
+// read-scoped API tokens and blocked in read-only mode (see
+// registerHistoryRoutes).
+func (ar *APIRouter) DeleteHistoryContainer(w http.ResponseWriter, r *http.Request) {
+	if ar.logStore == nil {
+		WriteJsonResponse(w, http.StatusServiceUnavailable, map[string]string{
+			"error": "log persistence is disabled",
+		})
+		return
+	}
+
+	name := strings.TrimSpace(chi.URLParam(r, "name"))
+	if name == "" {
+		http.Error(w, "container is required", http.StatusBadRequest)
+		return
+	}
+	// The host is required, not defaulted: the same name can exist on several
+	// hosts, and purging one host's history must never touch another's.
+	host := strings.TrimSpace(r.URL.Query().Get("host"))
+	if host == "" {
+		http.Error(w, "host is required", http.StatusBadRequest)
+		return
+	}
+
+	deleted, err := ar.logStore.DeleteContainer(r.Context(), host, name)
+	if err != nil {
+		if errors.Is(err, logstore.ErrContainerNotFound) {
+			http.Error(w, "no stored logs for this container", http.StatusNotFound)
+			return
+		}
+		log.Printf("history: deleting stored logs failed: %v", err)
+		http.Error(w, "failed to delete stored logs", http.StatusInternalServerError)
+		return
+	}
+
+	WriteJsonResponse(w, http.StatusOK, map[string]any{
+		"message":      "stored logs deleted",
+		"linesDeleted": deleted,
 	})
 }
 

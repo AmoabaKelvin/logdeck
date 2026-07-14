@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -139,6 +140,54 @@ func TestHistoryStatus(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestHistoryStatusStorage covers the storage fields the frontend renders next
+// to the retention caps.
+func TestHistoryStatusStorage(t *testing.T) {
+	t.Run("enabled reports size and caps", func(t *testing.T) {
+		store, seed := newHistoryStore(t)
+		seed("local", "abc123", "web", historyBase, "hello")
+
+		w := doHistoryRequest(t, newHistoryTestRouter(t, store), "/api/v1/history/status")
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var body struct {
+			Enabled        bool  `json:"enabled"`
+			DBSizeBytes    int64 `json:"dbSizeBytes"`
+			PerContainerMB int   `json:"perContainerMB"`
+			TotalMB        int   `json:"totalMB"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatalf("parse response: %v", err)
+		}
+		if !body.Enabled {
+			t.Fatal("expected enabled=true")
+		}
+		if body.DBSizeBytes <= 0 {
+			t.Fatalf("expected a positive dbSizeBytes, got %d", body.DBSizeBytes)
+		}
+		// The manager's defaults, since the test config file sets no caps.
+		if body.PerContainerMB != config.DefaultLogStorePerContainerMB || body.TotalMB != config.DefaultLogStoreTotalMB {
+			t.Fatalf("expected the configured caps, got perContainerMB=%d totalMB=%d",
+				body.PerContainerMB, body.TotalMB)
+		}
+	})
+
+	t.Run("disabled reports enabled only", func(t *testing.T) {
+		w := doHistoryRequest(t, newHistoryTestRouter(t, nil), "/api/v1/history/status")
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var body map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatalf("parse response: %v", err)
+		}
+		if len(body) != 1 || body["enabled"] != false {
+			t.Fatalf("expected {\"enabled\": false} and nothing else, got %v", body)
+		}
+	})
 }
 
 func TestHistoryContainers(t *testing.T) {
@@ -341,6 +390,200 @@ func TestHistoryRequiresAuth(t *testing.T) {
 		if w.Code != http.StatusUnauthorized {
 			t.Fatalf("expected 401 for %s, got %d: %s", path, w.Code, w.Body.String())
 		}
+	}
+}
+
+// doHistoryDelete issues a purge request, optionally authenticated.
+func doHistoryDelete(t *testing.T, router http.Handler, path, bearer string) *httptest.ResponseRecorder {
+	t.Helper()
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("DELETE", path, nil)
+	if bearer != "" {
+		r.Header.Set("Authorization", "Bearer "+bearer)
+	}
+	router.ServeHTTP(w, r)
+	return w
+}
+
+func TestDeleteHistoryContainer(t *testing.T) {
+	t.Run("purges the container and reports the line count", func(t *testing.T) {
+		store, seed := newHistoryStore(t)
+		seed("local", "abc123", "web", historyBase, "first")
+		seed("local", "def456", "web", historyBase.Add(time.Second), "second generation")
+		seed("local", "xyz789", "db", historyBase, "db line")
+		router := newHistoryTestRouter(t, store)
+
+		w := doHistoryDelete(t, router, "/api/v1/history/containers/web?host=local", "")
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var body struct {
+			Message      string `json:"message"`
+			LinesDeleted int64  `json:"linesDeleted"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatalf("parse response: %v", err)
+		}
+		if body.Message != "stored logs deleted" {
+			t.Fatalf("unexpected message: %q", body.Message)
+		}
+		if body.LinesDeleted != 2 {
+			t.Fatalf("expected 2 lines deleted (both generations), got %d", body.LinesDeleted)
+		}
+
+		// The purged container is gone; the other one is untouched.
+		if logs := historyLogs(t, router, "/api/v1/history/logs?container=web"); logs.Count != 0 {
+			t.Fatalf("expected no stored logs for web, got %d", logs.Count)
+		}
+		if logs := historyLogs(t, router, "/api/v1/history/logs?container=db"); logs.Count != 1 {
+			t.Fatalf("expected db to keep its line, got %d", logs.Count)
+		}
+
+		// Purging again finds nothing left.
+		if w := doHistoryDelete(t, router, "/api/v1/history/containers/web?host=local", ""); w.Code != http.StatusNotFound {
+			t.Fatalf("expected 404 on the second purge, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("host is required", func(t *testing.T) {
+		store, seed := newHistoryStore(t)
+		seed("local", "abc123", "web", historyBase, "hello")
+		router := newHistoryTestRouter(t, store)
+
+		for _, path := range []string{
+			"/api/v1/history/containers/web",
+			"/api/v1/history/containers/web?host=",
+			"/api/v1/history/containers/web?host=%20",
+		} {
+			if w := doHistoryDelete(t, router, path, ""); w.Code != http.StatusBadRequest {
+				t.Fatalf("DELETE %s: expected 400, got %d: %s", path, w.Code, w.Body.String())
+			}
+		}
+
+		// The container survived every rejected request.
+		if logs := historyLogs(t, router, "/api/v1/history/logs?container=web"); logs.Count != 1 {
+			t.Fatalf("expected the container to be untouched, got %d logs", logs.Count)
+		}
+	})
+
+	t.Run("unknown container", func(t *testing.T) {
+		store, seed := newHistoryStore(t)
+		seed("local", "abc123", "web", historyBase, "hello")
+		router := newHistoryTestRouter(t, store)
+
+		for _, path := range []string{
+			"/api/v1/history/containers/nosuch?host=local",
+			"/api/v1/history/containers/web?host=nosuch", // right name, wrong host
+		} {
+			if w := doHistoryDelete(t, router, path, ""); w.Code != http.StatusNotFound {
+				t.Fatalf("DELETE %s: expected 404, got %d: %s", path, w.Code, w.Body.String())
+			}
+		}
+	})
+
+	t.Run("persistence disabled", func(t *testing.T) {
+		w := doHistoryDelete(t, newHistoryTestRouter(t, nil), "/api/v1/history/containers/web?host=local", "")
+		if w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("expected 503, got %d: %s", w.Code, w.Body.String())
+		}
+		var body struct {
+			Error string `json:"error"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatalf("parse response: %v", err)
+		}
+		if body.Error != "log persistence is disabled" {
+			t.Fatalf("unexpected error message: %q", body.Error)
+		}
+	})
+}
+
+func TestDeleteHistoryContainerRequiresAuth(t *testing.T) {
+	store, seed := newHistoryStore(t)
+	seed("local", "abc123", "web", historyBase, "hello")
+	router := newHistoryTestRouterWithAuth(t, store, newTestAuthService(t))
+
+	w := doHistoryDelete(t, router, "/api/v1/history/containers/web?host=local", "")
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestDeleteHistoryContainerDeniesReadScope proves the purge route is closed to
+// read-scoped API tokens, which the read-only history queries are open to.
+func TestDeleteHistoryContainerDeniesReadScope(t *testing.T) {
+	store, seed := newHistoryStore(t)
+	seed("local", "abc123", "web", historyBase, "hello")
+
+	svc := newTestAuthService(t)
+	router := newHistoryTestRouterWithAuth(t, store, svc)
+
+	jwt, err := svc.GenerateToken("admin")
+	if err != nil {
+		t.Fatalf("GenerateToken: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/v1/settings/api-tokens",
+		strings.NewReader(`{"name":"agent","scope":"read"}`))
+	r.Header.Set("Authorization", "Bearer "+jwt)
+	router.ServeHTTP(w, r)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 creating read token, got %d: %s", w.Code, w.Body.String())
+	}
+	var readToken createdTokenResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &readToken); err != nil {
+		t.Fatalf("parse create response: %v", err)
+	}
+
+	// The read token can query stored logs but not purge them.
+	w = httptest.NewRecorder()
+	r = httptest.NewRequest("GET", "/api/v1/history/logs?container=web", nil)
+	r.Header.Set("Authorization", "Bearer "+readToken.Token)
+	router.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 querying history with a read token, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = doHistoryDelete(t, router, "/api/v1/history/containers/web?host=local", readToken.Token)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 purging with a read token, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// A JWT session and an admin token are unaffected.
+	if w := doHistoryDelete(t, router, "/api/v1/history/containers/web?host=local", jwt); w.Code != http.StatusOK {
+		t.Fatalf("expected 200 purging with an admin session, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestDeleteHistoryContainerReadOnlyMode covers the global read-only switch:
+// purging stored logs is destructive, so it is blocked exactly like removing a
+// container.
+func TestDeleteHistoryContainerReadOnlyMode(t *testing.T) {
+	store, seed := newHistoryStore(t)
+	seed("local", "abc123", "web", historyBase, "hello")
+
+	for _, key := range []string{
+		"JWT_SECRET", "ADMIN_USERNAME", "ADMIN_PASSWORD", "ADMIN_PASSWORD_SALT",
+		"DOCKER_HOSTS", "COOLIFY_CONFIGS", "CORS_ALLOWED_ORIGINS",
+	} {
+		t.Setenv(key, "")
+	}
+	t.Setenv("READONLY_MODE", "true")
+	t.Setenv("CONFIG_PATH", filepath.Join(t.TempDir(), "config.json"))
+
+	manager := config.NewManager()
+	registry := services.NewRegistry(nil, nil, nil, manager.Config())
+	router := NewRouter(registry, manager, alerts.NewEngine(registry, manager, nil), store, "test")
+
+	w := doHistoryDelete(t, router, "/api/v1/history/containers/web?host=local", "")
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 in read-only mode, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Reads still work, and the container is still there.
+	if logs := historyLogs(t, router, "/api/v1/history/logs?container=web"); logs.Count != 1 {
+		t.Fatalf("expected the container to survive read-only mode, got %d logs", logs.Count)
 	}
 }
 

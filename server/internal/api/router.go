@@ -145,12 +145,20 @@ func (ar *APIRouter) registerContainerRoutes(r chi.Router) {
 	})
 }
 
-// registerHistoryRoutes exposes the stored-log query API. All reads, so they
-// sit in the plain protected group alongside the live log routes.
+// registerHistoryRoutes exposes the stored-log API: the queries are reads and
+// sit in the plain protected group alongside the live log routes, while purging
+// a container's stored logs is destructive and irreversible, so it is treated
+// exactly like container removal — blocked in read-only mode and denied to
+// read-scoped API tokens.
 func (ar *APIRouter) registerHistoryRoutes(r chi.Router) {
 	r.Get("/history/status", ar.GetHistoryStatus)
 	r.Get("/history/containers", ar.GetHistoryContainers)
 	r.Get("/history/logs", ar.GetHistoryLogs)
+
+	r.With(
+		middleware.ReadOnly(func() bool { return ar.registry.Config().ReadOnly }),
+		auth.DenyReadScope,
+	).Delete("/history/containers/{name}", ar.DeleteHistoryContainer)
 }
 
 func (ar *APIRouter) registerSettingsRoutes(r chi.Router) {

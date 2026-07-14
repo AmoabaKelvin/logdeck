@@ -148,6 +148,12 @@ func (s *Store) commit(batch []ingestMsg, refs map[genKey]int64) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// Inside the transaction, so the write lock is already held: every purge
+	// that committed before this transaction began has published its
+	// generations, and the ids it removed leave the cache before they can be
+	// written against.
+	s.dropInvalidated(refs)
+
 	// Per-generation aggregates applied once at the end of the transaction.
 	type agg struct {
 		bytes    int64
