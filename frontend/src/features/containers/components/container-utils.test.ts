@@ -5,7 +5,9 @@ import type { ContainerInfo } from "../types";
 import {
 	countContainerStates,
 	getComposeProject,
+	selectStackMembers,
 	selectVisibleContainers,
+	sortStoredContainersBySize,
 	synthesizeRemovedContainers,
 } from "./container-utils";
 
@@ -158,5 +160,78 @@ describe("countContainerStates", () => {
 
 		expect(counts.running).toBe(0);
 		expect(counts.removed).toBe(1);
+	});
+});
+
+describe("selectStackMembers", () => {
+	it("includes removed containers that belong to the project", () => {
+		const members = selectStackMembers(
+			[
+				live({
+					id: "1",
+					names: ["/web"],
+					labels: { "com.docker.compose.project": "shop" },
+				}),
+				live({
+					id: "2",
+					names: ["/other"],
+					labels: { "com.docker.compose.project": "blog" },
+				}),
+			],
+			synthesizeRemovedContainers(
+				[
+					stored({ name: "worker", composeProject: "shop" }),
+					stored({ name: "cache", composeProject: "blog" }),
+				],
+				[],
+			),
+			"shop",
+		);
+
+		expect(members.map((member) => member.names[0])).toEqual([
+			"/web",
+			"/worker",
+		]);
+	});
+
+	it("matches removed members labelled by podman-compose", () => {
+		const [removed] = synthesizeRemovedContainers(
+			[stored({ name: "worker", composeProject: "shop" })],
+			[],
+		);
+		removed.labels = { "io.podman.compose.project": "shop" };
+
+		expect(selectStackMembers([], [removed], "shop")).toHaveLength(1);
+	});
+
+	it("returns nothing for a project with no members", () => {
+		expect(selectStackMembers([live()], [], "shop")).toEqual([]);
+	});
+});
+
+describe("sortStoredContainersBySize", () => {
+	it("orders stored containers by size descending", () => {
+		const sorted = sortStoredContainersBySize([
+			stored({ name: "small", storedBytes: 10 }),
+			stored({ name: "large", storedBytes: 900 }),
+			stored({ name: "medium", storedBytes: 100 }),
+		]);
+
+		expect(sorted.map((entry) => entry.name)).toEqual([
+			"large",
+			"medium",
+			"small",
+		]);
+	});
+
+	it("breaks size ties by name and leaves the input untouched", () => {
+		const input = [
+			stored({ name: "b", storedBytes: 5 }),
+			stored({ name: "a", storedBytes: 5 }),
+		];
+		const sorted = sortStoredContainersBySize(input);
+
+		expect(sorted.map((entry) => entry.name)).toEqual(["a", "b"]);
+		expect(input.map((entry) => entry.name)).toEqual(["b", "a"]);
 	});
 });

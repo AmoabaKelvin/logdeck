@@ -33,6 +33,7 @@ import type {
 	ContainerActionType,
 	GroupByOption,
 	GroupedContainers,
+	RemovedContainerInfo,
 } from "./container-utils";
 import {
 	formatBytes,
@@ -120,6 +121,7 @@ interface ContainersTableProps {
 	onDelete: (container: ContainerInfo) => void;
 	onComposeAction: (action: ComposeAction, group: GroupedContainers) => void;
 	onViewLogs: (container: ContainerInfo) => void;
+	onPurgeHistory: (container: RemovedContainerInfo) => void;
 	onRetry: () => void;
 }
 
@@ -143,6 +145,7 @@ export function ContainersTable({
 	onDelete,
 	onComposeAction,
 	onViewLogs,
+	onPurgeHistory,
 	onRetry,
 }: ContainersTableProps) {
 	const isPending = (action: ContainerActionType, id: string) =>
@@ -256,27 +259,50 @@ export function ContainersTable({
 					<TooltipProvider>
 						<div className="flex items-center gap-1">
 							{removed && (
-								<Tooltip>
-									<TooltipTrigger asChild>
-										<Button
-											variant="outline"
-											size="icon"
-											className="h-8 w-8"
-											asChild
-										>
-											<Link
-												to="/containers/$containerId/logs"
-												params={{
-													containerId: getContainerUrlIdentifier(container),
-												}}
-												aria-label="View stored logs"
+								<>
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<Button
+												variant="outline"
+												size="icon"
+												className="h-8 w-8"
+												asChild
 											>
-												<FileTextIcon className="size-4" />
-											</Link>
-										</Button>
-									</TooltipTrigger>
-									<TooltipContent>View stored logs</TooltipContent>
-								</Tooltip>
+												<Link
+													to="/containers/$containerId/logs"
+													params={{
+														containerId: getContainerUrlIdentifier(container),
+													}}
+													aria-label="View stored logs"
+												>
+													<FileTextIcon className="size-4" />
+												</Link>
+											</Button>
+										</TooltipTrigger>
+										<TooltipContent>View stored logs</TooltipContent>
+									</Tooltip>
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<span className="inline-block">
+												<Button
+													variant="outline"
+													size="icon"
+													className="h-8 w-8 text-destructive hover:bg-destructive hover:text-white"
+													onClick={() => onPurgeHistory(container)}
+													disabled={isReadOnly}
+													aria-label="Delete stored logs"
+												>
+													<Trash2Icon className="size-4" />
+												</Button>
+											</span>
+										</TooltipTrigger>
+										<TooltipContent>
+											{isReadOnly
+												? "Delete stored logs (Read-only mode)"
+												: "Delete stored logs"}
+										</TooltipContent>
+									</Tooltip>
+								</>
 							)}
 							{!removed && (
 								<>

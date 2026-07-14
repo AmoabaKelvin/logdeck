@@ -6,6 +6,10 @@ const BASE_URL = `${API_BASE_URL}/api/v1/history`;
 
 export interface HistoryStatus {
 	enabled: boolean;
+	// Only present while persistence is enabled.
+	dbSizeBytes?: number;
+	perContainerMB?: number;
+	totalMB?: number;
 }
 
 // A container the log store knows about. It may no longer exist on the host
@@ -77,6 +81,35 @@ export async function getHistoryContainers(): Promise<StoredContainer[]> {
 
 	const data: { containers: StoredContainer[] } = await response.json();
 	return data.containers ?? [];
+}
+
+export interface DeleteHistoryResult {
+	message: string;
+	linesDeleted: number;
+}
+
+// Permanently drops every stored log line for a container. The server rejects
+// this for read-scoped tokens and in read-only mode, so callers must surface
+// the error rather than assume the rows are gone.
+export async function deleteHistoryContainer(
+	name: string,
+	host: string,
+): Promise<DeleteHistoryResult> {
+	const query = new URLSearchParams({ host });
+	const response = await authenticatedFetch(
+		`${BASE_URL}/containers/${encodeURIComponent(name)}?${query.toString()}`,
+		{ method: "DELETE", headers: { Accept: "application/json" } },
+	);
+
+	if (!response.ok) {
+		throw await readError(response, `Failed to delete stored logs for ${name}`);
+	}
+
+	const data: Partial<DeleteHistoryResult> = await response.json();
+	return {
+		message: data.message ?? `Deleted stored logs for ${name}`,
+		linesDeleted: data.linesDeleted ?? 0,
+	};
 }
 
 // Fetch one page of stored logs. Pagination walks backward in time: the first

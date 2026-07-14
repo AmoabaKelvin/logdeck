@@ -6,6 +6,7 @@ import { ApiTokensSection } from "./api-tokens-section";
 import { AuthSection } from "./auth-section";
 import { CoolifyHostsSection } from "./coolify-hosts-section";
 import { DockerHostsSection } from "./docker-hosts-section";
+import { LogStorageSection } from "./log-storage-section";
 import { ReadOnlySection } from "./read-only-section";
 
 export function SettingsPage() {
@@ -55,6 +56,7 @@ export function SettingsPage() {
 				config={data.auth}
 			/>
 			<ApiTokensSection />
+			<LogStorageSection />
 			<AlertsSection />
 		</div>
 	);

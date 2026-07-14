@@ -7,6 +7,7 @@ import type { GetContainersResponse } from "../api/get-containers";
 import { useContainerActions } from "../hooks/use-container-actions";
 import { useContainerStats } from "../hooks/use-container-stats";
 import { useContainersDashboardUrlState } from "../hooks/use-containers-dashboard-url-state";
+import { useDeleteHistoryContainer } from "../hooks/use-delete-history-container";
 import { useHistoryContainers } from "../hooks/use-history-containers";
 import { useHistoryStatus } from "../hooks/use-history-status";
 import { useHostsStats } from "../hooks/use-hosts-stats";
@@ -17,6 +18,7 @@ import type { ContainerInfo } from "../types";
 import { ConfirmActionDialog } from "./confirm-action-dialog";
 import {
 	countContainerStates,
+	getContainerUrlIdentifier,
 	groupByCompose,
 	REMOVED_STATE,
 	selectVisibleContainers,
@@ -28,6 +30,8 @@ import { ContainersStateSummary } from "./containers-state-summary";
 import { ContainersSummaryCards } from "./containers-summary-cards";
 import { ContainersTable } from "./containers-table";
 import { ContainersToolbar } from "./containers-toolbar";
+import type { PurgeHistoryTarget } from "./purge-history-dialog";
+import { PurgeHistoryDialog } from "./purge-history-dialog";
 
 export function ContainersDashboard() {
 	const queryClient = useQueryClient();
@@ -100,6 +104,10 @@ export function ContainersDashboard() {
 	const [selectedContainer, setSelectedContainer] =
 		useState<ContainerInfo | null>(null);
 	const [isLogsSheetOpen, setIsLogsSheetOpen] = useState(false);
+	const [purgeTarget, setPurgeTarget] = useState<PurgeHistoryTarget | null>(
+		null,
+	);
+	const purgeHistory = useDeleteHistoryContainer();
 
 	const {
 		pendingActions,
@@ -233,6 +241,14 @@ export function ContainersDashboard() {
 		}
 	};
 
+	const handleConfirmPurge = () => {
+		if (!purgeTarget) return;
+		purgeHistory.mutate(
+			{ name: purgeTarget.name, host: purgeTarget.host },
+			{ onSettled: () => setPurgeTarget(null) },
+		);
+	};
+
 	const handleContainerRecreated = async (newContainerId: string) => {
 		await queryClient.refetchQueries({
 			queryKey: ["containers"],
@@ -313,6 +329,13 @@ export function ContainersDashboard() {
 					onDelete={deleteContainerAction}
 					onComposeAction={composeAction}
 					onViewLogs={handleViewLogs}
+					onPurgeHistory={(container) =>
+						setPurgeTarget({
+							name: getContainerUrlIdentifier(container),
+							host: container.host,
+							removed: true,
+						})
+					}
 					onRetry={() => {
 						void refetch();
 					}}
@@ -337,6 +360,15 @@ export function ContainersDashboard() {
 					void confirmPendingAction();
 				}}
 				onOpenChange={handleConfirmDialogOpenChange}
+			/>
+
+			<PurgeHistoryDialog
+				target={purgeTarget}
+				isPending={purgeHistory.isPending}
+				onConfirm={handleConfirmPurge}
+				onOpenChange={(open) => {
+					if (!open) setPurgeTarget(null);
+				}}
 			/>
 
 			<ContainersLogsSheet
