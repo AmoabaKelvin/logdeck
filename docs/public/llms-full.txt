@@ -287,7 +287,7 @@ Timestamps are RFC3339. No colors, spinners, prompts, or pagination.
   - `logdeck alerts rules` lists rules with their targets and triggers.
   - `logdeck alerts rules create --type <log|event> --name <name>` creates one. Event rules take `--events die,oom,unhealthy`. Log rules take `--min-level ERROR` and/or `--pattern <regex>`. `--host`, `--container`, and `--project` (repeatable) narrow which containers the rule watches. `--threshold N` with `--window 60s` requires N matches in the window; `--cooldown 5m` sets the minimum time between deliveries (omitted means the server default of 300s). `--disabled` creates it disabled.
   - `logdeck alerts rules enable|disable|delete <id>`.
-  - `logdeck alerts channels list` lists notification channels. `channels add --type <webhook|ntfy|gotify|telegram>` adds one: webhook/ntfy take `--url`; gotify takes `--url` (server base URL) and `--token` (app token); telegram takes `--token` (bot token) and `--target` (chat id). `--name` labels it; `--disabled` adds it disabled.
+  - `logdeck alerts channels list` lists notification channels. `channels add --type <webhook|ntfy|gotify|telegram>` adds one: webhook/ntfy take `--endpoint`; gotify takes `--endpoint` (server base URL) and `--secret` (app token); telegram takes `--secret` (bot token) and `--target` (chat id). The channel flags are `--endpoint`/`--secret` rather than `--url`/`--token` because those are the global connection flags. `--name` labels it; `--disabled` adds it disabled.
   - `logdeck alerts channels test <id>` sends a test delivery to one channel and exits 1 if it fails; `channels delete <id>` removes it.
   - `logdeck alerts history [--limit N]` lists recently fired alerts, newest first; `history clear` deletes them.
 

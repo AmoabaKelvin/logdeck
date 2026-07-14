@@ -217,10 +217,10 @@ logdeck alerts rules create --type event --name oom-watch --events oom
 logdeck alerts rules create --type log --name errors --min-level ERROR --threshold 5 --window 60s
 logdeck alerts rules disable <id>             # or enable / delete
 logdeck alerts channels list                  # list notification channels
-logdeck alerts channels add --type webhook --url https://hooks.example.com/logdeck
-logdeck alerts channels add --type ntfy --url https://ntfy.sh/mytopic
-logdeck alerts channels add --type gotify --url https://gotify.example.com --token <app-token>
-logdeck alerts channels add --type telegram --token <bot-token> --target <chat-id>
+logdeck alerts channels add --type webhook --endpoint https://hooks.example.com/logdeck
+logdeck alerts channels add --type ntfy --endpoint https://ntfy.sh/mytopic
+logdeck alerts channels add --type gotify --endpoint https://gotify.example.com --secret <app-token>
+logdeck alerts channels add --type telegram --secret <bot-token> --target <chat-id>
 logdeck alerts channels test <id>             # send a test delivery; exits 1 on failure
 logdeck alerts channels delete <id>
 logdeck alerts history --limit 20             # recently fired alerts, newest first

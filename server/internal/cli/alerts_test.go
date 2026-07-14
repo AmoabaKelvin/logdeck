@@ -458,10 +458,10 @@ func TestAlertChannelAddUsageErrorsBeforeHTTP(t *testing.T) {
 	defer server.Close()
 
 	cases := [][]string{
-		{"alerts", "channels", "add", "--url", server.URL},                                      // missing --type
-		{"alerts", "channels", "add", "--type", "gotify", "--url", server.URL},                  // missing token
-		{"alerts", "channels", "add", "--type", "telegram", "--token", "t", "--url", server.URL}, // missing target
-		{"alerts", "channels", "add", "--type", "pushover", "--url", server.URL},                // invalid type
+		{"alerts", "channels", "add", "--url", server.URL},                                          // missing --type
+		{"alerts", "channels", "add", "--type", "gotify", "--endpoint", "http://x", "--url", server.URL},   // missing secret
+		{"alerts", "channels", "add", "--type", "telegram", "--secret", "t", "--url", server.URL},    // missing target
+		{"alerts", "channels", "add", "--type", "pushover", "--endpoint", "http://x", "--url", server.URL}, // invalid type
 	}
 
 	for _, args := range cases {

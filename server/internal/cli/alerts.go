@@ -548,18 +548,18 @@ func newAlertChannelAddCmd(a *app) *cobra.Command {
 			switch channelType {
 			case "webhook", "ntfy":
 				if channelURL == "" {
-					return fmt.Errorf("--url is required for --type %s", channelType)
+					return fmt.Errorf("--endpoint is required for --type %s", channelType)
 				}
 			case "gotify":
 				if channelURL == "" {
-					return fmt.Errorf("--url is required for --type gotify (the server base URL)")
+					return fmt.Errorf("--endpoint is required for --type gotify (the server base URL)")
 				}
 				if token == "" {
-					return fmt.Errorf("--token is required for --type gotify (the app token)")
+					return fmt.Errorf("--secret is required for --type gotify (the app token)")
 				}
 			case "telegram":
 				if token == "" {
-					return fmt.Errorf("--token is required for --type telegram (the bot token)")
+					return fmt.Errorf("--secret is required for --type telegram (the bot token)")
 				}
 				if target == "" {
 					return fmt.Errorf("--target is required for --type telegram (the chat id)")
@@ -597,8 +597,8 @@ func newAlertChannelAddCmd(a *app) *cobra.Command {
 
 	cmd.Flags().StringVar(&channelType, "type", "", "channel type: webhook, ntfy, gotify, or telegram")
 	cmd.Flags().StringVar(&name, "name", "", "display name for the channel")
-	cmd.Flags().StringVar(&channelURL, "url", "", "webhook/ntfy: full destination URL; gotify: server base URL")
-	cmd.Flags().StringVar(&token, "token", "", "gotify app token or telegram bot token")
+	cmd.Flags().StringVar(&channelURL, "endpoint", "", "webhook/ntfy: full destination URL; gotify: server base URL")
+	cmd.Flags().StringVar(&token, "secret", "", "gotify app token or telegram bot token")
 	cmd.Flags().StringVar(&target, "target", "", "telegram chat id")
 	cmd.Flags().BoolVar(&disabled, "disabled", false, "add the channel disabled")
 	return cmd

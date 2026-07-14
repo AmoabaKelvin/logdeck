@@ -266,8 +266,8 @@ export default function AlertingPage() {
       <CodeBlock
         code={`# Point alerts somewhere
 logdeck alerts channels add --type webhook --name slack \\
-  --url https://hooks.slack.com/services/...
-logdeck alerts channels add --type telegram --token <bot-token> --target <chat-id>
+  --endpoint https://hooks.slack.com/services/...
+logdeck alerts channels add --type telegram --secret <bot-token> --target <chat-id>
 logdeck alerts channels list
 logdeck alerts channels test <channel-id>
 
