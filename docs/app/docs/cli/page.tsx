@@ -113,13 +113,14 @@ logdeck networks`,
   {
     name: "alerts",
     summary:
-      "Manage alerting: rules, the webhook destination, and fired-alert history. Rules match container events (die, oom) or log lines (minimum level and/or regex), and can require a threshold of matches within a window. --host, --container, and --project (repeatable) narrow which containers a rule watches. --window and --cooldown accept durations (60s, 5m) or bare seconds; an omitted cooldown means the server default of 300s.",
+      "Manage alerting: rules, notification channels (webhook, ntfy, gotify, telegram), and fired-alert history. Rules match container events (die, oom, unhealthy) or log lines (minimum level and/or regex), and can require a threshold of matches within a window. Every fired alert is delivered to each enabled channel. --host, --container, and --project (repeatable) narrow which containers a rule watches. --window and --cooldown accept durations (60s, 5m) or bare seconds; an omitted cooldown means the server default of 300s.",
     example: `logdeck alerts rules
 logdeck alerts rules create --type event --name oom-watch --events oom
 logdeck alerts rules create --type log --name errors --min-level ERROR --threshold 5 --window 60s
 logdeck alerts rules disable <id>
-logdeck alerts webhook set https://hooks.example.com/logdeck
-logdeck alerts test
+logdeck alerts channels add --type webhook --url https://hooks.example.com/logdeck
+logdeck alerts channels add --type telegram --token <bot-token> --target <chat-id>
+logdeck alerts channels test <id>
 logdeck alerts history --limit 20`,
   },
 ];

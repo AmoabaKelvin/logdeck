@@ -322,7 +322,7 @@ func TestAlertTestExitCodes(t *testing.T) {
 			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodPost || r.URL.Path != "/api/v1/alerts/test" {
+				if r.Method != http.MethodPost || r.URL.Path != "/api/v1/alerts/channels/c1/test" {
 					t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 				}
 				fmt.Fprint(w, tt.response)
@@ -333,7 +333,7 @@ func TestAlertTestExitCodes(t *testing.T) {
 			captureStdout(t, func() {
 				captureStderr(t, func() {
 					code = execute(context.Background(), "test", []string{
-						"alerts", "test", "--url", server.URL,
+						"alerts", "channels", "test", "c1", "--url", server.URL,
 					})
 				})
 			})
@@ -412,24 +412,67 @@ func TestAlertRulesJSONPassthrough(t *testing.T) {
 	}
 }
 
-func TestAlertWebhookNotSet(t *testing.T) {
+func TestAlertChannelsListTable(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"url":""}`)
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/alerts/channels" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		fmt.Fprint(w, `{"channels":[
+			{"id":"c1","type":"webhook","name":"Slack","enabled":true,"url":"https://example.com/hook"},
+			{"id":"c2","type":"telegram","enabled":false,"token":"bot:secret","target":"-1001"}
+		]}`)
 	}))
 	defer server.Close()
 
 	var code int
 	stdout := captureStdout(t, func() {
 		code = execute(context.Background(), "test", []string{
-			"alerts", "webhook", "--url", server.URL,
+			"alerts", "channels", "list", "--url", server.URL,
 		})
 	})
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
-	if strings.TrimSpace(stdout) != "(not set)" {
-		t.Errorf("stdout = %q, want (not set)", stdout)
+
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("expected header + 2 rows, got %d lines:\n%s", len(lines), stdout)
+	}
+	if !strings.Contains(lines[1], "webhook") || !strings.Contains(lines[1], "https://example.com/hook") {
+		t.Errorf("webhook row wrong: %q", lines[1])
+	}
+	// A telegram channel's destination is summarized as its chat id.
+	if !strings.Contains(lines[2], "chat -1001") {
+		t.Errorf("telegram row should summarize the chat id: %q", lines[2])
+	}
+}
+
+func TestAlertChannelAddUsageErrorsBeforeHTTP(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("server must not be called on a usage error: %s %s", r.Method, r.URL.Path)
+	}))
+	defer server.Close()
+
+	cases := [][]string{
+		{"alerts", "channels", "add", "--url", server.URL},                                      // missing --type
+		{"alerts", "channels", "add", "--type", "gotify", "--url", server.URL},                  // missing token
+		{"alerts", "channels", "add", "--type", "telegram", "--token", "t", "--url", server.URL}, // missing target
+		{"alerts", "channels", "add", "--type", "pushover", "--url", server.URL},                // invalid type
+	}
+
+	for _, args := range cases {
+		var code int
+		captureStdout(t, func() {
+			captureStderr(t, func() {
+				code = execute(context.Background(), "test", args)
+			})
+		})
+		if code != 2 {
+			t.Errorf("args %v: exit code = %d, want 2 (usage error)", args, code)
+		}
 	}
 }

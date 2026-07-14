@@ -102,6 +102,13 @@ func NewManager() *Manager {
 		envConfig:   NewConfig(),
 	}
 	m.fileConfig = m.loadFile()
+	// Fold a legacy single WebhookURL into a webhook channel once, transparently,
+	// so existing configs keep working with zero user action.
+	if m.fileConfig.Alerts != nil && migrateAlertChannels(m.fileConfig.Alerts) {
+		if err := m.persist(); err != nil {
+			log.Printf("config: failed to persist alert channel migration (will retry next start): %v", err)
+		}
+	}
 	m.merged, m.sources = m.merge()
 
 	return m

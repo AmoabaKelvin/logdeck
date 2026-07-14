@@ -165,7 +165,7 @@ History API (read endpoints; a `read`-scoped token can call them):
 
 ## Alerting
 
-Alert rules match what LogDeck already watches — container events and log lines — and POST a JSON payload to one webhook URL. Manage them under Settings -> Alerts, or with `logdeck alerts`.
+Alert rules match what LogDeck already watches — container events and log lines — and deliver each fired alert to every enabled notification channel. Manage rules and channels under Settings -> Alerts, or with `logdeck alerts`.
 
 Rule types:
 
@@ -180,7 +180,7 @@ Rate thresholds and cooldowns:
 - Cooldown: the minimum time between deliveries for the same rule and container, defaulting to **300 seconds** when unset. Matches during a cooldown are counted, not discarded — the next alert reports how many were suppressed.
 - Threshold and cooldown state is in memory and resets when LogDeck restarts.
 
-The webhook: one URL for the whole instance. Every fired alert is POSTed as JSON:
+Channels: a fired alert is delivered to every enabled channel. Four types are supported. A `webhook` channel POSTs the JSON payload below to a URL (the shape works with Slack and Discord incoming webhooks unchanged). An `ntfy` channel POSTs the alert text as a plain-text body to a topic URL (e.g. `https://ntfy.sh/mytopic`) with a `Title` header. A `gotify` channel POSTs `{title, message, priority}` to `<server URL>/message?token=<app token>`. A `telegram` channel calls the Bot API `https://api.telegram.org/bot<token>/sendMessage` with `{chat_id, text}`. The webhook payload:
 
 ```json
 {
@@ -207,11 +207,11 @@ The webhook: one URL for the whole instance. Every fired alert is POSTed as JSON
 
 The same summary is sent twice, as `text` and as `content`: Slack (and Mattermost) render `text`, Discord renders `content`, so their incoming-webhook URLs work as-is with no proxy or template. Anything else that accepts a JSON POST works too — the full alert object is in the body.
 
-Delivery has a 10-second timeout. Network errors and 5xx responses are retried once after 5 seconds; other statuses are permanent. The outcome (status, HTTP code, error) is recorded in the alert history. With no webhook configured, rules still evaluate and fire — alerts are recorded in history and delivered nowhere.
+Each delivery has a 10-second timeout. Network errors and 5xx responses are retried once after 5 seconds; other statuses are permanent. The alert history records one summary result per fired alert: it succeeds only if every enabled channel accepted it, and otherwise names the channel that failed. With no channels configured, rules still evaluate and fire — alerts are recorded in history and delivered nowhere.
 
 Alert history: the most recent 500 fired alerts, newest first, mirrored to `alerts-history.json` next to the config file (so it survives a restart when that directory is a volume). Each entry records the rule, container and host, reason, a sample line for log rules, the suppressed count, and the delivery result. Available under Settings -> Alerts, via `logdeck alerts history`, or `GET /api/v1/alerts/history`.
 
-Alert rules and the webhook URL are persisted in the config file under `alerts`. There are no alert-related environment variables.
+Alert rules and channels are persisted in the config file under `alerts`. There are no alert-related environment variables.
 
 ## CLI reference
 
@@ -283,12 +283,12 @@ Timestamps are RFC3339. No colors, spinners, prompts, or pagination.
 - `env`: print a container's environment variables as `KEY=value` lines. `logdeck env web`
 - `resources`: show or update a container's resource limits and restart policy. Memory accepts human units (`512m`, `1.5g`), CPUs accept fractions. `logdeck resources set web --memory 512m --cpus 1.5 --restart on-failure --max-retries 3`
 - `images` / `volumes` / `networks`: read-only listings across all hosts, with an optional `--host` filter.
-- `alerts`: manage alerting — rules, the webhook destination, and fired-alert history.
+- `alerts`: manage alerting — rules, notification channels, and fired-alert history.
   - `logdeck alerts rules` lists rules with their targets and triggers.
   - `logdeck alerts rules create --type <log|event> --name <name>` creates one. Event rules take `--events die,oom,unhealthy`. Log rules take `--min-level ERROR` and/or `--pattern <regex>`. `--host`, `--container`, and `--project` (repeatable) narrow which containers the rule watches. `--threshold N` with `--window 60s` requires N matches in the window; `--cooldown 5m` sets the minimum time between deliveries (omitted means the server default of 300s). `--disabled` creates it disabled.
   - `logdeck alerts rules enable|disable|delete <id>`.
-  - `logdeck alerts webhook` shows the URL; `webhook set <url>` and `webhook clear` change it.
-  - `logdeck alerts test` sends a test delivery and exits 1 if it fails.
+  - `logdeck alerts channels list` lists notification channels. `channels add --type <webhook|ntfy|gotify|telegram>` adds one: webhook/ntfy take `--url`; gotify takes `--url` (server base URL) and `--token` (app token); telegram takes `--token` (bot token) and `--target` (chat id). `--name` labels it; `--disabled` adds it disabled.
+  - `logdeck alerts channels test <id>` sends a test delivery to one channel and exits 1 if it fails; `channels delete <id>` removes it.
   - `logdeck alerts history [--limit N]` lists recently fired alerts, newest first; `history clear` deletes them.
 
 The CLI has no history/stored-log commands: History mode is a UI and HTTP API feature. Use `GET /api/v1/history/logs` directly for stored logs.
@@ -343,7 +343,6 @@ Each token is created with one of two scopes.
 
 - Read live logs, stored log history, container details, stats, and events.
 - List images, volumes, networks, and hosts.
-- Read alert rules, the alert webhook URL, and alert history.
 
 A read token **cannot**:
 
@@ -351,5 +350,4 @@ A read token **cannot**:
 - Open the web terminal (`GET /containers/{id}/exec` is denied explicitly).
 - Read a container's environment variables (`GET /containers/{id}/env` is denied explicitly, because they carry secrets).
 - Read the settings endpoint (`/settings/*` is denied for the whole group, because it exposes host topology and the token inventory).
-
-Note that the alert webhook URL *is* readable with a read token. If that URL embeds a secret (Slack and Discord webhook URLs do), treat a read token as sensitive accordingly.
+- Read anything under `/alerts/*` — rules, channels, and history are all denied for the whole group, because channel URLs and tokens (Slack/Discord webhook URLs, bot tokens) are secrets that let their holder post to the channel.

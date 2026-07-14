@@ -1,7 +1,7 @@
 import { authenticatedFetch } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 
-const ENDPOINT = `${API_BASE_URL}/api/v1/alerts/test`;
+const ENDPOINT = `${API_BASE_URL}/api/v1/alerts/channels`;
 
 export interface AlertTestResult {
 	status: "ok" | "failed";
@@ -9,8 +9,11 @@ export interface AlertTestResult {
 	error?: string;
 }
 
-export async function testAlertWebhook(): Promise<AlertTestResult> {
-	const response = await authenticatedFetch(ENDPOINT, { method: "POST" });
+export async function testAlertChannel(id: string): Promise<AlertTestResult> {
+	const response = await authenticatedFetch(
+		`${ENDPOINT}/${encodeURIComponent(id)}/test`,
+		{ method: "POST" },
+	);
 
 	if (!response.ok) {
 		const message = await response.text();
