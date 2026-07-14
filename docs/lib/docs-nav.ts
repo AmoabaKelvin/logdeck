@@ -1,4 +1,12 @@
-import { BookOpen, Layers, Rocket, Settings, Terminal } from "lucide-react"
+import {
+  BellRing,
+  BookOpen,
+  Database,
+  Layers,
+  Rocket,
+  Settings,
+  Terminal,
+} from "lucide-react";
 
 export const docsNav = [
   {
@@ -25,6 +33,16 @@ export const docsNav = [
         icon: Layers,
       },
       {
+        title: "Log History",
+        href: "/docs/log-history",
+        icon: Database,
+      },
+      {
+        title: "Alerting",
+        href: "/docs/alerting",
+        icon: BellRing,
+      },
+      {
         title: "CLI",
         href: "/docs/cli",
         icon: Terminal,
@@ -36,4 +54,4 @@ export const docsNav = [
       },
     ],
   },
-]
+];

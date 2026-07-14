@@ -14,7 +14,8 @@ const commands = [
     name: "login",
     summary:
       "Verify a server connection and save it as the current context. Fails with a hint pointing at Settings if the server requires authentication and no working token is given.",
-    example: "logdeck login --url https://logdeck.example.com --token ldk_... --name prod",
+    example:
+      "logdeck login --url https://logdeck.example.com --token ldk_... --name prod",
   },
   {
     name: "context",
@@ -23,7 +24,8 @@ const commands = [
   },
   {
     name: "logout",
-    summary: "Remove the saved token from the current (or a named) context, keeping its URL.",
+    summary:
+      "Remove the saved token from the current (or a named) context, keeping its URL.",
     example: "logdeck logout prod",
   },
   {
@@ -102,10 +104,23 @@ logdeck resources set web --memory 512m --cpus 1.5 --restart on-failure --max-re
   },
   {
     name: "images / volumes / networks",
-    summary: "Read-only listings across all hosts, with an optional --host filter.",
+    summary:
+      "Read-only listings across all hosts, with an optional --host filter.",
     example: `logdeck images --host prod
 logdeck volumes
 logdeck networks`,
+  },
+  {
+    name: "alerts",
+    summary:
+      "Manage alerting: rules, the webhook destination, and fired-alert history. Rules match container events (die, oom) or log lines (minimum level and/or regex), and can require a threshold of matches within a window. --host, --container, and --project (repeatable) narrow which containers a rule watches. --window and --cooldown accept durations (60s, 5m) or bare seconds; an omitted cooldown means the server default of 300s.",
+    example: `logdeck alerts rules
+logdeck alerts rules create --type event --name oom-watch --events oom
+logdeck alerts rules create --type log --name errors --min-level ERROR --threshold 5 --window 60s
+logdeck alerts rules disable <id>
+logdeck alerts webhook set https://hooks.example.com/logdeck
+logdeck alerts test
+logdeck alerts history --limit 20`,
   },
 ];
 
@@ -132,11 +147,12 @@ export default function CliPage() {
         <p className="mb-4 text-base">
           It is fully non-interactive: every command supports machine-readable
           JSON output (<code>-o json</code>), errors always go to stderr, and
-          exit codes are consistent (0 success, 1 runtime error, 2 usage
-          error).
+          exit codes are consistent (0 success, 1 runtime error, 2 usage error).
         </p>
 
-        <h2 className="mb-4 mt-10 text-3xl font-bold tracking-tight">Install</h2>
+        <h2 className="mb-4 mt-10 text-3xl font-bold tracking-tight">
+          Install
+        </h2>
         <p className="mb-4 text-base">
           Install the latest release binary (macOS and Linux, amd64/arm64):
         </p>
@@ -195,21 +211,21 @@ logdeck status        # now talks to prod`}
       <div className="prose prose-neutral dark:prose-invert max-w-none">
         <p className="my-4 text-base">
           Contexts persist in <code>~/.config/logdeck/config.json</code>{" "}
-          (respecting <code>XDG_CONFIG_HOME</code>). Because the file stores
-          API tokens, it is created with <code>0600</code> permissions inside a{" "}
+          (respecting <code>XDG_CONFIG_HOME</code>). Because the file stores API
+          tokens, it is created with <code>0600</code> permissions inside a{" "}
           <code>0700</code> directory, and the CLI never prints a saved token —
           only its <code>ldk_</code> prefix.
         </p>
         <p className="mb-4 text-base">
           API tokens are created in the LogDeck web UI under{" "}
           <strong>Settings → API Tokens</strong> and sent as{" "}
-          <code>Authorization: Bearer &lt;token&gt;</code>. Tokens have a
-          scope: <strong>admin</strong> tokens have full access, while{" "}
+          <code>Authorization: Bearer &lt;token&gt;</code>. Tokens have a scope:{" "}
+          <strong>admin</strong> tokens have full access, while{" "}
           <strong>read-only</strong> tokens can read logs, stats, container
-          details, and events but cannot mutate anything, use the web
-          terminal, or read container environment variables or settings —
-          useful for CI jobs or AI agents that only need to read. When the
-          server has authentication disabled, no token is needed.
+          details, and events but cannot mutate anything, use the web terminal,
+          or read container environment variables or settings — useful for CI
+          jobs or AI agents that only need to read. When the server has
+          authentication disabled, no token is needed.
         </p>
 
         <h3 className="mb-3 mt-8 text-xl font-semibold">Resolution order</h3>
@@ -260,13 +276,18 @@ logdeck status        # now talks to prod`}
           pagination.
         </p>
 
-        <h2 className="mb-4 mt-10 text-3xl font-bold tracking-tight">Commands</h2>
+        <h2 className="mb-4 mt-10 text-3xl font-bold tracking-tight">
+          Commands
+        </h2>
       </div>
 
       <div className="space-y-8">
         {commands.map((cmd) => (
           <div key={cmd.name} className="space-y-3">
-            <h3 className="font-mono text-lg font-semibold" id={cmd.name.replaceAll(" ", "")}>
+            <h3
+              className="font-mono text-lg font-semibold"
+              id={cmd.name.replaceAll(" ", "")}
+            >
               {cmd.name}
             </h3>
             <p className="text-sm text-muted-foreground">{cmd.summary}</p>
@@ -328,8 +349,8 @@ logdeck logs api --follow`}
             math is needed.
           </li>
           <li>
-            <code>logdeck grep</code> is the fastest way to find which
-            container is emitting an error across an entire deployment.
+            <code>logdeck grep</code> is the fastest way to find which container
+            is emitting an error across an entire deployment.
           </li>
         </ul>
       </div>

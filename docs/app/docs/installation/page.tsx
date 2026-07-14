@@ -60,11 +60,10 @@ export default function InstallationPage() {
       # Optional: Manage multiple Docker hosts
       # DOCKER_HOSTS: local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.example.com
 
-      # Optional: Enable authentication
+      # Optional: Enable authentication (or enable it later in Settings)
       # JWT_SECRET: your-super-secret-key-min-32-chars
       # ADMIN_USERNAME: admin
-      # ADMIN_PASSWORD_SALT: your-random-salt-change-this
-      # ADMIN_PASSWORD: your-sha256-hash
+      # ADMIN_PASSWORD: your-bcrypt-hash
 
       # Optional: Coolify integration (persists env var changes across redeployments)
       # Host names must match DOCKER_HOSTS
@@ -74,11 +73,42 @@ export default function InstallationPage() {
       - /var/run/docker.sock:/var/run/docker.sock
       # Mount /proc for system stats (CPU, memory usage)
       - /proc:/host/proc:ro
+      # Persist the config file, stored logs, and alert history
+      - logdeck-data:/data
       # Mount SSH keys if you use ssh:// hosts
       # - ~/.ssh:/root/.ssh:ro
-    restart: unless-stopped`}
+    restart: unless-stopped
+
+volumes:
+  logdeck-data:`}
             language="yaml"
           />
+        </div>
+
+        <div className="not-prose mb-8">
+          <Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20">
+            <CardHeader>
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-500 mt-0.5" />
+                <div>
+                  <CardTitle className="text-amber-900 dark:text-amber-200">
+                    Do not skip the <code>/data</code> volume
+                  </CardTitle>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="text-sm text-amber-900 dark:text-amber-200">
+              <p>
+                LogDeck keeps its config file (hosts, API tokens, alert rules), its{" "}
+                <a href="/docs/log-history" className="underline underline-offset-2">
+                  stored log history
+                </a>
+                , and its alert history in <code>/data</code>. Without a volume, all of it is written
+                inside the container and lost the moment you recreate it — including every log line
+                you were counting on being able to read back.
+              </p>
+            </CardContent>
+          </Card>
         </div>
 
         <h3 className="mb-4 mt-8 text-xl font-semibold">
@@ -125,6 +155,7 @@ export default function InstallationPage() {
   -p 8123:8080 \\
   -v /var/run/docker.sock:/var/run/docker.sock \\
   -v /proc:/host/proc:ro \\
+  -v logdeck-data:/data \\
   --restart unless-stopped \\
   amoabakelvin/logdeck:latest`}
             language="bash"
@@ -132,6 +163,11 @@ export default function InstallationPage() {
         </div>
 
         <h3 className="mb-4 mt-8 text-xl font-semibold">With Authentication</h3>
+        <p className="mb-4 text-sm">
+          <code>ADMIN_PASSWORD</code> takes a bcrypt hash — generate one with{" "}
+          <code>htpasswd -bnBC 10 &apos;&apos; yourPassword | tr -d &apos;:&apos;</code>. See the{" "}
+          <a href="/docs/configuration">configuration guide</a>.
+        </p>
         <div className="mb-8">
           <CodeBlock
             code={`docker run -d \\
@@ -139,10 +175,10 @@ export default function InstallationPage() {
   -p 8123:8080 \\
   -v /var/run/docker.sock:/var/run/docker.sock \\
   -v /proc:/host/proc:ro \\
+  -v logdeck-data:/data \\
   -e JWT_SECRET=your-super-secret-key-min-32-chars \\
   -e ADMIN_USERNAME=admin \\
-  -e ADMIN_PASSWORD_SALT=your-random-salt-change-this \\
-  -e ADMIN_PASSWORD=your-sha256-hash \\
+  -e ADMIN_PASSWORD='your-bcrypt-hash' \\
   --restart unless-stopped \\
   amoabakelvin/logdeck:latest`}
             language="bash"
@@ -173,7 +209,9 @@ export DOCKER_HOSTS="local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.ex
           Environment Variables
         </h2>
         <p className="mb-6 text-base">
-          LogDeck can be configured using the following environment variables:
+          Every variable is optional — LogDeck runs with none of them set. The{" "}
+          <a href="/docs/configuration">configuration guide</a> covers each one in full, including
+          the config file that the Settings page writes.
         </p>
 
         <div className="not-prose">
@@ -188,7 +226,63 @@ export DOCKER_HOSTS="local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.ex
                 </code>
                 <p className="text-sm text-muted-foreground mt-1">
                   Comma-separated Docker hosts using <code>name=host</code> format (supports <code>unix://</code>, <code>tcp://</code>, and <code>ssh://</code>).
-                  Defaults to <code>local=unix:///var/run/docker.sock</code> when unset.
+                  When unset, LogDeck auto-detects a local Docker or Podman socket.
+                </p>
+              </div>
+              <div>
+                <code className="text-sm bg-muted px-2 py-1 rounded">
+                  CONFIG_PATH
+                </code>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Path to the JSON config file. Its directory also holds the log store and alert
+                  history. Defaults to <code>/data/config.json</code>.
+                </p>
+              </div>
+              <div>
+                <code className="text-sm bg-muted px-2 py-1 rounded">
+                  READONLY_MODE
+                </code>
+                <p className="text-sm text-muted-foreground mt-1">
+                  <code>true</code> blocks container actions, stack actions, environment and resource
+                  edits, and the web terminal.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="text-lg">
+                Log Persistence (Optional)
+              </CardTitle>
+              <CardDescription>
+                On by default; these only change retention
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <code className="text-sm bg-muted px-2 py-1 rounded">
+                  LOG_STORE_ENABLED
+                </code>
+                <p className="text-sm text-muted-foreground mt-1">
+                  <code>false</code> turns off log persistence and History mode. Default{" "}
+                  <code>true</code>.
+                </p>
+              </div>
+              <div>
+                <code className="text-sm bg-muted px-2 py-1 rounded">
+                  LOG_STORE_PER_CONTAINER_MB
+                </code>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Retention cap per container, in MB. Default <code>50</code>.
+                </p>
+              </div>
+              <div>
+                <code className="text-sm bg-muted px-2 py-1 rounded">
+                  LOG_STORE_TOTAL_MB
+                </code>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Retention cap for the whole store, in MB. Default <code>1024</code>.
                 </p>
               </div>
             </CardContent>
@@ -200,7 +294,8 @@ export DOCKER_HOSTS="local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.ex
                 Authentication (Optional)
               </CardTitle>
               <CardDescription>
-                Leave these unset to disable authentication completely
+                Leave these unset to run without authentication, or to enable it from the Settings
+                page instead
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -209,8 +304,7 @@ export DOCKER_HOSTS="local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.ex
                   JWT_SECRET
                 </code>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Secret key for JWT token signing. Must be at least 32
-                  characters.
+                  Secret key for signing session tokens.
                 </p>
               </div>
               <div>
@@ -223,19 +317,11 @@ export DOCKER_HOSTS="local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.ex
               </div>
               <div>
                 <code className="text-sm bg-muted px-2 py-1 rounded">
-                  ADMIN_PASSWORD_SALT
-                </code>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Random salt for password hashing. Use a strong, random string.
-                </p>
-              </div>
-              <div>
-                <code className="text-sm bg-muted px-2 py-1 rounded">
                   ADMIN_PASSWORD
                 </code>
                 <p className="text-sm text-muted-foreground mt-1">
-                  SHA256 hash of (password + salt). See configuration guide for
-                  generation instructions.
+                  A bcrypt hash of the admin password — never plain text. LogDeck refuses to start if
+                  it is malformed. See the configuration guide for how to generate one.
                 </p>
               </div>
             </CardContent>

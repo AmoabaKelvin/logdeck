@@ -28,12 +28,18 @@ docs/
 │   ├── layout.tsx           # Root layout with metadata
 │   ├── page.tsx             # Landing page
 │   ├── globals.css          # Global styles and Tailwind config
+│   ├── demo/                # Interactive demo
+│   ├── sitemap.ts           # Sitemap (add new docs pages here)
 │   └── docs/                # Documentation pages
 │       ├── layout.tsx       # Docs layout with sidebar
 │       ├── getting-started/
 │       ├── installation/
 │       ├── features/
-│       └── configuration/
+│       ├── log-history/
+│       ├── alerting/
+│       ├── cli/
+│       ├── configuration/
+│       └── demo/
 ├── components/
 │   ├── landing/             # Landing page components
 │   │   ├── hero.tsx        # Hero section with GitHub stars
@@ -49,11 +55,15 @@ docs/
 │   ├── theme-provider.tsx  # Theme provider
 │   └── theme-toggle.tsx    # Dark/light mode toggle
 ├── lib/
+│   ├── docs-nav.ts         # Docs sidebar nav (add new docs pages here)
 │   └── utils.ts            # Utility functions
 └── public/                 # Static assets
+    ├── llms-full.txt       # Full-text docs for LLMs (keep in sync with the pages)
     ├── landing.png         # Landing page screenshot
     └── logs.png            # Logs viewer screenshot
 ```
+
+When adding a docs page, wire it into `lib/docs-nav.ts` and `app/sitemap.ts`, and mirror the content into `public/llms-full.txt`.
 
 ## 🎨 Features
 
