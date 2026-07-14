@@ -130,7 +130,7 @@ func (s *Store) commit(batch []ingestMsg, refs map[genKey]int64) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Per-generation aggregates applied once at the end of the transaction.
 	type agg struct {

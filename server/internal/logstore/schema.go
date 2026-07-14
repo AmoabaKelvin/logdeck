@@ -95,7 +95,7 @@ func initSchema(ctx context.Context, db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if version < 1 {
 		if _, err := tx.ExecContext(ctx, schemaV1); err != nil {

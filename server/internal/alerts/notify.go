@@ -98,7 +98,7 @@ func (n *notifier) attempt(ctx context.Context, url string, body []byte) (models
 		return models.DeliveryResult{Status: "failed", Error: err.Error()}, true
 	}
 	defer func() {
-		io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 		resp.Body.Close()
 	}()
 

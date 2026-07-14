@@ -183,7 +183,7 @@ func (s *Store) evictOldest(ctx context.Context, refs []int64, excess int64) (in
 	if err != nil {
 		return 0, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	rows, err := tx.QueryContext(ctx,
 		"SELECT rowid, container_ref, length(CAST(raw AS BLOB)) FROM log_lines"+
