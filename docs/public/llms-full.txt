@@ -207,5 +207,6 @@ API tokens give the CLI and external tools their own credentials, so the admin l
 
 - Create and revoke tokens under Settings -> API Tokens.
 - Tokens are prefixed `ldk_` and shown in full only once, at creation.
+- Each token has a scope: `admin` (full access) or `read` (read-only: logs, stats, container details, and events, but no mutations, no web terminal, and no access to container environment variables or settings).
 - Requests authenticate with an `Authorization: Bearer <token>` header.
 - Tokens only matter when authentication is enabled; on an open instance the API is reachable without them.

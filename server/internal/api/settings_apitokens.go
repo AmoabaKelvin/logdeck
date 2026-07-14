@@ -29,19 +29,21 @@ var (
 // the current file config. It reads through the config manager on every call
 // so it stays correct across hot-swapped config updates. Comparison is
 // constant-time over the SHA256 hashes.
-func (ar *APIRouter) lookupAPIToken(token string) (string, bool) {
+func (ar *APIRouter) lookupAPIToken(token string) (string, string, bool) {
 	hash := auth.HashAPIToken(token)
 	fc := ar.manager.FileConfigSnapshot()
 
 	name := ""
+	scope := ""
 	found := false
 	for _, t := range fc.APITokens {
 		if subtle.ConstantTimeCompare([]byte(hash), []byte(t.Hash)) == 1 {
 			name = t.Name
+			scope = t.Scope
 			found = true
 		}
 	}
-	return name, found
+	return name, scope, found
 }
 
 // ListAPITokens handles GET /api/v1/settings/api-tokens.
@@ -53,6 +55,7 @@ func (ar *APIRouter) ListAPITokens(w http.ResponseWriter, r *http.Request) {
 			"name":      t.Name,
 			"prefix":    t.Prefix,
 			"createdAt": t.CreatedAt,
+			"scope":     auth.NormalizeAPITokenScope(t.Scope),
 		})
 	}
 	WriteJsonResponse(w, http.StatusOK, map[string]any{"tokens": tokens})
@@ -62,7 +65,8 @@ func (ar *APIRouter) ListAPITokens(w http.ResponseWriter, r *http.Request) {
 // returned exactly once; only its hash is stored.
 func (ar *APIRouter) CreateAPIToken(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name string `json:"name"`
+		Name  string `json:"name"`
+		Scope string `json:"scope"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -76,6 +80,15 @@ func (ar *APIRouter) CreateAPIToken(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(name) > maxAPITokenNameLen {
 		http.Error(w, fmt.Sprintf("name must be at most %d characters", maxAPITokenNameLen), http.StatusBadRequest)
+		return
+	}
+
+	scope := req.Scope
+	if scope == "" {
+		scope = auth.APITokenScopeAdmin
+	}
+	if scope != auth.APITokenScopeAdmin && scope != auth.APITokenScopeRead {
+		http.Error(w, `scope must be "admin" or "read"`, http.StatusBadRequest)
 		return
 	}
 
@@ -100,6 +113,7 @@ func (ar *APIRouter) CreateAPIToken(w http.ResponseWriter, r *http.Request) {
 			Hash:      hash,
 			Prefix:    prefix,
 			CreatedAt: createdAt,
+			Scope:     scope,
 		}), nil
 	})
 	if err != nil {
@@ -116,6 +130,7 @@ func (ar *APIRouter) CreateAPIToken(w http.ResponseWriter, r *http.Request) {
 		"name":      name,
 		"prefix":    prefix,
 		"createdAt": createdAt,
+		"scope":     scope,
 	})
 }
 

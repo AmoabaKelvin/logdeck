@@ -41,10 +41,13 @@ export interface SettingsResponse {
 	auth: AuthConfig;
 }
 
+export type APITokenScope = "admin" | "read";
+
 export interface APIToken {
 	name: string;
 	prefix: string;
 	createdAt: string;
+	scope: APITokenScope;
 }
 
 export interface APITokensResponse {

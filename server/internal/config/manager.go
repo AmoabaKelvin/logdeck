@@ -27,6 +27,9 @@ type APIToken struct {
 	Hash      string `json:"hash"`
 	Prefix    string `json:"prefix"`
 	CreatedAt string `json:"createdAt"`
+	// Scope is "admin" or "read". Tokens created before scopes existed have
+	// no scope and are treated as admin.
+	Scope string `json:"scope,omitempty"`
 }
 
 // FileAuthConfig represents auth settings in the config file.

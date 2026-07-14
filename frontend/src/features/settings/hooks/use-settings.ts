@@ -10,6 +10,7 @@ import { type UpdateAuthPayload, updateAuth } from "../api/update-auth";
 import { updateCoolifyHosts } from "../api/update-coolify-hosts";
 import { updateDockerHosts } from "../api/update-docker-hosts";
 import { updateReadOnly } from "../api/update-read-only";
+import type { APITokenScope } from "../types";
 
 const SETTINGS_KEY = ["settings"] as const;
 const API_TOKENS_KEY = ["settings", "api-tokens"] as const;
@@ -76,7 +77,8 @@ export function useApiTokens() {
 export function useCreateApiToken() {
 	const queryClient = useQueryClient();
 	return useMutation({
-		mutationFn: (name: string) => createApiToken(name),
+		mutationFn: ({ name, scope }: { name: string; scope: APITokenScope }) =>
+			createApiToken(name, scope),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: API_TOKENS_KEY });
 		},

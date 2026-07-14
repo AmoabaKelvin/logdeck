@@ -13,9 +13,9 @@ type contextKey string
 
 const UserContextKey contextKey = "user"
 
-// APITokenLookup resolves a presented API token to its name. Implementations
-// must compare against stored hashes in constant time.
-type APITokenLookup func(token string) (name string, ok bool)
+// APITokenLookup resolves a presented API token to its name and scope.
+// Implementations must compare against stored hashes in constant time.
+type APITokenLookup func(token string) (name, scope string, ok bool)
 
 // DynamicMiddleware creates an auth middleware that resolves the auth service per request.
 // If getService returns nil, auth is disabled and the request passes through.
@@ -59,8 +59,13 @@ func validateAndServe(svc *Service, lookupAPIToken APITokenLookup, next http.Han
 	// with it, so there is no fallthrough between the two schemes.
 	if strings.HasPrefix(tokenString, APITokenPrefix) {
 		if lookupAPIToken != nil {
-			if name, ok := lookupAPIToken(tokenString); ok {
-				user := models.User{Username: "token:" + name, Role: "admin"}
+			if name, scope, ok := lookupAPIToken(tokenString); ok {
+				scope = NormalizeAPITokenScope(scope)
+				if scope == APITokenScopeRead && isMutatingRequest(r) {
+					http.Error(w, "This API token is read-only and cannot perform this operation", http.StatusForbidden)
+					return
+				}
+				user := models.User{Username: "token:" + name, Role: scope}
 				ctx := context.WithValue(r.Context(), UserContextKey, user)
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return
@@ -83,4 +88,29 @@ func validateAndServe(svc *Service, lookupAPIToken APITokenLookup, next http.Han
 	user := GetUserFromClaims(claims)
 	ctx := context.WithValue(r.Context(), UserContextKey, user)
 	next.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// isMutatingRequest reports whether a request mutates state: anything other
+// than GET/HEAD/OPTIONS. GET routes that are nonetheless off-limits to read
+// tokens (exec, container env, settings) attach DenyReadScope explicitly.
+func isMutatingRequest(r *http.Request) bool {
+	switch r.Method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return false
+	}
+	return true
+}
+
+// DenyReadScope is a route middleware that rejects requests authenticated by
+// a read-scoped API token. Attach it to routes that are read-shaped but
+// sensitive or mutating (exec, container env, settings). JWT session users
+// always carry the admin role, so they pass through unaffected.
+func DenyReadScope(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if user, ok := r.Context().Value(UserContextKey).(models.User); ok && user.Role == APITokenScopeRead {
+			http.Error(w, "This API token is read-only and cannot perform this operation", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }

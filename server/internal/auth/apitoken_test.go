@@ -30,6 +30,24 @@ func TestGenerateAPIToken(t *testing.T) {
 	}
 }
 
+func TestNormalizeAPITokenScope(t *testing.T) {
+	cases := map[string]string{
+		"":                 APITokenScopeAdmin, // legacy tokens without a scope are admin
+		APITokenScopeAdmin: APITokenScopeAdmin,
+		APITokenScopeRead:  APITokenScopeRead,
+		// Unknown values fail closed to read, never admin.
+		"readonly":  APITokenScopeRead,
+		"Read":      APITokenScopeRead,
+		"Admin":     APITokenScopeRead,
+		"superuser": APITokenScopeRead,
+	}
+	for in, want := range cases {
+		if got := NormalizeAPITokenScope(in); got != want {
+			t.Errorf("NormalizeAPITokenScope(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestGenerateAPITokenUnique(t *testing.T) {
 	a, _, _, err := GenerateAPIToken()
 	if err != nil {
