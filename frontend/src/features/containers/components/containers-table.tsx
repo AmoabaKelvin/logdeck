@@ -35,15 +35,18 @@ import type {
 	GroupedContainers,
 } from "./container-utils";
 import {
+	formatBytes,
 	formatContainerName,
 	formatCPUPercent,
 	formatCreatedDate,
 	formatImageName,
 	formatMemoryStats,
 	getComposeProject,
+	getContainerUrlIdentifier,
 	getHealthBadgeClass,
 	getStateBadgeClass,
 	isCoolifyManaged,
+	isRemovedContainer,
 	toTitleCase,
 } from "./container-utils";
 import { Sparkline } from "./sparkline";
@@ -102,6 +105,7 @@ interface ContainersTableProps {
 	isError: boolean;
 	error: unknown;
 	groupBy: GroupByOption;
+	emptyMessage: string;
 	filteredContainers: ContainerInfo[];
 	groupedItems: GroupedContainers[] | null;
 	pageItems: ContainerInfo[];
@@ -124,6 +128,7 @@ export function ContainersTable({
 	isError,
 	error,
 	groupBy,
+	emptyMessage,
 	filteredContainers,
 	groupedItems,
 	pageItems,
@@ -151,19 +156,25 @@ export function ContainersTable({
 	const isComposeBusy = (project: string) => pendingComposeActions.has(project);
 
 	// Only real compose groups get stack actions; the "Standalone" fallback
-	// group has no compose project label to act on.
+	// group has no compose project label to act on, and removed containers have
+	// nothing left to start or stop.
 	const isComposeGroup = (group: GroupedContainers) =>
 		group.items.some(
-			(container) => getComposeProject(container.labels) === group.project,
+			(container) =>
+				!isRemovedContainer(container) &&
+				getComposeProject(container.labels) === group.project,
 		);
 
 	const renderContainerRow = (container: ContainerInfo) => {
 		const state = container.state.toLowerCase();
 		const busy = isBusy(container.id);
+		const removed = isRemovedContainer(container);
 
 		return (
 			<TableRow key={container.id} className="hover:bg-muted/50">
-				<TableCell className="h-16 px-4 font-medium">
+				<TableCell
+					className={`h-16 px-4 font-medium ${removed ? "text-muted-foreground" : ""}`}
+				>
 					<div className="flex items-center gap-2">
 						{formatContainerName(container.names)}
 						{isCoolifyManaged(container.labels) && (
@@ -202,7 +213,13 @@ export function ContainersTable({
 					</div>
 				</TableCell>
 				<TableCell className="h-16 px-4 text-sm">
-					{state !== "running" ? (
+					{removed ? (
+						<span className="font-mono text-xs text-muted-foreground">
+							{container.storedBytes > 0
+								? `${formatBytes(container.storedBytes)} stored`
+								: "—"}
+						</span>
+					) : state !== "running" ? (
 						<span className="text-muted-foreground">—</span>
 					) : (
 						<div className="space-y-0.5 font-mono text-xs">
@@ -238,61 +255,88 @@ export function ContainersTable({
 				<TableCell className="h-16 px-4">
 					<TooltipProvider>
 						<div className="flex items-center gap-1">
-							{state === "exited" && (
-								<ActionButton
-									icon={PlayIcon}
-									action="start"
-									containerId={container.id}
-									onClick={() => onStart(container)}
-									isPending={isPending}
-									busy={busy}
-									isReadOnly={isReadOnly}
-								/>
+							{removed && (
+								<Tooltip>
+									<TooltipTrigger asChild>
+										<Button
+											variant="outline"
+											size="icon"
+											className="h-8 w-8"
+											asChild
+										>
+											<Link
+												to="/containers/$containerId/logs"
+												params={{
+													containerId: getContainerUrlIdentifier(container),
+												}}
+												aria-label="View stored logs"
+											>
+												<FileTextIcon className="size-4" />
+											</Link>
+										</Button>
+									</TooltipTrigger>
+									<TooltipContent>View stored logs</TooltipContent>
+								</Tooltip>
 							)}
-							{state === "running" && (
-								<ActionButton
-									icon={SquareIcon}
-									action="stop"
-									containerId={container.id}
-									onClick={() => onStop(container)}
-									isPending={isPending}
-									busy={busy}
-									isReadOnly={isReadOnly}
-								/>
+							{!removed && (
+								<>
+									{state === "exited" && (
+										<ActionButton
+											icon={PlayIcon}
+											action="start"
+											containerId={container.id}
+											onClick={() => onStart(container)}
+											isPending={isPending}
+											busy={busy}
+											isReadOnly={isReadOnly}
+										/>
+									)}
+									{state === "running" && (
+										<ActionButton
+											icon={SquareIcon}
+											action="stop"
+											containerId={container.id}
+											onClick={() => onStop(container)}
+											isPending={isPending}
+											busy={busy}
+											isReadOnly={isReadOnly}
+										/>
+									)}
+									<ActionButton
+										icon={RotateCwIcon}
+										action="restart"
+										containerId={container.id}
+										onClick={() => onRestart(container)}
+										isPending={isPending}
+										busy={busy}
+										isReadOnly={isReadOnly}
+									/>
+									<ActionButton
+										icon={Trash2Icon}
+										action="remove"
+										containerId={container.id}
+										onClick={() => onDelete(container)}
+										isPending={isPending}
+										busy={busy}
+										isReadOnly={isReadOnly}
+										variant="destructive"
+									/>
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<Button
+												variant="outline"
+												size="icon"
+												className="h-8 w-8"
+												onClick={() => onViewLogs(container)}
+												disabled={busy}
+											>
+												<FileTextIcon className="size-4" />
+											</Button>
+										</TooltipTrigger>
+										<TooltipContent>View Logs</TooltipContent>
+									</Tooltip>
+								</>
 							)}
-							<ActionButton
-								icon={RotateCwIcon}
-								action="restart"
-								containerId={container.id}
-								onClick={() => onRestart(container)}
-								isPending={isPending}
-								busy={busy}
-								isReadOnly={isReadOnly}
-							/>
-							<ActionButton
-								icon={Trash2Icon}
-								action="remove"
-								containerId={container.id}
-								onClick={() => onDelete(container)}
-								isPending={isPending}
-								busy={busy}
-								isReadOnly={isReadOnly}
-								variant="destructive"
-							/>
-							<Tooltip>
-								<TooltipTrigger asChild>
-									<Button
-										variant="outline"
-										size="icon"
-										className="h-8 w-8"
-										onClick={() => onViewLogs(container)}
-										disabled={busy}
-									>
-										<FileTextIcon className="size-4" />
-									</Button>
-								</TooltipTrigger>
-								<TooltipContent>View Logs</TooltipContent>
-							</Tooltip>
 						</div>
 					</TooltipProvider>
 				</TableCell>
@@ -337,7 +381,7 @@ export function ContainersTable({
 				<TableRow>
 					<TableCell colSpan={7} className="h-32">
 						<div className="text-center text-sm text-muted-foreground">
-							No containers found.
+							{emptyMessage}
 						</div>
 					</TableCell>
 				</TableRow>
