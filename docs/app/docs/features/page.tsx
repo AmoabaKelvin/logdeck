@@ -12,11 +12,18 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Features",
   description:
-    "Every LogDeck feature: real-time Docker and Podman log streaming, container stats, multi-host management, Compose stack tools, web terminal, and API tokens.",
+    "Every LogDeck feature: real-time Docker and Podman log streaming, persistent log history, alerting, container stats, multi-host management, Compose stack tools, web terminal, and scoped API tokens.",
   alternates: { canonical: "/docs/features" },
 };
 
-const features = [
+type Feature = {
+  title: string;
+  description: string;
+  items: string[];
+  href?: string;
+};
+
+const features: Feature[] = [
   {
     title: "Real-time Log Streaming",
     description:
@@ -24,21 +31,49 @@ const features = [
     items: [
       "Live log streaming with automatic updates",
       "Auto-scroll toggle for following new logs",
-      "Configurable line limits (50, 100, 500, 1000+ lines)",
+      "Configurable tail size, and pause with a buffered-line count",
       "Timestamps with toggle visibility",
       "Support for both stdout and stderr streams",
     ],
+  },
+  {
+    title: "Log Persistence & History",
+    description:
+      "Logs are stored locally, so history outlives the container that produced it.",
+    items: [
+      "Every container on every host is tailed into a local SQLite store, enabled by default",
+      "A Live | History toggle in the log viewer searches everything stored, server-side",
+      "History survives restarts, and rebuilds that give a container a new ID (docker compose up --build)",
+      "Containers that no longer exist appear under a Removed filter with their stored logs still readable",
+      "Retention caps (50 MB per container, 1024 MB total by default) evict oldest-first",
+      "Aggregated stack logs remain live-only",
+    ],
+    href: "/docs/log-history",
+  },
+  {
+    title: "Alerting",
+    description:
+      "Get told when a container dies, gets OOM-killed, or starts logging errors.",
+    items: [
+      "Event rules on container death (non-zero exit) and OOM kills",
+      "Log rules on a minimum level, a regex pattern, or both",
+      "Rate thresholds ('5 matches in 60 seconds') and per-rule cooldowns that report suppressed counts",
+      "Target rules by host, container name, or Compose project",
+      "One JSON webhook that Slack and Discord incoming webhooks accept unchanged",
+      "Alert history with the delivery result of every notification",
+    ],
+    href: "/docs/alerting",
   },
   {
     title: "Advanced Filtering",
     description:
       "Find exactly what you're looking for with powerful filtering and search capabilities.",
     items: [
-      "Full-text search across all logs",
-      "Filter by log level (ERROR, WARN, INFO, DEBUG)",
+      "Full-text search with match navigation, plus highlight or exclude modes",
+      "Filter by log level (TRACE, DEBUG, INFO, WARN, ERROR, FATAL, PANIC, and unclassified lines)",
       "Regex pattern matching support",
-      "Date range filtering",
-      "Color-coded log levels for easy identification",
+      "Time range presets and a custom calendar range",
+      "Color-coded log levels, collapsible JSON lines, and line pinning",
     ],
   },
   {
@@ -46,10 +81,10 @@ const features = [
     description:
       "Download container logs for offline analysis or archival purposes.",
     items: [
-      "Download parsed logs as text files",
-      "Export raw logs without processing",
-      "Preserves timestamps and log formatting",
-      "Useful for sharing with team members or support",
+      "Download the filtered view as JSON or TXT",
+      "Works in both Live and History mode",
+      "Preserves timestamps and log levels",
+      "Copy individual lines or a multi-line selection to the clipboard",
     ],
   },
   {
@@ -57,11 +92,12 @@ const features = [
     description:
       "Automatically discover and monitor all containers running on your Docker host.",
     items: [
-      "Real-time container status updates",
+      "Real-time container status updates driven by the engine's event stream",
       "View container details (name, image, status, uptime)",
-      "Host information display (Docker version, container count)",
+      "Health status badges (healthy, unhealthy, starting) for containers with a healthcheck — Docker only, see the note below",
+      "Host information display (engine version, container count)",
       "System resource usage (CPU, memory)",
-      "Group containers by project, network, or label",
+      "Group containers by Compose project",
     ],
   },
   {
@@ -150,9 +186,11 @@ const features = [
       "List containers and stacks, inspect, read/follow/search logs, and check stats from the terminal",
       "logdeck grep searches the recent logs of every running container across all hosts",
       "Lifecycle actions, resource limits, and compose stack controls",
+      "Manage alert rules, the webhook, and alert history with logdeck alerts",
       "Persistent named contexts with logdeck login, kubectl-style",
       "Table output for humans, JSON/NDJSON output (-o json) for machines",
     ],
+    href: "/docs/cli",
   },
   {
     title: "Interactive Terminal",
@@ -166,26 +204,29 @@ const features = [
     ],
   },
   {
-    title: "API Access Tokens",
+    title: "Scoped API Access Tokens",
     description:
       "Give the CLI and external tools their own credentials instead of sharing your login.",
     items: [
-      "Create and revoke tokens from Settings → API Tokens",
+      "Create and revoke tokens from Settings → API Access",
       "Tokens are prefixed ldk_ and shown only once at creation",
+      "Two scopes: admin (full access) and read (read-only)",
+      "A read token cannot mutate anything, open the web terminal, read container environment variables, or read settings",
       "Sent as an Authorization: Bearer header on the HTTP API",
-      "Work alongside JWT sessions used by the web UI",
+      "Work alongside the JWT sessions used by the web UI",
     ],
+    href: "/docs/configuration",
   },
   {
     title: "Optional Authentication",
     description:
       "Secure your LogDeck instance or run it completely open based on your needs.",
     items: [
-      "JWT-based authentication",
-      "SHA256 password hashing with salt",
-      "Configurable admin credentials",
+      "JWT-based login, with a 7-day session token",
+      "Enable it from the Settings page, or pin it with environment variables",
+      "Environment-configured passwords are bcrypt hashes",
+      "Rate-limited login endpoint",
       "Can be completely disabled if not needed",
-      "Session management with token expiration",
     ],
   },
   {
@@ -194,7 +235,7 @@ const features = [
       "Enable read-only mode to prevent accidental modifications to your containers.",
     items: [
       "View logs without container management capabilities",
-      "Prevents start, stop, restart, and remove operations",
+      "Prevents start, stop, restart, remove, and environment or resource edits",
       "Perfect for production environments",
       "Toggle from the Settings page, or pin it with the READONLY_MODE environment variable",
     ],
@@ -245,6 +286,14 @@ export default function FeaturesPage() {
                     </li>
                   ))}
                 </ul>
+                {feature.href && (
+                  <a
+                    href={feature.href}
+                    className="mt-4 inline-block text-sm font-medium underline underline-offset-4"
+                  >
+                    Read the guide
+                  </a>
+                )}
               </CardContent>
             </Card>
           );
@@ -287,6 +336,25 @@ export default function FeaturesPage() {
           </li>
         </ul>
 
+        <h2>Engine Support and Caveats</h2>
+        <ul>
+          <li>
+            <strong>Docker and Podman</strong> - LogDeck talks to Podman through
+            its Docker-compatible API socket, rootless or rootful, and can mix
+            Docker and Podman hosts in one multi-host setup. Local sockets are
+            auto-detected: Docker first, then rootless Podman, then rootful
+            Podman.
+          </li>
+          <li>
+            <strong>Health badges are Docker-only</strong> - LogDeck reads a
+            container&apos;s health from the engine&apos;s container list.
+            Docker embeds it there; Podman&apos;s Docker-compatible list API
+            does not, so containers on a Podman host show no health badge even
+            when they define a healthcheck. Everything else works the same on
+            both engines.
+          </li>
+        </ul>
+
         <h2>Technical Features</h2>
         <ul>
           <li>
@@ -294,8 +362,10 @@ export default function FeaturesPage() {
             binary for easy deployment
           </li>
           <li>
-            <strong>No Database Required</strong> - All state managed through
-            Docker API
+            <strong>One Directory of State</strong> - No external database. The
+            config file, the SQLite log store, and the alert history all live in
+            one directory (<code>/data</code> by default) — mount it as a volume
+            and there is nothing else to manage
           </li>
           <li>
             <strong>Lightweight</strong> - Small resource footprint, suitable
@@ -309,17 +379,6 @@ export default function FeaturesPage() {
             <strong>Open Source</strong> - GPL-3.0 licensed, community-driven
             development
           </li>
-        </ul>
-
-        <h2>Coming Soon</h2>
-        <p>
-          LogDeck is actively developed. Here are some features planned for
-          future releases:
-        </p>
-        <ul>
-          <li>Log persistence and history</li>
-          <li>Alert system for specific log patterns</li>
-          <li>Custom log parsing rules</li>
         </ul>
 
         <p className="mt-8">

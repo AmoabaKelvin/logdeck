@@ -14,21 +14,26 @@ const dockerComposeExample = `services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /proc:/host/proc:ro
+      # Config, stored log history, and alert history
+      - logdeck-data:/data
     environment:
       # Optional: manage multiple hosts
       # DOCKER_HOSTS: local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.example.com
       # Optional: enable authentication
       # JWT_SECRET: your-super-secret-key-min-32-chars
       # ADMIN_USERNAME: admin
-      # ADMIN_PASSWORD_SALT: your-random-salt-change-this
-      # ADMIN_PASSWORD: your-sha256-hash
-    restart: unless-stopped`;
+      # ADMIN_PASSWORD: your-bcrypt-hash
+    restart: unless-stopped
+
+volumes:
+  logdeck-data:`;
 
 const dockerRunCommand = `docker run -d \\
   --name logdeck \\
   -p 8123:8080 \\
   -v /var/run/docker.sock:/var/run/docker.sock \\
   -v /proc:/host/proc:ro \\
+  -v logdeck-data:/data \\
   amoabakelvin/logdeck:latest`;
 
 const cliInstall = `curl -fsSL https://raw.githubusercontent.com/AmoabaKelvin/logdeck/main/install.sh | sh`;
@@ -49,8 +54,8 @@ export function Installation() {
               Install
             </h2>
             <p className="mt-3 text-muted-foreground">
-              One container for the server, one command for the CLI. No
-              database, nothing to migrate.
+              One container for the server, one command for the CLI. One volume
+              for everything it keeps.
             </p>
 
             <Button asChild variant="outline" className="mt-8">

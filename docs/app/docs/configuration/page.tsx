@@ -2,11 +2,11 @@ import type { Metadata } from "next"
 import { CodeBlock } from "@/components/landing/code-block"
 import { Separator } from "@/components/ui/separator"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { AlertTriangle, CloudCog, Info, Lock, Server } from "lucide-react"
+import { AlertTriangle, CloudCog, Database, Globe, Info, Lock, Server } from "lucide-react"
 
 export const metadata: Metadata = {
   title: "Configuration",
-  description: "Configure LogDeck with environment variables: DOCKER_HOSTS for multi-host setups, JWT authentication, Coolify sync, read-only mode, and reverse proxy examples.",
+  description: "Configure LogDeck: the /data directory, DOCKER_HOSTS for multi-host setups, authentication, scoped API tokens, log retention, Coolify sync, read-only mode, and reverse proxy examples.",
   alternates: { canonical: "/docs/configuration" },
 }
 
@@ -25,11 +25,53 @@ export default function ConfigurationPage() {
       <Separator />
 
       <div className="prose prose-neutral dark:prose-invert max-w-none">
-        <h2 className="mb-4 text-3xl font-bold tracking-tight">Environment Variables</h2>
-        <p className="mb-6 text-base">
-          LogDeck is configured entirely through environment variables. This makes it easy to deploy
-          across different environments with different configurations.
+        <h2 className="mb-4 text-3xl font-bold tracking-tight">Two ways to configure</h2>
+        <p className="mb-4 text-base">
+          LogDeck reads its configuration from <strong>environment variables</strong> and from a{" "}
+          <strong>JSON config file</strong> that the Settings page writes. Environment variables win:
+          anything pinned by the environment is shown in the UI but cannot be changed there, which is
+          what you want when the deployment, not the admin, should have the final say.
         </p>
+        <p className="mb-6 text-base">
+          Hosts, Coolify hosts, read-only mode, and authentication can come from either source. API
+          tokens, alert rules, and log retention live only in the config file — set through the UI,
+          the CLI, or (for retention) an environment override.
+        </p>
+
+        <h2 className="mb-4 mt-10 text-3xl font-bold tracking-tight">The data directory</h2>
+        <p className="mb-4 text-base">
+          Everything LogDeck persists lives in one directory — the directory of its config file,{" "}
+          <code>/data</code> by default:
+        </p>
+        <ul className="mb-4 space-y-2">
+          <li>
+            <code>config.json</code> — hosts, Coolify hosts, read-only mode, auth, API tokens, alert
+            rules, and log-store settings
+          </li>
+          <li>
+            <code>logs.db</code> — the SQLite <a href="/docs/log-history">log store</a>
+          </li>
+          <li>
+            <code>alerts-history.json</code> — recently fired <a href="/docs/alerting">alerts</a>
+          </li>
+        </ul>
+        <p className="mb-4 text-base">
+          <strong>Mount it as a volume.</strong> Without one, all of the above is written inside the
+          container and destroyed the next time you recreate it — you would lose your API tokens,
+          your alert rules, and all stored log history.
+        </p>
+
+        <div className="not-prose mb-6">
+          <CodeBlock code={`volumes:
+  - logdeck-data:/data`} language="yaml" />
+        </div>
+
+        <p className="mb-6 text-base">
+          Set <code>CONFIG_PATH</code> to move the config file (and with it the whole directory)
+          somewhere else, for example <code>CONFIG_PATH=/config/logdeck.json</code>.
+        </p>
+
+        <h2 className="mb-4 mt-10 text-3xl font-bold tracking-tight">Environment Variables</h2>
       </div>
 
       <div className="grid gap-4 mt-6">
@@ -75,7 +117,163 @@ DOCKER_HOSTS=local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.example.co
               </div>
               <p className="mt-2 text-sm text-muted-foreground">
                 Host names appear in the UI and in the container list so you always know which Docker daemon you are interacting with.
+                Hosts defined here cannot be edited or removed from the Settings page; hosts added in Settings are merged with them.
               </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Podman is supported through its Docker-compatible API socket. When{" "}
+                <code>DOCKER_HOSTS</code> is unset, LogDeck probes for a local socket in order:
+                Docker, then rootless Podman (<code>$XDG_RUNTIME_DIR/podman/podman.sock</code>), then
+                rootful Podman (<code>/run/podman/podman.sock</code>).
+              </p>
+            </div>
+
+            <Separator />
+
+            <div>
+              <div className="flex items-baseline gap-2 mb-1">
+                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">CONFIG_PATH</code>
+                <span className="text-xs text-muted-foreground">Optional</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Path to the JSON config file. Its directory also holds the log store and the alert
+                history, so it should be on a mounted volume.
+              </p>
+              <div className="mt-2">
+                <span className="text-xs font-medium">Default:</span>{" "}
+                <code className="text-xs bg-muted px-1.5 py-0.5 rounded">/data/config.json</code>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div>
+              <div className="flex items-baseline gap-2 mb-1">
+                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">READONLY_MODE</code>
+                <span className="text-xs text-muted-foreground">Optional</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Set to <code>true</code> to block every mutating operation. See{" "}
+                <a href="#read-only-mode">Read-Only Mode</a> below. Default: <code>false</code>.
+              </p>
+            </div>
+
+            <Separator />
+
+            <div>
+              <div className="flex items-baseline gap-2 mb-1">
+                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">PORT</code>
+                <span className="text-xs text-muted-foreground">Not configurable</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                The server always listens on <code>:8080</code> inside the container. Publish it on
+                whichever host port you like (<code>-p 8123:8080</code>).
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-start gap-2">
+              <Database className="h-5 w-5 text-primary mt-0.5" />
+              <div>
+                <CardTitle>Log Persistence (Optional)</CardTitle>
+                <CardDescription>
+                  Retention limits for the stored logs that power History mode
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Persistence is <strong>on by default</strong> and needs no configuration. These
+              variables override the <code>logStore</code> section of the config file. See{" "}
+              <a href="/docs/log-history">Log History</a> for the full picture.
+            </p>
+
+            <div>
+              <div className="flex items-baseline gap-2 mb-1">
+                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">LOG_STORE_ENABLED</code>
+                <span className="text-xs text-muted-foreground">Optional</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                <code>false</code> disables log persistence entirely: no database file, no History
+                mode. Default: <code>true</code>.
+              </p>
+            </div>
+
+            <div>
+              <div className="flex items-baseline gap-2 mb-1">
+                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">LOG_STORE_PER_CONTAINER_MB</code>
+                <span className="text-xs text-muted-foreground">Optional</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Retention cap per container, in MB. Oldest lines are evicted first. Default:{" "}
+                <code>50</code>.
+              </p>
+            </div>
+
+            <div>
+              <div className="flex items-baseline gap-2 mb-1">
+                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">LOG_STORE_TOTAL_MB</code>
+                <span className="text-xs text-muted-foreground">Optional</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Retention cap for the whole store, in MB. Default: <code>1024</code>.
+              </p>
+            </div>
+
+            <div className="mt-2">
+              <CodeBlock code={`LOG_STORE_ENABLED=true
+LOG_STORE_PER_CONTAINER_MB=50
+LOG_STORE_TOTAL_MB=1024`} language="bash" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-start gap-2">
+              <Globe className="h-5 w-5 text-primary mt-0.5" />
+              <div>
+                <CardTitle>Proxies and CORS (Optional)</CardTitle>
+                <CardDescription>Only needed in specific deployments</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <div className="flex items-baseline gap-2 mb-1">
+                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">TRUST_PROXY_HEADERS</code>
+                <span className="text-xs text-muted-foreground">Optional</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Set to <code>true</code> to trust <code>X-Forwarded-For</code> /{" "}
+                <code>X-Real-IP</code> when identifying a client. LogDeck uses the client IP to rate
+                limit the login endpoint. Enable this <strong>only</strong> behind a reverse proxy
+                (Coolify, Traefik, Nginx); on a directly exposed server a client could spoof these
+                headers to sidestep the rate limit.
+              </p>
+            </div>
+
+            <Separator />
+
+            <div>
+              <div className="flex items-baseline gap-2 mb-1">
+                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">CORS_ALLOWED_ORIGINS</code>
+                <span className="text-xs text-muted-foreground">Optional</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Comma-separated origins allowed to call the API from a browser. Only needed when the
+                frontend is served from a different origin than the backend, such as a local dev
+                server. The shipped image serves both from the same origin.
+              </p>
+              <div className="mt-2">
+                <span className="text-xs font-medium">Default:</span>{" "}
+                <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                  http://localhost:5173,http://127.0.0.1:5173
+                </code>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -99,12 +297,20 @@ DOCKER_HOSTS=local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.example.co
                 <div className="text-sm text-blue-900 dark:text-blue-200">
                   <p className="font-medium">Authentication is completely optional</p>
                   <p className="mt-1">
-                    If these variables are not set, LogDeck will run without authentication.
-                    This is fine for local development or trusted networks.
+                    If these variables are not set, LogDeck runs without authentication — fine for
+                    local development or a trusted network. You can also enable it from the{" "}
+                    <strong>Settings</strong> page instead, with no environment variables at all;
+                    those credentials are stored in the config file. Setting them here pins auth so
+                    the UI cannot change it.
                   </p>
                 </div>
               </div>
             </div>
+
+            <p className="text-sm text-muted-foreground">
+              These three go together: set all of them, or none of them. Setting some but not all is
+              a startup error.
+            </p>
 
             <div>
               <div className="flex items-baseline gap-2 mb-1">
@@ -112,7 +318,7 @@ DOCKER_HOSTS=local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.example.co
                 <span className="text-xs text-amber-600 dark:text-amber-500 font-medium">Required for auth</span>
               </div>
               <p className="text-sm text-muted-foreground">
-                Secret key used to sign JWT tokens. Must be at least 32 characters long.
+                Secret key used to sign session tokens. Sessions last 7 days.
               </p>
               <div className="mt-2">
                 <CodeBlock code='JWT_SECRET=your-super-secret-key-change-this-to-something-random-min-32-chars' language="bash" />
@@ -142,34 +348,40 @@ DOCKER_HOSTS=local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.example.co
 
             <div>
               <div className="flex items-baseline gap-2 mb-1">
-                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">ADMIN_PASSWORD_SALT</code>
+                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">ADMIN_PASSWORD</code>
                 <span className="text-xs text-amber-600 dark:text-amber-500 font-medium">Required for auth</span>
               </div>
               <p className="text-sm text-muted-foreground">
-                Random salt for password hashing. Use a strong, random string.
+                A <strong>bcrypt hash</strong> of the admin password — never plain text. LogDeck
+                validates the hash at startup and refuses to start if it is malformed.
               </p>
               <div className="mt-2">
-                <CodeBlock code='ADMIN_PASSWORD_SALT=your-random-salt-change-this' language="bash" />
+                <p className="text-sm font-medium">Generate the hash:</p>
+                <CodeBlock code={`htpasswd -bnBC 10 '' yourPassword | tr -d ':'
+
+# ADMIN_PASSWORD=$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy`} language="bash" />
               </div>
-              <div className="mt-2 text-sm">
-                <p className="font-medium">Generate a random salt:</p>
-                <CodeBlock code='openssl rand -hex 32' language="bash" />
-              </div>
+              <p className="text-sm text-muted-foreground mt-2">
+                <code>htpasswd</code> ships with <code>apache2-utils</code> on Debian/Ubuntu,{" "}
+                <code>httpd-tools</code> on RHEL, and is preinstalled on macOS. In a compose file,
+                escape the <code>$</code> characters as <code>$$</code>, or keep the hash in an{" "}
+                <code>.env</code> file.
+              </p>
             </div>
 
             <Separator />
 
             <div>
               <div className="flex items-baseline gap-2 mb-1">
-                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">ADMIN_PASSWORD</code>
-                <span className="text-xs text-amber-600 dark:text-amber-500 font-medium">Required for auth</span>
+                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">ADMIN_PASSWORD_SALT</code>
+                <span className="text-xs text-muted-foreground">Legacy</span>
               </div>
               <p className="text-sm text-muted-foreground">
-                SHA256 hash of (password + salt). <strong>Do not use plain text!</strong>
+                Older LogDeck deployments hashed the admin password as SHA256(password + salt). That
+                combination — <code>ADMIN_PASSWORD_SALT</code> set, with{" "}
+                <code>ADMIN_PASSWORD</code> holding the resulting hex digest — is still accepted, so
+                existing setups keep working. Use bcrypt for new ones and leave this unset.
               </p>
-              <div className="mt-2">
-                <CodeBlock code='ADMIN_PASSWORD=your-sha256-hash' language="bash" />
-              </div>
             </div>
           </CardContent>
         </Card>
@@ -252,65 +464,29 @@ COOLIFY_CONFIGS=prod|https://coolify-prod.example.com|token-abc,staging|https://
       <div className="prose prose-neutral dark:prose-invert max-w-none">
         <h2 className="mb-4 text-3xl font-bold tracking-tight">Password Hashing</h2>
         <p className="mb-6 text-base">
-          For security, LogDeck uses SHA256 hashing with a salt. Never use plain text passwords
-          in the <code>ADMIN_PASSWORD</code> environment variable. The password is hashed as SHA256(password + salt).
+          When you configure authentication through the environment, <code>ADMIN_PASSWORD</code>{" "}
+          must hold a <strong>bcrypt hash</strong> — never a plain-text password. LogDeck checks the
+          hash at startup and exits with an error if it is not a valid bcrypt string.
+        </p>
+        <p className="mb-6 text-base">
+          If instead you enable authentication from the <strong>Settings</strong> page, you type the
+          password into the form and LogDeck hashes and stores it in the config file for you. There
+          is nothing to generate.
         </p>
 
-        <h3 className="mb-4 mt-8 text-xl font-semibold">Quick Method: Using Shell Commands</h3>
-        <p className="mb-4 text-sm">Generate both salt and password hash in one go:</p>
+        <h3 className="mb-4 mt-8 text-xl font-semibold">Generate a bcrypt hash</h3>
 
-        <div className="not-prose mb-4">
-          <div className="space-y-3">
-            <div>
-              <p className="text-sm font-medium mb-2">Step 1: Generate a random salt</p>
-              <CodeBlock code='openssl rand -hex 32' language="bash" />
-              <p className="text-sm text-muted-foreground mt-1">
-                Save this output as your <code>ADMIN_PASSWORD_SALT</code>
-              </p>
-            </div>
-
-            <div>
-              <p className="text-sm font-medium mb-2">Step 2: Generate the password hash</p>
-              <CodeBlock
-                code={`# Replace YOUR_PASSWORD and YOUR_SALT with your actual values
-echo -n "YOUR_PASSWORDYOUR_SALT" | shasum -a 256 | awk '{print $1}'
-
-# Example: If password is "admin123" and salt is "mysalt", run:
-echo -n "admin123mysalt" | shasum -a 256 | awk '{print $1}'`}
-                language="bash"
-              />
-              <p className="text-sm text-muted-foreground mt-1">
-                Save this output as your <code>ADMIN_PASSWORD</code>
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <h3 className="mb-4 mt-8 text-xl font-semibold">Alternative: Using Python</h3>
-        <div className="mb-6">
+        <div className="not-prose mb-6">
           <CodeBlock
-          code={`import hashlib
-
-password = "your-password"
-salt = "your-salt"
-hash_value = hashlib.sha256((password + salt).encode()).hexdigest()
-print(hash_value)`}
-          language="python"
+            code={`htpasswd -bnBC 10 '' yourPassword | tr -d ':'
+# $2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy`}
+            language="bash"
           />
         </div>
-
-        <h3 className="mb-4 mt-8 text-xl font-semibold">Alternative: Using Node.js</h3>
-        <div className="mb-6">
-          <CodeBlock
-          code={`const crypto = require('crypto');
-
-const password = 'your-password';
-const salt = 'your-salt';
-const hash = crypto.createHash('sha256').update(password + salt).digest('hex');
-console.log(hash);`}
-          language="javascript"
-          />
-        </div>
+        <p className="mb-6 text-sm text-muted-foreground">
+          <code>htpasswd</code> ships with <code>apache2-utils</code> on Debian/Ubuntu,{" "}
+          <code>httpd-tools</code> on RHEL, and is preinstalled on macOS.
+        </p>
 
         <div className="not-prose mt-8">
           <Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20">
@@ -326,16 +502,21 @@ console.log(hash);`}
             </CardHeader>
             <CardContent className="text-sm text-amber-900 dark:text-amber-200 space-y-2">
               <p>
-                • Generate a unique, random salt for each deployment
+                • A bcrypt hash contains <code>$</code> characters. In a compose file, escape them as{" "}
+                <code>$$</code>, or put the hash in an <code>.env</code> file instead.
               </p>
               <p>
-                • Never use the same salt across different environments
+                • Treat the hash and the JWT secret like passwords — keep them out of version
+                control.
               </p>
               <p>
-                • Keep your salt and password hash secure - treat them like passwords
+                • Use a different <code>JWT_SECRET</code> per deployment. Changing it invalidates
+                every existing session.
               </p>
               <p>
-                • The hash format is: SHA256(password + salt), where strings are concatenated directly
+                • The legacy SHA256(password + salt) scheme is still accepted when{" "}
+                <code>ADMIN_PASSWORD_SALT</code> is set, so older deployments keep working. Prefer
+                bcrypt for new ones.
               </p>
             </CardContent>
           </Card>
@@ -355,41 +536,69 @@ console.log(hash);`}
     ports:
       - "8123:8080"
     volumes:
-      # Mount Docker socket for container management
+      # Docker socket for container management
       - /var/run/docker.sock:/var/run/docker.sock
-      # Mount /proc for system stats
+      # /proc for system stats
       - /proc:/host/proc:ro
+      # Config file, stored logs, and alert history — do not skip this
+      - logdeck-data:/data
+      # SSH keys, if you use ssh:// hosts
+      # - ~/.ssh:/root/.ssh:ro
     environment:
       # Docker hosts (local + remote example)
       DOCKER_HOSTS: "local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.example.com"
 
-      # Authentication (optional - remove to disable auth)
+      # Authentication (optional - remove to run without auth,
+      # or enable it from the Settings page instead)
       JWT_SECRET: "your-super-secret-key-min-32-characters-long"
       ADMIN_USERNAME: "admin"
-      ADMIN_PASSWORD_SALT: "your-random-salt-change-this"
-      ADMIN_PASSWORD: "your-sha256-hash"
+      ADMIN_PASSWORD: "your-bcrypt-hash"   # $$ escapes the $ in a compose file
+
+      # Log persistence (optional - on by default)
+      # LOG_STORE_PER_CONTAINER_MB: "50"
+      # LOG_STORE_TOTAL_MB: "1024"
+
+      # Read-only mode (optional)
+      # READONLY_MODE: "true"
+
+      # Behind a reverse proxy (optional)
+      # TRUST_PROXY_HEADERS: "true"
 
       # Coolify integration (optional - host names must match DOCKER_HOSTS)
       # COOLIFY_CONFIGS: "local|https://your-coolify-instance.com|your-api-token"
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s`}
+
+volumes:
+  logdeck-data:`}
           language="yaml"
           />
         </div>
 
+        <p className="mb-8 text-base">
+          The server exposes <code>GET /api/v1/healthz</code> if you want to wire up an external
+          health check. The runtime image is minimal and ships no <code>curl</code> or{" "}
+          <code>wget</code>, so a compose <code>healthcheck</code> has to come from outside the
+          container.
+        </p>
+
         <Separator className="my-12" />
 
-        <h2 className="mb-4 text-3xl font-bold tracking-tight">Read-Only Mode</h2>
+        <h2 id="read-only-mode" className="mb-4 text-3xl font-bold tracking-tight">Read-Only Mode</h2>
         <p className="mb-4 text-base">
-          LogDeck supports a read-only mode that prevents any container management operations.
-          This is useful in production environments where you want to view logs but not modify containers.
-          When enabled, all mutating operations (start, stop, restart, remove, env and resource updates)
-          are blocked.
+          Read-only mode prevents LogDeck from changing anything on your containers. It is useful in
+          production, where you want to read logs but not touch what is running. When it is on, these
+          are blocked for everyone, session or token:
+        </p>
+        <ul className="mb-4 space-y-2">
+          <li>Starting, stopping, restarting, and removing containers</li>
+          <li>Compose stack start, stop, and restart</li>
+          <li>Environment variable and resource-limit edits</li>
+          <li>The web terminal (opening a shell in a container)</li>
+        </ul>
+        <p className="mb-4 text-base">
+          Reading is unaffected: logs, history, stats, events, and container details all work as
+          usual. LogDeck&apos;s own settings and alert rules also remain editable — read-only mode is
+          about your containers, not about LogDeck&apos;s configuration.
         </p>
         <p className="mb-4 text-base">
           Toggle it from the <strong>Settings</strong> page in the UI, or pin it with an environment variable:
@@ -413,10 +622,43 @@ console.log(hash);`}
           the UI — no environment variables involved:
         </p>
         <ul className="mb-4 space-y-2">
-          <li>Create and revoke tokens under <strong>Settings &rarr; API Tokens</strong></li>
+          <li>Create and revoke tokens under <strong>Settings &rarr; API Access</strong></li>
           <li>Tokens are prefixed <code>ldk_</code> and shown in full only once, at creation</li>
+          <li>Only a hash is stored; a lost token cannot be recovered, only revoked and replaced</li>
           <li>Requests authenticate with an <code>Authorization: Bearer &lt;token&gt;</code> header</li>
         </ul>
+
+        <h3 className="mb-4 mt-8 text-xl font-semibold">Scopes</h3>
+        <p className="mb-4 text-base">
+          Each token is created with one of two scopes.
+        </p>
+        <p className="mb-4 text-base">
+          <strong>admin</strong> — full access, equivalent to a logged-in admin session.
+        </p>
+        <p className="mb-2 text-base">
+          <strong>read</strong> — read-only. Give this one to CI jobs, dashboards, and AI agents that
+          only need to look. A read token <em>can</em>:
+        </p>
+        <ul className="mb-4 space-y-2">
+          <li>Read live logs, stored log history, container details, stats, and events</li>
+          <li>List images, volumes, networks, and hosts</li>
+          <li>Read alert rules, the alert webhook URL, and alert history</li>
+        </ul>
+        <p className="mb-2 text-base">A read token <strong>cannot</strong>:</p>
+        <ul className="mb-4 space-y-2">
+          <li>
+            Mutate anything — every request that is not a <code>GET</code> is rejected with{" "}
+            <code>403</code>, so no start/stop/restart/remove, no stack actions, no environment or
+            resource edits, and no changes to settings or alert rules
+          </li>
+          <li>Open the web terminal</li>
+          <li>Read a container&apos;s environment variables (they carry secrets)</li>
+          <li>Read the settings endpoint, which exposes host topology and the token inventory</li>
+        </ul>
+        <p className="mb-4 text-base">
+          Note that the webhook URL <em>is</em> readable with a read token. If your webhook URL
+          embeds a secret (Slack and Discord URLs do), treat a read token as sensitive accordingly.
+        </p>
         <p className="mb-8 text-base">
           Tokens only matter when authentication is enabled; on an open instance the API is
           reachable without them.
