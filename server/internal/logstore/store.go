@@ -35,6 +35,9 @@ const (
 	batchInterval = 250 * time.Millisecond
 	// syncInterval is the container lifecycle poll cadence.
 	syncInterval = 15 * time.Second
+	// listTimeout bounds one container listing; an unreachable host must not
+	// stall the lifecycle loop.
+	listTimeout = 15 * time.Second
 	// janitorInterval is the retention sweep cadence.
 	janitorInterval = time.Minute
 	// dropLogEvery throttles the "sink fell behind" warning.

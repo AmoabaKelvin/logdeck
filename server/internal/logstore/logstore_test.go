@@ -1323,3 +1323,46 @@ func TestGenerationsOfAnUnconfiguredHostAreMarkedRemoved(t *testing.T) {
 		t.Fatal("a host that is no longer configured must have its generations marked removed")
 	}
 }
+
+// hangingEngine never returns from a listing, like a wedged Docker socket.
+type hangingEngine struct{ started chan struct{} }
+
+func (e *hangingEngine) ListContainersAllHosts(ctx context.Context) (map[string][]models.ContainerInfo, []docker.HostError, error) {
+	select {
+	case e.started <- struct{}{}:
+	default:
+	}
+	<-ctx.Done()
+	return nil, nil, ctx.Err()
+}
+
+func (e *hangingEngine) TailContainerLogs(context.Context, string, string, models.LogOptions, func(models.LogEntry)) error {
+	return nil
+}
+
+// An unreachable host must not stall the lifecycle loop: the listing is bounded
+// so sync returns instead of blocking persistence forever.
+func TestUnreachableHostDoesNotStallTheSyncLoop(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	engine := &hangingEngine{started: make(chan struct{}, 1)}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		store.sync(context.Background(), engine, newBackfillTracker(), make(chan backfillResult, 1))
+	}()
+
+	select {
+	case <-engine.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("listing was never attempted")
+	}
+
+	select {
+	case <-done:
+	case <-time.After(listTimeout + 5*time.Second):
+		t.Fatal("sync never returned: an unreachable host stalls the lifecycle loop")
+	}
+}

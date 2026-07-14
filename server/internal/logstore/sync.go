@@ -104,7 +104,13 @@ func (t *backfillTracker) complete(s *Store, key genKey) {
 
 // sync reconciles one container listing against the stored generations.
 func (s *Store) sync(ctx context.Context, engine Engine, track *backfillTracker, results chan backfillResult) {
-	snapshot, hostErrs, err := engine.ListContainersAllHosts(ctx)
+	// An unreachable host can leave its listing hanging indefinitely; without a
+	// bound the whole lifecycle loop would stall and persistence would silently
+	// stop for every host.
+	listCtx, cancel := context.WithTimeout(ctx, listTimeout)
+	defer cancel()
+
+	snapshot, hostErrs, err := engine.ListContainersAllHosts(listCtx)
 	if err != nil {
 		log.Printf("logstore: container listing failed: %v", err)
 		return
