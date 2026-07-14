@@ -72,6 +72,7 @@ type engineHub interface {
 type eventClient interface {
 	streamEvents(ctx context.Context) <-chan docker.EngineEvent
 	inspectExit(ctx context.Context, host, containerID string) (exitCode string, oomKilled bool, err error)
+	inspectHealth(ctx context.Context, host, containerID string) (status string, err error)
 }
 
 // dockerEventAdapter adapts *docker.MultiHostClient to eventClient. It is a
@@ -96,6 +97,21 @@ func (a dockerEventAdapter) inspectExit(ctx context.Context, host, containerID s
 	return strconv.Itoa(resp.State.ExitCode), resp.State.OOMKilled, nil
 }
 
+// inspectHealth resolves a container's current healthcheck state. Returns ""
+// (not an error) for a container with no healthcheck configured. Works on both
+// Docker and Podman, which is why it can recover Podman's health state after
+// the SDK drops it from the bare-action event.
+func (a dockerEventAdapter) inspectHealth(ctx context.Context, host, containerID string) (string, error) {
+	resp, err := a.c.GetContainer(ctx, host, containerID)
+	if err != nil {
+		return "", err
+	}
+	if resp.State == nil || resp.State.Health == nil {
+		return "", nil
+	}
+	return resp.State.Health.Status, nil
+}
+
 // matchMsg is one log-rule match pushed from a sink to the run loop.
 type matchMsg struct {
 	gen           uint64
@@ -106,11 +122,13 @@ type matchMsg struct {
 	sample        string
 }
 
-// inspectResult is the outcome of a die-event exit-code lookup posted back to
-// the run loop.
+// inspectResult is the outcome of an event lookup that needed a container
+// inspect (a die-event exit code, or a Podman bare-action health state) posted
+// back to the run loop.
 type inspectResult struct {
 	ev       docker.EngineEvent
-	exitCode string
+	action   string // "die" | "unhealthy"
+	exitCode string // die only
 	fire     bool
 }
 
@@ -469,9 +487,16 @@ func (e *Engine) handleEvent(st *runState, ev docker.EngineEvent) {
 		e.recordEventMatch(st, ev, "oom", "")
 	case "health_status":
 		// Only the unhealthy transition is an alert; healthy/starting are
-		// recoveries, not alerts.
-		if ev.HealthStatus == "unhealthy" {
+		// recoveries and never fire.
+		switch ev.HealthStatus {
+		case "unhealthy":
+			// Docker put the state in the action suffix; use it directly.
 			e.recordEventMatch(st, ev, "unhealthy", "")
+		case "":
+			// Podman emits a bare "health_status" action and carries the state
+			// only in a top-level field the SDK drops on decode. Resolve it
+			// with a bounded inspect, mirroring the die exit-code fallback.
+			e.spawnHealthInspect(st, ev)
 		}
 	}
 }
@@ -488,7 +513,7 @@ func (e *Engine) spawnInspect(st *runState, ev docker.EngineEvent) {
 		defer e.wg.Done()
 		ictx, cancel := context.WithTimeout(runCtx, inspectTimeout)
 		defer cancel()
-		res := inspectResult{ev: ev}
+		res := inspectResult{ev: ev, action: "die"}
 		exitCode, oomKilled, err := client.inspectExit(ictx, ev.Host, ev.ContainerID)
 		if err != nil {
 			res.exitCode = "unknown"
@@ -504,12 +529,35 @@ func (e *Engine) spawnInspect(st *runState, ev docker.EngineEvent) {
 	}()
 }
 
-// handleInspect completes a die event whose exit code needed an inspect.
+// spawnHealthInspect resolves the health state of a Podman bare-action
+// "health_status" event (single inspect, bounded timeout) and posts the result
+// back to the run loop. Only a confirmed "unhealthy" fires: unlike a die, an
+// unresolvable state is not fired, since firing on an unknown state would be a
+// false positive on a container that may well be healthy.
+func (e *Engine) spawnHealthInspect(st *runState, ev docker.EngineEvent) {
+	client := st.eventsClient
+	runCtx := st.ctx
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		ictx, cancel := context.WithTimeout(runCtx, inspectTimeout)
+		defer cancel()
+		status, err := client.inspectHealth(ictx, ev.Host, ev.ContainerID)
+		res := inspectResult{ev: ev, action: "unhealthy", fire: err == nil && status == "unhealthy"}
+		select {
+		case e.inspectCh <- res:
+		case <-runCtx.Done():
+		}
+	}()
+}
+
+// handleInspect completes an event whose alert condition needed an inspect (a
+// die exit code, or a Podman bare-action health state).
 func (e *Engine) handleInspect(st *runState, r inspectResult) {
 	if !r.fire {
 		return
 	}
-	e.recordEventMatch(st, r.ev, "die", r.exitCode)
+	e.recordEventMatch(st, r.ev, r.action, r.exitCode)
 }
 
 // recordEventMatch runs one die/oom occurrence through every matching event

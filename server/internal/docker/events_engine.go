@@ -74,16 +74,13 @@ func mapEngineEvent(hostName string, msg events.Message) (EngineEvent, bool) {
 		exitCode = msg.Actor.Attributes["exitCode"]
 	}
 
-	// Health transitions carry the new state two ways: Docker suffixes the
-	// action ("health_status: unhealthy"), while Podman emits the bare
-	// "health_status" action and puts the state in Actor.Attributes.
+	// Docker suffixes the new state onto the action ("health_status: unhealthy").
+	// Podman emits the bare "health_status" action and carries the state only in
+	// a top-level field the Docker SDK drops on decode, so on Podman this stays
+	// empty and the alerts engine resolves it with a container inspect.
 	healthStatus := ""
 	if base == "health_status" {
-		if suffix != "" {
-			healthStatus = suffix
-		} else {
-			healthStatus = msg.Actor.Attributes["health_status"]
-		}
+		healthStatus = suffix
 	}
 
 	return EngineEvent{

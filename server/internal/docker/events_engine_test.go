@@ -106,25 +106,27 @@ func TestMapEngineEventHealthStatusDockerSuffix(t *testing.T) {
 	}
 }
 
-func TestMapEngineEventHealthStatusPodmanAttribute(t *testing.T) {
-	// Podman emits the bare "health_status" action and carries the state in
-	// Actor.Attributes instead of the action suffix.
+func TestMapEngineEventHealthStatusPodmanBareAction(t *testing.T) {
+	// Podman emits the bare "health_status" action and carries the state only
+	// in a top-level field the Docker SDK drops on decode (Actor.Attributes
+	// holds just image/name/podId). So HealthStatus is empty from the message;
+	// the alerts engine resolves it with a container inspect instead.
 	msg := events.Message{
 		Type:   events.ContainerEventType,
 		Action: "health_status",
 		Actor: events.Actor{
 			ID:         "abc123",
-			Attributes: map[string]string{"name": "web", "health_status": "unhealthy"},
+			Attributes: map[string]string{"name": "web", "image": "img", "podId": ""},
 		},
 		Time: 1700000000,
 	}
 
 	event, ok := mapEngineEvent("local", msg)
 	if !ok {
-		t.Fatal("expected health_status event to be mapped")
+		t.Fatal("expected bare health_status event to be mapped")
 	}
-	if event.HealthStatus != "unhealthy" {
-		t.Fatalf("expected health status %q, got %q", "unhealthy", event.HealthStatus)
+	if event.HealthStatus != "" {
+		t.Fatalf("expected empty health status from bare Podman action, got %q", event.HealthStatus)
 	}
 }
 
