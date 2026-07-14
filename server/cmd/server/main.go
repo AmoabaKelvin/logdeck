@@ -53,6 +53,12 @@ func main() {
 		log.Println("Authentication is ENABLED")
 	}
 
+	// Losing the data directory loses the config, the stored logs, and the alert
+	// history — silently, on the next container recreate. Say so at startup.
+	if warning := config.WarnIfDataIsEphemeral(manager.ConfigFilePath()); warning != "" {
+		log.Println(warning)
+	}
+
 	if cfg.ReadOnly {
 		log.Println("READ-ONLY MODE is ENABLED")
 	}

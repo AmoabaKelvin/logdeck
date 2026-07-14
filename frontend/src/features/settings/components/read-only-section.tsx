@@ -1,11 +1,10 @@
 import {
 	Card,
-	CardContent,
+	CardAction,
 	CardDescription,
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 
 import { useUpdateReadOnly } from "../hooks/use-settings";
@@ -36,20 +35,17 @@ export function ReadOnlySection({ config }: ReadOnlySectionProps) {
 					When enabled, container actions (start, stop, restart, remove) are
 					disabled. Log viewing is unaffected.
 				</CardDescription>
-			</CardHeader>
-			<CardContent>
-				<div className="flex items-center gap-3">
+				<CardAction>
 					<Switch
 						id="read-only"
+						aria-label="Enable read-only mode"
 						checked={config.value}
 						onCheckedChange={handleToggle}
 						disabled={isEnv || mutation.isPending}
+						className="relative after:absolute after:-inset-x-1 after:-inset-y-3"
 					/>
-					<Label htmlFor="read-only" className="cursor-pointer">
-						{config.value ? "Enabled" : "Disabled"}
-					</Label>
-				</div>
-			</CardContent>
+				</CardAction>
+			</CardHeader>
 		</Card>
 	);
 }

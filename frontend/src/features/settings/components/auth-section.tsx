@@ -3,6 +3,7 @@ import { toast } from "sonner";
 
 import {
 	Card,
+	CardAction,
 	CardContent,
 	CardDescription,
 	CardHeader,
@@ -70,61 +71,61 @@ export function AuthSection({ config }: AuthSectionProps) {
 				<CardDescription>
 					Protect the dashboard with username and password authentication.
 				</CardDescription>
-			</CardHeader>
-			<CardContent className="space-y-4">
-				<div className="flex items-center gap-3">
+				<CardAction>
 					<Switch
 						id="auth-enabled"
+						aria-label="Enable authentication"
 						checked={enabled}
 						onCheckedChange={(checked) => {
 							setEnabled(checked);
 							if (!checked) setPassword("");
 						}}
 						disabled={isEnv}
+						className="relative after:absolute after:-inset-x-1 after:-inset-y-3"
 					/>
-					<Label htmlFor="auth-enabled" className="cursor-pointer">
-						{enabled ? "Enabled" : "Disabled"}
-					</Label>
-				</div>
-
-				{enabled && (
-					<div className="space-y-3 max-w-sm">
-						<div className="space-y-1.5">
-							<Label htmlFor="admin-username">Admin username</Label>
-							<Input
-								id="admin-username"
-								value={username}
-								onChange={(e) => setUsername(e.target.value)}
-								disabled={isEnv}
-								placeholder="admin"
-							/>
+				</CardAction>
+			</CardHeader>
+			{(enabled || hasChanges) && (
+				<CardContent className="space-y-4">
+					{enabled && (
+						<div className="space-y-3 max-w-sm">
+							<div className="space-y-1.5">
+								<Label htmlFor="admin-username">Admin username</Label>
+								<Input
+									id="admin-username"
+									value={username}
+									onChange={(e) => setUsername(e.target.value)}
+									disabled={isEnv}
+									placeholder="admin"
+								/>
+							</div>
+							<div className="space-y-1.5">
+								<Label htmlFor="admin-password">
+									{config.enabled
+										? "New password (leave blank to keep current)"
+										: "Password"}
+								</Label>
+								<Input
+									id="admin-password"
+									type="password"
+									value={password}
+									onChange={(e) => setPassword(e.target.value)}
+									disabled={isEnv}
+									placeholder={
+										config.enabled
+											? "Leave blank to keep current"
+											: "Enter password"
+									}
+								/>
+							</div>
 						</div>
-						<div className="space-y-1.5">
-							<Label htmlFor="admin-password">
-								{config.enabled
-									? "New password (leave blank to keep current)"
-									: "Password"}
-							</Label>
-							<Input
-								id="admin-password"
-								type="password"
-								value={password}
-								onChange={(e) => setPassword(e.target.value)}
-								disabled={isEnv}
-								placeholder={
-									config.enabled
-										? "Leave blank to keep current"
-										: "Enter password"
-								}
-							/>
-						</div>
-					</div>
-				)}
+					)}
 
-				{hasChanges && !isEnv && (
-					<SaveButton isPending={mutation.isPending} onClick={handleSave} />
-				)}
-			</CardContent>
+					{hasChanges && !isEnv && (
+						<SaveButton isPending={mutation.isPending} onClick={handleSave} />
+					)}
+				</CardContent>
+			)}
 		</Card>
 	);
 }

@@ -49,10 +49,15 @@ func NewMultiHostClient(hosts []config.DockerHost) (*MultiHostClient, error) {
 				client.WithAPIVersionNegotiation(),
 			)
 		} else {
+			// FromEnv comes first so DOCKER_HOST cannot override a configured
+			// host: it applies WithHostFromEnv, and the last option wins. With
+			// the order reversed, a single DOCKER_HOST would silently collapse
+			// every configured host onto one socket. The TLS and API-version
+			// parts of FromEnv still apply.
 			apiClient, err = client.NewClientWithOpts(
+				client.FromEnv,
 				client.WithHost(host.Host),
 				client.WithAPIVersionNegotiation(),
-				client.FromEnv,
 			)
 		}
 

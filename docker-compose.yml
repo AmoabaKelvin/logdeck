@@ -3,20 +3,30 @@ services:
     build:
       context: .
       dockerfile: ./server/Dockerfile
+    restart: unless-stopped
     ports:
       - "8123:8080"
     environment:
       - JWT_SECRET=${JWT_SECRET}
       - ADMIN_USERNAME=${ADMIN_USERNAME}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
-      - ADMIN_PASSWORD_SALT=${ADMIN_PASSWORD_SALT}
-      - DOCKER_HOST=${DOCKER_HOST:-unix:///var/run/docker.sock}
+      # Legacy SHA256 auth; leave unset to use the bcrypt ADMIN_PASSWORD.
+      - ADMIN_PASSWORD_SALT=${ADMIN_PASSWORD_SALT:-}
+      # Hosts to connect to (name=address, comma-separated). Leave unset to use
+      # the mounted socket below. Do NOT set DOCKER_HOST: it is a Docker SDK
+      # variable, not a LogDeck one.
       - DOCKER_HOSTS=${DOCKER_HOSTS:-}
       - COOLIFY_CONFIGS=${COOLIFY_CONFIGS:-}
+      # Log persistence (on by default). Uncomment to change the retention caps;
+      # they are also editable in Settings.
+      # - LOG_STORE_PER_CONTAINER_MB=50
+      # - LOG_STORE_TOTAL_MB=1024
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /root/.ssh:/root/.ssh:ro
       - /proc:/host/proc:ro
+      # Holds config.json, the stored logs (logs.db), and the alert history.
+      # Without this volume all of it is lost when the container is recreated.
       - logdeck-data:/data
 
 volumes:
