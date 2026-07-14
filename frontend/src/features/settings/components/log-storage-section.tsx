@@ -54,7 +54,20 @@ export function LogStorageSection() {
 	);
 
 	// Persistence is off: there is nothing to report or reclaim.
-	if (!isEnabled) return null;
+	if (!isEnabled) {
+		return (
+			<Card>
+				<CardHeader>
+					<CardTitle>Log storage</CardTitle>
+					<CardDescription>
+						Log persistence is disabled, so no logs are stored on disk. Enable
+						it in the environment and restart LogDeck to keep logs readable
+						after a container is removed.
+					</CardDescription>
+				</CardHeader>
+			</Card>
+		);
+	}
 
 	const containers = sortStoredContainersBySize(storedContainers ?? []);
 	const usedBytes = status.dbSizeBytes ?? 0;

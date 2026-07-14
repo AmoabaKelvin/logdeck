@@ -1,4 +1,7 @@
+import { parseAsStringLiteral, useQueryState } from "nuqs";
+
 import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { useSettings } from "../hooks/use-settings";
 import { AlertsSection } from "./alerts-section";
@@ -9,7 +12,14 @@ import { DockerHostsSection } from "./docker-hosts-section";
 import { LogStorageSection } from "./log-storage-section";
 import { ReadOnlySection } from "./read-only-section";
 
+const SETTINGS_TABS = ["connections", "access", "alerts", "storage"] as const;
+
+const parseAsSettingsTab = parseAsStringLiteral(SETTINGS_TABS)
+	.withDefault("connections")
+	.withOptions({ history: "replace" });
+
 export function SettingsPage() {
+	const [tab, setTab] = useQueryState("tab", parseAsSettingsTab);
 	const { data, isLoading, error } = useSettings();
 
 	if (isLoading) {
@@ -42,22 +52,48 @@ export function SettingsPage() {
 					restarting.
 				</p>
 			</div>
-			<DockerHostsSection
-				key={JSON.stringify(data.dockerHosts)}
-				config={data.dockerHosts}
-			/>
-			<CoolifyHostsSection
-				key={JSON.stringify(data.coolifyHosts)}
-				config={data.coolifyHosts}
-			/>
-			<ReadOnlySection config={data.readOnly} />
-			<AuthSection
-				key={`${data.auth.enabled}-${data.auth.adminUsername}`}
-				config={data.auth}
-			/>
-			<ApiTokensSection />
-			<LogStorageSection />
-			<AlertsSection />
+
+			<Tabs
+				value={tab}
+				onValueChange={(value) =>
+					setTab(value as (typeof SETTINGS_TABS)[number])
+				}
+			>
+				<TabsList className="w-full sm:w-fit">
+					<TabsTrigger value="connections">Connections</TabsTrigger>
+					<TabsTrigger value="access">Access</TabsTrigger>
+					<TabsTrigger value="alerts">Alerts</TabsTrigger>
+					<TabsTrigger value="storage">Log storage</TabsTrigger>
+				</TabsList>
+
+				<TabsContent value="connections" className="space-y-6 pt-2">
+					<DockerHostsSection
+						key={JSON.stringify(data.dockerHosts)}
+						config={data.dockerHosts}
+					/>
+					<CoolifyHostsSection
+						key={JSON.stringify(data.coolifyHosts)}
+						config={data.coolifyHosts}
+					/>
+				</TabsContent>
+
+				<TabsContent value="access" className="space-y-6 pt-2">
+					<AuthSection
+						key={`${data.auth.enabled}-${data.auth.adminUsername}`}
+						config={data.auth}
+					/>
+					<ReadOnlySection config={data.readOnly} />
+					<ApiTokensSection />
+				</TabsContent>
+
+				<TabsContent value="alerts" className="pt-2">
+					<AlertsSection />
+				</TabsContent>
+
+				<TabsContent value="storage" className="pt-2">
+					<LogStorageSection />
+				</TabsContent>
+			</Tabs>
 		</div>
 	);
 }
