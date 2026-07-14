@@ -599,3 +599,54 @@ func historyLogs(t *testing.T, router http.Handler, path string) historyLogsResp
 	}
 	return body
 }
+
+// TestAlertRoutesDenyReadScope proves the alert routes are closed to read-scoped
+// API tokens. The webhook URL is a secret — a Slack or Discord webhook lets its
+// holder post to the channel — so a token handed to a CI job or an AI agent must
+// not be able to read it back.
+func TestAlertRoutesDenyReadScope(t *testing.T) {
+	store, _ := newHistoryStore(t)
+	svc := newTestAuthService(t)
+	router := newHistoryTestRouterWithAuth(t, store, svc)
+
+	jwt, err := svc.GenerateToken("admin")
+	if err != nil {
+		t.Fatalf("GenerateToken: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/v1/settings/api-tokens",
+		strings.NewReader(`{"name":"agent","scope":"read"}`))
+	r.Header.Set("Authorization", "Bearer "+jwt)
+	router.ServeHTTP(w, r)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 creating read token, got %d: %s", w.Code, w.Body.String())
+	}
+	var readToken createdTokenResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &readToken); err != nil {
+		t.Fatalf("parse create response: %v", err)
+	}
+
+	for _, path := range []string{
+		"/api/v1/alerts/webhook",
+		"/api/v1/alerts/rules",
+		"/api/v1/alerts/history",
+	} {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", path, nil)
+		r.Header.Set("Authorization", "Bearer "+readToken.Token)
+		router.ServeHTTP(w, r)
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("expected 403 on %s with a read token, got %d: %s", path, w.Code, w.Body.String())
+		}
+	}
+
+	// An admin session still reaches them.
+	w = httptest.NewRecorder()
+	r = httptest.NewRequest("GET", "/api/v1/alerts/webhook", nil)
+	r.Header.Set("Authorization", "Bearer "+jwt)
+	router.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 on the webhook with an admin session, got %d: %s", w.Code, w.Body.String())
+	}
+}

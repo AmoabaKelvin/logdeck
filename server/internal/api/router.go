@@ -192,6 +192,10 @@ func (ar *APIRouter) registerAlertRoutes(r chi.Router) {
 	r.Route("/alerts", func(r chi.Router) {
 		// Alerts follow the same auth pattern — protected when auth is enabled
 		r.Use(auth.DynamicMiddleware(ar.registry.Auth, ar.lookupAPIToken))
+		// The webhook URL is a secret (a Slack or Discord webhook lets its holder
+		// post to the channel), so alerts are denied to read-scoped tokens for the
+		// whole group, as settings are.
+		r.Use(auth.DenyReadScope)
 
 		r.Get("/rules", ar.ListAlertRules)
 		r.Post("/rules", ar.CreateAlertRule)
