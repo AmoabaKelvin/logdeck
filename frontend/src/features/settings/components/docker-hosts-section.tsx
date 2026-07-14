@@ -26,6 +26,7 @@ import type { DockerHostsConfig } from "../types";
 import { EnvBadge } from "./env-badge";
 import { showResultToast } from "./mutation-toast";
 import { SaveButton } from "./save-button";
+import { TruncatedValue } from "./truncated-value";
 
 interface DockerHostsSectionProps {
 	config: DockerHostsConfig;
@@ -221,13 +222,13 @@ export function DockerHostsSection({ config }: DockerHostsSectionProps) {
 		return (
 			<TableRow key={testKey}>
 				<TableCell className="font-medium">
-					<div className="flex items-center gap-2">
-						{h.name}
+					<div className="flex flex-wrap items-center gap-2">
+						<TruncatedValue value={h.name} className="max-w-[160px]" />
 						{isEnvRow && <EnvBadge />}
 					</div>
 				</TableCell>
 				<TableCell className="font-mono text-xs text-muted-foreground">
-					{h.host}
+					<TruncatedValue value={h.host} className="max-w-[200px]" />
 				</TableCell>
 				<TableCell>
 					{testResults[testKey] && (

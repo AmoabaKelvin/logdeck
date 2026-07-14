@@ -91,7 +91,7 @@ export function SettingsPage() {
 				</TabsContent>
 
 				<TabsContent value="storage" className="pt-2">
-					<LogStorageSection />
+					<LogStorageSection config={data.logStore} />
 				</TabsContent>
 			</Tabs>
 		</div>
