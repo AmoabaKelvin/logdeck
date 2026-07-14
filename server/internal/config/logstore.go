@@ -70,6 +70,38 @@ func (m *Manager) LogStore() ResolvedLogStoreConfig {
 	return resolved
 }
 
+// LogStoreSources tracks where each effective log store value came from. The
+// three fields are overridden independently, so unlike the other categories
+// they carry a source each rather than one for the whole section.
+type LogStoreSources struct {
+	Enabled        Source `json:"enabled"`
+	PerContainerMB Source `json:"perContainerMB"`
+	TotalMB        Source `json:"totalMB"`
+}
+
+// LogStoreSources reports which log store values are pinned by an environment
+// variable. A field only counts as env-sourced when its variable parses — an
+// invalid value is ignored by LogStore, so it must not be reported as env
+// either. Everything else reads as file (defaults included), matching the
+// convention the other settings use.
+func (m *Manager) LogStoreSources() LogStoreSources {
+	sources := LogStoreSources{
+		Enabled:        SourceFile,
+		PerContainerMB: SourceFile,
+		TotalMB:        SourceFile,
+	}
+	if _, ok := envBool("LOG_STORE_ENABLED"); ok {
+		sources.Enabled = SourceEnv
+	}
+	if _, ok := envPositiveInt("LOG_STORE_PER_CONTAINER_MB"); ok {
+		sources.PerContainerMB = SourceEnv
+	}
+	if _, ok := envPositiveInt("LOG_STORE_TOTAL_MB"); ok {
+		sources.TotalMB = SourceEnv
+	}
+	return sources
+}
+
 // UpdateLogStore applies a mutation function to the stored log store config
 // atomically. The store reads its limits through the manager on every janitor
 // pass, so no remerge or callback is needed.

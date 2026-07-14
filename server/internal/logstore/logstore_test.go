@@ -1545,3 +1545,82 @@ func TestFilterMatchingOnlyDeepInHistory(t *testing.T) {
 			len(page.Entries), page.NextCursor)
 	}
 }
+
+// TestRetentionHonorsCapLoweredAtRuntime is the no-restart guarantee: the store
+// reads its caps through the manager on every pass, so a cap lowered from the
+// settings API takes effect on the very next janitor sweep.
+func TestRetentionHonorsCapLoweredAtRuntime(t *testing.T) {
+	t.Setenv("CONFIG_PATH", filepath.Join(t.TempDir(), "config.json"))
+	manager := config.NewManager()
+
+	store, err := Open(filepath.Join(t.TempDir(), "logs.db"), manager.LogStore)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer store.Close()
+
+	key := genKey{"local", "aaa"}
+	filler := strings.Repeat("x", 1000)
+	const lines = 2500 // ~2.6 MB of raw lines: under the 50 MB default cap
+
+	entries := make([]models.LogEntry, 0, lines)
+	for i := range lines {
+		entries = append(entries, entryAt(baseTime.Add(time.Duration(i)*time.Millisecond), "stdout",
+			fmt.Sprintf("line %05d %s", i, filler)))
+	}
+	writeEntries(t, store, key, "web", entries...)
+
+	// Under the default caps the sweep evicts nothing.
+	if err := store.retain(context.Background()); err != nil {
+		t.Fatalf("retain under default caps: %v", err)
+	}
+	var count int
+	if err := store.db.QueryRow("SELECT COUNT(*) FROM log_lines").Scan(&count); err != nil {
+		t.Fatalf("count lines: %v", err)
+	}
+	if count != lines {
+		t.Fatalf("stored %d lines under the default caps, want all %d", count, lines)
+	}
+
+	// Lower the per-container cap to 1 MB the way the settings handler does.
+	if err := manager.UpdateLogStore(func(current config.LogStoreConfig) (config.LogStoreConfig, error) {
+		perContainer := 1
+		current.PerContainerMB = &perContainer
+		return current, nil
+	}); err != nil {
+		t.Fatalf("UpdateLogStore: %v", err)
+	}
+
+	// The next pass — no restart, no reopen — trims down to the new cap.
+	if err := store.retain(context.Background()); err != nil {
+		t.Fatalf("retain under the lowered cap: %v", err)
+	}
+
+	var storedBytes int64
+	if err := store.db.QueryRow("SELECT stored_bytes FROM containers WHERE container_id = ?", key.id).
+		Scan(&storedBytes); err != nil {
+		t.Fatalf("read stored_bytes: %v", err)
+	}
+	if storedBytes > bytesPerMB {
+		t.Fatalf("stored_bytes = %d, want at most the lowered 1 MB cap", storedBytes)
+	}
+	if storedBytes == 0 {
+		t.Fatal("the lowered cap evicted everything; it must only trim down to the cap")
+	}
+
+	// Eviction stayed oldest-first: the newest line survives, the oldest is gone.
+	page, err := store.Query(context.Background(), LogQuery{Container: "web", Limit: 1})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if len(page.Entries) != 1 || !strings.HasPrefix(page.Entries[0].Message, "line 02499") {
+		t.Fatalf("newest line missing after the lowered cap: %v", messages(page.Entries))
+	}
+	var oldest int64
+	if err := store.db.QueryRow("SELECT MIN(ts_ns) FROM log_lines").Scan(&oldest); err != nil {
+		t.Fatalf("read oldest: %v", err)
+	}
+	if oldest == baseTime.UnixNano() {
+		t.Fatal("the oldest line survived; eviction must be oldest-first")
+	}
+}

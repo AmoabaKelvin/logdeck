@@ -71,10 +71,23 @@ func (ar *APIRouter) GetSettings(w http.ResponseWriter, r *http.Request) {
 		authResp["adminUsername"] = fc.Auth.AdminUsername
 	}
 
+	// Log storage: each cap is overridden independently, so each carries its
+	// own source rather than one for the section.
+	logStore := ar.manager.LogStore()
+	logStoreSources := ar.manager.LogStoreSources()
+
 	WriteJsonResponse(w, http.StatusOK, map[string]any{
 		"dockerHosts": map[string]any{
 			"source": sources.DockerHosts,
 			"hosts":  dockerHosts,
+		},
+		"logStore": map[string]any{
+			"enabled":              logStore.Enabled,
+			"enabledSource":        logStoreSources.Enabled,
+			"perContainerMB":       logStore.PerContainerMB,
+			"perContainerMBSource": logStoreSources.PerContainerMB,
+			"totalMB":              logStore.TotalMB,
+			"totalMBSource":        logStoreSources.TotalMB,
 		},
 		"coolifyHosts": map[string]any{
 			"source": sources.CoolifyHosts,
@@ -212,6 +225,93 @@ func (ar *APIRouter) UpdateReadOnly(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJsonResponse(w, http.StatusOK, map[string]any{"message": "Read-only mode updated"})
+}
+
+// maxLogStoreMB bounds a retention cap at 1 TiB — far past any sensible SQLite
+// log database, but enough to keep a typo from requesting a petabyte.
+const maxLogStoreMB = 1024 * 1024
+
+// UpdateLogStorage handles PUT /api/v1/settings/log-storage. Every field is
+// optional; only the ones provided change. The janitor re-reads the caps on
+// each pass, so a new cap takes effect without a restart.
+func (ar *APIRouter) UpdateLogStorage(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Enabled        *bool `json:"enabled"`
+		PerContainerMB *int  `json:"perContainerMB"`
+		TotalMB        *int  `json:"totalMB"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// A value pinned by an environment variable cannot be changed from the UI,
+	// the same rule the other env-sourced settings follow.
+	sources := ar.manager.LogStoreSources()
+	pinned := []struct {
+		provided bool
+		source   config.Source
+		message  string
+	}{
+		{req.Enabled != nil, sources.Enabled, "enabled is set via the LOG_STORE_ENABLED environment variable and cannot be changed from the UI"},
+		{req.PerContainerMB != nil, sources.PerContainerMB, "perContainerMB is set via the LOG_STORE_PER_CONTAINER_MB environment variable and cannot be changed from the UI"},
+		{req.TotalMB != nil, sources.TotalMB, "totalMB is set via the LOG_STORE_TOTAL_MB environment variable and cannot be changed from the UI"},
+	}
+	for _, f := range pinned {
+		if f.provided && f.source == config.SourceEnv {
+			http.Error(w, f.message, http.StatusConflict)
+			return
+		}
+	}
+
+	// Validate the caps the store would end up with: changing one cap still has
+	// to stay consistent with the other one's current value.
+	effective := ar.manager.LogStore()
+	if req.PerContainerMB != nil {
+		effective.PerContainerMB = *req.PerContainerMB
+	}
+	if req.TotalMB != nil {
+		effective.TotalMB = *req.TotalMB
+	}
+	if err := validateLogStoreCaps(effective); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	err := ar.manager.UpdateLogStore(func(current config.LogStoreConfig) (config.LogStoreConfig, error) {
+		if req.Enabled != nil {
+			current.Enabled = req.Enabled
+		}
+		if req.PerContainerMB != nil {
+			current.PerContainerMB = req.PerContainerMB
+		}
+		if req.TotalMB != nil {
+			current.TotalMB = req.TotalMB
+		}
+		return current, nil
+	})
+	if err != nil {
+		http.Error(w, err.Error(), settingsErrorStatus(err))
+		return
+	}
+
+	WriteJsonResponse(w, http.StatusOK, map[string]any{"message": "log storage settings updated"})
+}
+
+// validateLogStoreCaps rejects caps that make retention nonsense: a non-positive
+// cap would evict the whole store on the next janitor pass, and a per-container
+// cap above the total cap can never be reached.
+func validateLogStoreCaps(cfg config.ResolvedLogStoreConfig) error {
+	if cfg.PerContainerMB < 1 || cfg.PerContainerMB > maxLogStoreMB {
+		return fmt.Errorf("perContainerMB must be between 1 and %d", maxLogStoreMB)
+	}
+	if cfg.TotalMB < 1 || cfg.TotalMB > maxLogStoreMB {
+		return fmt.Errorf("totalMB must be between 1 and %d", maxLogStoreMB)
+	}
+	if cfg.PerContainerMB > cfg.TotalMB {
+		return fmt.Errorf("perContainerMB (%d) cannot exceed totalMB (%d)", cfg.PerContainerMB, cfg.TotalMB)
+	}
+	return nil
 }
 
 // UpdateAuth handles PUT /api/v1/settings/auth.

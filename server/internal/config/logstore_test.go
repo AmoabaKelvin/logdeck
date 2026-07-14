@@ -123,3 +123,48 @@ func TestUpdateLogStorePersists(t *testing.T) {
 		t.Fatalf("after reload TotalMB = %d, want 256", got)
 	}
 }
+
+func TestLogStoreSources(t *testing.T) {
+	perContainer := 10
+	manager := writeLogStoreConfig(t, FileConfig{
+		LogStore: &LogStoreConfig{PerContainerMB: &perContainer},
+	})
+
+	t.Setenv("LOG_STORE_TOTAL_MB", "500")
+	t.Setenv("LOG_STORE_ENABLED", "not a bool") // ignored, so it is not an env source
+
+	got := manager.LogStoreSources()
+	want := LogStoreSources{
+		Enabled:        SourceFile,
+		PerContainerMB: SourceFile,
+		TotalMB:        SourceEnv,
+	}
+	if got != want {
+		t.Fatalf("LogStoreSources() = %+v, want %+v", got, want)
+	}
+}
+
+// An env-pinned cap must survive a file update: writing the file value is
+// harmless, but it must never become the effective value while the env var is
+// set. The written value takes over once the env var goes away.
+func TestUpdateLogStoreDoesNotClobberEnvOverride(t *testing.T) {
+	manager := writeLogStoreConfig(t, FileConfig{})
+	t.Setenv("LOG_STORE_PER_CONTAINER_MB", "5")
+
+	if err := manager.UpdateLogStore(func(current LogStoreConfig) (LogStoreConfig, error) {
+		perContainer := 10
+		current.PerContainerMB = &perContainer
+		return current, nil
+	}); err != nil {
+		t.Fatalf("UpdateLogStore: %v", err)
+	}
+
+	if got := manager.LogStore().PerContainerMB; got != 5 {
+		t.Fatalf("PerContainerMB = %d, want the env value 5 to keep winning", got)
+	}
+
+	t.Setenv("LOG_STORE_PER_CONTAINER_MB", "")
+	if got := manager.LogStore().PerContainerMB; got != 10 {
+		t.Fatalf("PerContainerMB = %d, want the persisted file value 10 once the env var is gone", got)
+	}
+}

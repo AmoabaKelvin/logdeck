@@ -174,6 +174,12 @@ func (ar *APIRouter) registerSettingsRoutes(r chi.Router) {
 		r.Put("/coolify-hosts", ar.UpdateCoolifyHosts)
 		r.Put("/read-only", ar.UpdateReadOnly)
 		r.Put("/auth", ar.UpdateAuth)
+		// Lowering a retention cap makes the next janitor pass evict stored
+		// logs, so this route is blocked in read-only mode like the purge route
+		// — the other settings mutations touch no data and are not.
+		r.With(
+			middleware.ReadOnly(func() bool { return ar.registry.Config().ReadOnly }),
+		).Put("/log-storage", ar.UpdateLogStorage)
 		r.Get("/api-tokens", ar.ListAPITokens)
 		r.Post("/api-tokens", ar.CreateAPIToken)
 		r.Delete("/api-tokens/{prefix}", ar.DeleteAPIToken)
