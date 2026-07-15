@@ -30,7 +30,7 @@ func testAlert() models.Alert {
 	}
 }
 
-// capturingServer records the last request it received.
+// capturedRequest records the fields of the last request a test server received.
 type capturedRequest struct {
 	method      string
 	path        string

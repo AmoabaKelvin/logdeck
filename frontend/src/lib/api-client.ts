@@ -1,9 +1,5 @@
 const TOKEN_KEY = "logdeck_auth_token";
 
-/**
- * Authenticated fetch wrapper that automatically adds Authorization header
- * and handles 401 responses by logging out the user
- */
 export async function authenticatedFetch(
 	input: RequestInfo | URL,
 	init?: RequestInit,
