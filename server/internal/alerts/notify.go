@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/config"
@@ -56,6 +56,19 @@ type requestSpec struct {
 	url     string
 	headers map[string]string
 	body    []byte
+	// secret, when set, is stripped from any delivery error before it is
+	// stored. Telegram embeds its bot token in the request path, so a network
+	// error's *url.Error would otherwise persist the token to alert history.
+	secret string
+}
+
+// redactSecret removes a channel secret from an error message so it is never
+// written to alert history or shown in the UI.
+func redactSecret(msg, secret string) string {
+	if secret == "" {
+		return msg
+	}
+	return strings.ReplaceAll(msg, secret, "***")
 }
 
 // notifier delivers alert payloads to notification channels and reports each
@@ -85,11 +98,6 @@ func alertText(a models.Alert) string {
 }
 
 // buildRequestSpec resolves the HTTP request for delivering alert to channel.
-// The correct request shape per type is the core of channel support:
-//   - webhook:  JSON {source,version,text,content,alert} POSTed to the URL.
-//   - ntfy:     the alert text as a plain-text body, with a Title header.
-//   - gotify:   JSON {title,message,priority} POSTed to <URL>/message?token=.
-//   - telegram: JSON {chat_id,text} POSTed to the Bot API sendMessage method.
 func buildRequestSpec(ch config.AlertChannel, alert models.Alert) (requestSpec, error) {
 	text := alertText(alert)
 	switch ch.Type {
@@ -126,12 +134,16 @@ func buildRequestSpec(ch config.AlertChannel, alert models.Alert) (requestSpec, 
 		if err != nil {
 			return requestSpec{}, fmt.Errorf("failed to marshal payload: %v", err)
 		}
-		endpoint := strings.TrimRight(ch.URL, "/") + "/message?token=" + url.QueryEscape(ch.Token)
+		// The token goes in the X-Gotify-Key header, not the query string, so it
+		// never appears in a URL that could be logged or persisted in an error.
 		return requestSpec{
-			method:  http.MethodPost,
-			url:     endpoint,
-			headers: map[string]string{"Content-Type": "application/json"},
-			body:    body,
+			method: http.MethodPost,
+			url:    strings.TrimRight(ch.URL, "/") + "/message",
+			headers: map[string]string{
+				"Content-Type": "application/json",
+				"X-Gotify-Key": ch.Token,
+			},
+			body: body,
 		}, nil
 	case "telegram":
 		body, err := json.Marshal(telegramPayload{ChatID: ch.Target, Text: text})
@@ -143,19 +155,18 @@ func buildRequestSpec(ch config.AlertChannel, alert models.Alert) (requestSpec, 
 			url:     "https://api.telegram.org/bot" + ch.Token + "/sendMessage",
 			headers: map[string]string{"Content-Type": "application/json"},
 			body:    body,
+			secret:  ch.Token,
 		}, nil
 	default:
 		return requestSpec{}, fmt.Errorf("unknown channel type %q", ch.Type)
 	}
 }
 
-// channelOutcome pairs a channel with the result of delivering to it.
 type channelOutcome struct {
 	channel config.AlertChannel
 	result  models.DeliveryResult
 }
 
-// enabledChannels returns the enabled channels in order.
 func enabledChannels(channels []config.AlertChannel) []config.AlertChannel {
 	out := make([]config.AlertChannel, 0, len(channels))
 	for _, ch := range channels {
@@ -166,14 +177,22 @@ func enabledChannels(channels []config.AlertChannel) []config.AlertChannel {
 	return out
 }
 
-// deliverAll delivers alert to every channel in order and returns a single
-// summary result: "ok" when all succeeded, otherwise "failed" with an error
-// naming each channel that failed. Callers pass the already-enabled channels.
+// deliverAll delivers alert to every channel and returns a single summary
+// result: "ok" when all succeeded, otherwise "failed" with an error naming each
+// channel that failed. Channels are delivered concurrently so one slow channel
+// (up to timeout + retry) cannot exhaust the shared delivery budget and starve
+// the rest. Callers pass the already-enabled channels.
 func (n *notifier) deliverAll(ctx context.Context, channels []config.AlertChannel, alert models.Alert, skip <-chan struct{}) models.DeliveryResult {
-	outcomes := make([]channelOutcome, 0, len(channels))
-	for _, ch := range channels {
-		outcomes = append(outcomes, channelOutcome{channel: ch, result: n.deliver(ctx, ch, alert, skip)})
+	outcomes := make([]channelOutcome, len(channels))
+	var wg sync.WaitGroup
+	for i, ch := range channels {
+		wg.Add(1)
+		go func(i int, ch config.AlertChannel) {
+			defer wg.Done()
+			outcomes[i] = channelOutcome{channel: ch, result: n.deliver(ctx, ch, alert, skip)}
+		}(i, ch)
 	}
+	wg.Wait()
 	return summarizeDeliveries(outcomes)
 }
 
@@ -202,8 +221,6 @@ func summarizeDeliveries(outcomes []channelOutcome) models.DeliveryResult {
 	return result
 }
 
-// channelLabel names a channel for a delivery summary: its name if set, else
-// its type.
 func channelLabel(ch config.AlertChannel) string {
 	if ch.Name != "" {
 		return ch.Name
@@ -240,7 +257,7 @@ func (n *notifier) deliver(ctx context.Context, ch config.AlertChannel, alert mo
 func (n *notifier) attempt(ctx context.Context, spec requestSpec) (models.DeliveryResult, bool) {
 	req, err := http.NewRequestWithContext(ctx, spec.method, spec.url, bytes.NewReader(spec.body))
 	if err != nil {
-		return models.DeliveryResult{Status: "failed", Error: err.Error()}, false
+		return models.DeliveryResult{Status: "failed", Error: redactSecret(err.Error(), spec.secret)}, false
 	}
 	for k, v := range spec.headers {
 		req.Header.Set(k, v)
@@ -248,7 +265,7 @@ func (n *notifier) attempt(ctx context.Context, spec requestSpec) (models.Delive
 
 	resp, err := n.client.Do(req)
 	if err != nil {
-		return models.DeliveryResult{Status: "failed", Error: err.Error()}, true
+		return models.DeliveryResult{Status: "failed", Error: redactSecret(err.Error(), spec.secret)}, true
 	}
 	defer func() {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))

@@ -13,7 +13,7 @@ import { Separator } from "@/components/ui/separator";
 export const metadata: Metadata = {
   title: "Alerting",
   description:
-    "Alert on container deaths, OOM kills, and log patterns. Rate thresholds, per-rule cooldowns, notification channels (generic webhook, ntfy, Gotify, Telegram), and alert history.",
+    "Alert on container deaths, OOM kills, unhealthy health checks, and log patterns. Rate thresholds, per-rule cooldowns, notification channels (generic webhook, ntfy, Gotify, Telegram), and alert history.",
   alternates: { canonical: "/docs/alerting" },
 };
 
@@ -267,7 +267,7 @@ export default function AlertingPage() {
         code={`# Point alerts somewhere
 logdeck alerts channels add --type webhook --name slack \\
   --endpoint https://hooks.slack.com/services/...
-logdeck alerts channels add --type telegram --secret <bot-token> --target <chat-id>
+logdeck alerts channels add --type telegram --secret "$TELEGRAM_BOT_TOKEN" --target "$CHAT_ID"
 logdeck alerts channels list
 logdeck alerts channels test <channel-id>
 

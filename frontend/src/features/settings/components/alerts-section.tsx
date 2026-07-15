@@ -75,9 +75,9 @@ export function AlertsSection() {
 			<CardHeader>
 				<CardTitle>Alerts</CardTitle>
 				<CardDescription>
-					Get notified when containers die, run out of memory, or log errors.
-					Alerts are delivered to every enabled channel and recorded in the
-					history below.
+					Get notified when containers die, run out of memory, become unhealthy,
+					or log errors. Alerts are delivered to every enabled channel and
+					recorded in the history below.
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-6">
@@ -130,6 +130,8 @@ function ChannelDraftFields({
 					<Label htmlFor="channel-token">{tokenLabel}</Label>
 					<Input
 						id="channel-token"
+						type="password"
+						autoComplete="new-password"
 						value={draft.token}
 						onChange={(e) => set("token", e.target.value)}
 						placeholder={tokenLabel}

@@ -3,6 +3,7 @@ package alerts
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -38,6 +39,7 @@ type capturedRequest struct {
 	title       string
 	priority    string
 	tags        string
+	gotifyKey   string
 	body        []byte
 }
 
@@ -51,6 +53,7 @@ func newCapturingServer(t *testing.T, captured *capturedRequest) *httptest.Serve
 		captured.title = r.Header.Get("Title")
 		captured.priority = r.Header.Get("Priority")
 		captured.tags = r.Header.Get("Tags")
+		captured.gotifyKey = r.Header.Get("X-Gotify-Key")
 		captured.body, _ = io.ReadAll(r.Body)
 	}))
 }
@@ -130,8 +133,12 @@ func TestDeliverGotifyJSONWithToken(t *testing.T) {
 	if cap.path != "/message" {
 		t.Fatalf("path = %q, want /message", cap.path)
 	}
-	if cap.rawQuery != "token=app-token-123" {
-		t.Fatalf("query = %q, want token=app-token-123", cap.rawQuery)
+	// The token travels in the X-Gotify-Key header, never the URL.
+	if cap.rawQuery != "" {
+		t.Fatalf("query = %q, want no token in the URL", cap.rawQuery)
+	}
+	if cap.gotifyKey != "app-token-123" {
+		t.Fatalf("X-Gotify-Key = %q, want app-token-123", cap.gotifyKey)
 	}
 	if cap.contentType != "application/json" {
 		t.Fatalf("Content-Type = %q, want application/json", cap.contentType)
@@ -171,6 +178,33 @@ func TestDeliverTelegramSendMessage(t *testing.T) {
 	}
 	if payload.ChatID != "-1001234" || payload.Text != alertText(testAlert()) {
 		t.Fatalf("telegram payload = %+v", payload)
+	}
+}
+
+// failingRoundTripper fails every request, letting the http.Client wrap the
+// request URL (which for Telegram carries the bot token) in the *url.Error the
+// caller sees.
+type failingRoundTripper struct{}
+
+func (failingRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("dial tcp: connection refused")
+}
+
+// A network failure must not persist a channel secret into the delivery error,
+// which is stored in alert history and shown in the UI.
+func TestDeliveryErrorRedactsTelegramToken(t *testing.T) {
+	n := &notifier{client: &http.Client{Transport: failingRoundTripper{}}, retryDelay: 0}
+	ch := config.AlertChannel{ID: "c1", Type: "telegram", Enabled: true, Token: "bot42:secret", Target: "-1001234"}
+
+	res := n.deliver(context.Background(), ch, testAlert(), nil)
+	if res.Status != "failed" {
+		t.Fatalf("status = %q, want failed", res.Status)
+	}
+	if strings.Contains(res.Error, "bot42:secret") {
+		t.Fatalf("delivery error leaked the bot token: %q", res.Error)
+	}
+	if !strings.Contains(res.Error, "***") {
+		t.Fatalf("expected the token to be redacted, got %q", res.Error)
 	}
 }
 

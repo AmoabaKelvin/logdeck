@@ -119,7 +119,7 @@ logdeck alerts rules create --type event --name oom-watch --events oom
 logdeck alerts rules create --type log --name errors --min-level ERROR --threshold 5 --window 60s
 logdeck alerts rules disable <id>
 logdeck alerts channels add --type webhook --endpoint https://hooks.example.com/logdeck
-logdeck alerts channels add --type telegram --secret <bot-token> --target <chat-id>
+logdeck alerts channels add --type telegram --secret "$TELEGRAM_BOT_TOKEN" --target "$CHAT_ID"
 logdeck alerts channels test <id>
 logdeck alerts history --limit 20`,
   },

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -419,8 +420,16 @@ func TestAlertChannelValidation(t *testing.T) {
 func TestAlertChannelTestEndpoint(t *testing.T) {
 	router, _ := newAlertsTestRouter(t, nil)
 
+	// A local server stands in for the webhook so the test never reaches the
+	// public network (CI must not depend on DNS or egress).
+	var delivered int32
+	hook := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&delivered, 1)
+	}))
+	defer hook.Close()
+
 	w := doAlertsRequest(t, router, "POST", "/api/v1/alerts/channels",
-		`{"type":"webhook","url":"https://example.com/hook"}`)
+		fmt.Sprintf(`{"type":"webhook","url":%q}`, hook.URL))
 	if w.Code != http.StatusCreated {
 		t.Fatalf("expected 201 creating channel, got %d: %s", w.Code, w.Body.String())
 	}
@@ -429,9 +438,6 @@ func TestAlertChannelTestEndpoint(t *testing.T) {
 		t.Fatalf("failed to parse create response: %v", err)
 	}
 
-	// The test endpoint returns a delivery result (200) whether or not delivery
-	// itself succeeds. Delivery to example.com is not asserted; the point is the
-	// endpoint resolves the channel and returns a result shape.
 	w = doAlertsRequest(t, router, "POST", "/api/v1/alerts/channels/"+ch.ID+"/test", "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 from channel test, got %d: %s", w.Code, w.Body.String())
@@ -439,6 +445,12 @@ func TestAlertChannelTestEndpoint(t *testing.T) {
 	var result models.DeliveryResult
 	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
 		t.Fatalf("failed to parse delivery result: %v", err)
+	}
+	if result.Status != "ok" {
+		t.Fatalf("delivery = %+v, want ok", result)
+	}
+	if atomic.LoadInt32(&delivered) != 1 {
+		t.Fatalf("webhook received %d deliveries, want 1", delivered)
 	}
 
 	// Testing an unknown channel is a 404.
