@@ -50,6 +50,11 @@ const features = [
       "A scriptable logdeck CLI with JSON output, built for automation and AI agents.",
   },
   {
+    title: "MCP server",
+    description:
+      "Let an AI assistant read your containers, logs, and stats — and act, when you opt in. Read-scoped and safe by default.",
+  },
+  {
     title: "Web terminal",
     description:
       "Open a shell in any running container straight from the browser.",

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import {
   Card,
   CardContent,
@@ -6,8 +7,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-
-import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Features",
@@ -170,8 +169,7 @@ const features: Feature[] = [
   },
   {
     title: "Images, Volumes & Networks",
-    description:
-      "See what else lives on your hosts beyond containers.",
+    description: "See what else lives on your hosts beyond containers.",
     items: [
       "Read-only listings of images, volumes, and networks",
       "Aggregated across all configured hosts",
@@ -191,6 +189,19 @@ const features: Feature[] = [
       "Table output for humans, JSON/NDJSON output (-o json) for machines",
     ],
     href: "/docs/cli",
+  },
+  {
+    title: "MCP Server",
+    description:
+      "Run logdeck mcp so an AI assistant can query and manage your containers over the Model Context Protocol.",
+    items: [
+      "Stdio MCP server (logdeck mcp) for Claude Desktop, Cursor, Claude Code, and other clients",
+      "Read tools for containers, logs, cross-container search, events, stats, and stored history",
+      "Capability follows the API token: a read-scoped token cannot mutate anything",
+      "Actions are opt-in: start/stop/restart, plus --allow-destructive (remove) and --allow-exec (run_command)",
+      "Reuses the same HTTP API as the web UI and CLI — no new server, no new auth",
+    ],
+    href: "/docs/mcp",
   },
   {
     title: "Interactive Terminal",
