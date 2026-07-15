@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"log"
 	"strings"
 	"time"
 )
@@ -29,9 +28,14 @@ type logicalGroup struct {
 	bytes int64
 }
 
-// janitorLoop enforces the retention caps periodically. The database file is
-// never VACUUMed: SQLite reuses freed pages, so the file plateaus at its
-// high-water mark instead of shrinking, which avoids a long exclusive lock.
+// janitorLoop schedules retention periodically. It performs no database writes
+// itself: SQLite is single-writer, and a separate eviction transaction competes
+// with the writeLoop for the one write lock and dies with SQLITE_BUSY under a
+// firehose. So the janitor only signals the writer, which runs retention inline
+// between its batches (see writeLoop). The signal is coalescing: a sweep already
+// pending is enough. The database file is never VACUUMed: SQLite reuses freed
+// pages, so the file plateaus at its high-water mark instead of shrinking, which
+// avoids a long exclusive lock.
 func (s *Store) janitorLoop(ctx context.Context) {
 	ticker := time.NewTicker(janitorInterval)
 	defer ticker.Stop()
@@ -41,8 +45,9 @@ func (s *Store) janitorLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := s.retain(ctx); err != nil && ctx.Err() == nil {
-				log.Printf("logstore: retention sweep failed: %v", err)
+			select {
+			case s.retainCh <- struct{}{}:
+			default: // a sweep is already pending
 			}
 		}
 	}
@@ -233,6 +238,12 @@ func (s *Store) evictOldest(ctx context.Context, refs []int64, excess int64) (in
 
 	if err := tx.Commit(); err != nil {
 		return 0, err
+	}
+	if freed > 0 {
+		// Signals the writer to fold the WAL: these deletes are the store's
+		// heaviest WAL churn, so the file only stays near its cap if it is
+		// truncated after them.
+		s.evictions.Add(1)
 	}
 	return freed, nil
 }
