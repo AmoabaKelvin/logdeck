@@ -17,11 +17,9 @@ function setCachedValue(
 	jsonFormatCache.set(text, value);
 }
 
-/**
- * Attempts to parse and pretty-print JSON.
- * Returns formatted JSON with isJson flag on success.
- * Returns original text with isJson: false on failure.
- */
+// Only objects and arrays count as JSON here; primitives like numbers or
+// booleans are technically valid JSON too, but formatting them would turn
+// plain log lines that happen to be a bare number into "JSON".
 export function formatJson(text: string): {
 	formatted: string;
 	isJson: boolean;
@@ -53,11 +51,6 @@ export function formatJson(text: string): {
 	return result;
 }
 
-/**
- * Detects if a string is valid JSON object or array.
- * Returns false for primitives (strings, numbers, booleans, null).
- * Only returns true for objects and arrays.
- */
 export function isJsonString(text: string): boolean {
 	return formatJson(text).isJson;
 }

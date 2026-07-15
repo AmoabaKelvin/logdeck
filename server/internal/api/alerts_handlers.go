@@ -24,9 +24,9 @@ const (
 	maxAlertChannels       = 20
 	maxAlertChannelNameLen = 64
 	maxAlertThreshold      = 1000
-	minAlertWindowSecs   = 5
-	maxAlertWindowSecs   = 3600
-	maxAlertCooldownSecs = 86400
+	minAlertWindowSecs     = 5
+	maxAlertWindowSecs     = 3600
+	maxAlertCooldownSecs   = 86400
 
 	defaultAlertHistoryLimit = 100
 	maxAlertHistoryLimit     = 500

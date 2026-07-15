@@ -1,6 +1,3 @@
-/**
- * Iterates over an NDJSON response stream, yielding one parsed value per line.
- */
 export async function* iterateNDJSONStream<T>(
 	stream: ReadableStream<Uint8Array>,
 	signal?: AbortSignal,
