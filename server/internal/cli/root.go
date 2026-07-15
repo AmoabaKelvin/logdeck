@@ -159,6 +159,7 @@ func newRootCmd(a *app) *cobra.Command {
 		newVolumesCmd(a),
 		newNetworksCmd(a),
 		newAlertsCmd(a),
+		newMCPCmd(a),
 	)
 
 	return root
