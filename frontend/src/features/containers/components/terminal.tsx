@@ -192,7 +192,6 @@ export function Terminal({ containerId, host }: TerminalProps) {
 			xtermRef.current = term;
 			fitAddonRef.current = fitAddon;
 		} else {
-			// Clear existing content for reconnection
 			term.clear();
 		}
 

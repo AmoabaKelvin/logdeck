@@ -150,7 +150,6 @@ export function LogList({
 
 	return (
 		<CardContent className="p-0 relative">
-			{/* Selection Action Bar - sticky at top of logs */}
 			<SelectionActionBar
 				selectedCount={selectedIndices.size}
 				onCopy={onCopySelected}

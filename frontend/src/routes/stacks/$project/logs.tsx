@@ -76,7 +76,6 @@ function StackLogsPage() {
 		<div className="min-h-screen bg-background">
 			<div className="container mx-auto px-4 py-6">
 				<div className="space-y-6">
-					{/* Header */}
 					<div className="flex items-center gap-4">
 						<Tooltip>
 							<TooltipTrigger asChild>
@@ -104,13 +103,11 @@ function StackLogsPage() {
 						<ThemeToggle />
 					</div>
 
-					{/* Stack Members */}
 					<StackMembersCard
 						members={members}
 						isReadOnly={containersData?.readOnly ?? false}
 					/>
 
-					{/* Aggregated Logs Card */}
 					<LogViewer
 						variant="page"
 						containerName={project}

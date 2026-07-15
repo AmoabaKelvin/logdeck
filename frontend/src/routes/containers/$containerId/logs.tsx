@@ -73,7 +73,6 @@ function ContainerLogsPage() {
 				return true;
 			}
 		}
-		// Fallback: check if it matches the ID (full or short)
 		return c.id === containerIdentifier || c.id.startsWith(containerIdentifier);
 	});
 
@@ -102,7 +101,6 @@ function ContainerLogsPage() {
 		<div className="min-h-screen bg-background">
 			<div className="container mx-auto px-4 py-6">
 				<div className="space-y-6">
-					{/* Header */}
 					<div className="flex items-center gap-4">
 						<Tooltip>
 							<TooltipTrigger asChild>
@@ -137,7 +135,6 @@ function ContainerLogsPage() {
 						<ThemeToggle />
 					</div>
 
-					{/* Container Info Card */}
 					{container && (
 						<Card>
 							<CardHeader>
@@ -329,7 +326,6 @@ function ContainerLogsPage() {
 						</Card>
 					)}
 
-					{/* Logs Card */}
 					<LogViewer
 						ref={logViewerRef}
 						variant="page"

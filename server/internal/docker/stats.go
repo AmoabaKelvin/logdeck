@@ -123,7 +123,6 @@ func currentCPUPercent(key string, stats *container.StatsResponse) float64 {
 	return calculateCPUPercent(stats)
 }
 
-// ContainerIdentifier represents a container on a specific host
 type ContainerIdentifier struct {
 	ID   string
 	Host string
@@ -196,7 +195,6 @@ func (c *MultiHostClient) GetBulkContainerStats(ctx context.Context, containers 
 	return results
 }
 
-// GetAllRunningContainerStats fetches stats for all running containers across all hosts.
 func (c *MultiHostClient) GetAllRunningContainerStats(ctx context.Context) ([]models.ContainerStats, error) {
 	var runningContainers []ContainerIdentifier
 

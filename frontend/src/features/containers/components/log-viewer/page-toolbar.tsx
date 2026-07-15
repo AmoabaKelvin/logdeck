@@ -105,7 +105,6 @@ export function PageToolbar({
 
 	return (
 		<div className="space-y-3">
-			{/* Row 1: Search + Lines + Stream/Refresh */}
 			<div className="flex items-center gap-2">
 				<CardTitle className="text-base shrink-0">
 					Logs
@@ -317,7 +316,6 @@ export function PageToolbar({
 					<kbd className="font-mono">?</kbd> help
 				</button>
 			</p>
-			{/* Row 2: Options bar */}
 			<div className="flex flex-wrap items-center gap-2">
 				{!isHistory && searchText && (
 					<Select

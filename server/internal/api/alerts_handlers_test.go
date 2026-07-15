@@ -364,7 +364,6 @@ func TestAlertChannelsCRUD(t *testing.T) {
 		t.Errorf("expected update to keep id and disable, got %+v", updated)
 	}
 
-	// Delete.
 	w = doAlertsRequest(t, router, "DELETE", "/api/v1/alerts/channels/"+hook.ID, "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 deleting channel, got %d: %s", w.Code, w.Body.String())

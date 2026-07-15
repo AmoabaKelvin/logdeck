@@ -17,7 +17,6 @@ var composeProjectLabels = []string{
 	"io.podman.compose.project",
 }
 
-// inComposeProject reports whether a container's labels place it in project.
 func inComposeProject(labels map[string]string, project string) bool {
 	for _, label := range composeProjectLabels {
 		if labels[label] == project {

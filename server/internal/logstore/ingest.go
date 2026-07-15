@@ -28,7 +28,6 @@ const (
 	streamStderr = 1
 )
 
-// line is one stored log line.
 type line struct {
 	tsNS   int64
 	stream int

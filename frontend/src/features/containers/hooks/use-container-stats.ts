@@ -16,7 +16,6 @@ export function useContainerStats() {
 		staleTime: 4000,
 	});
 
-	// Convert array to map for O(1) lookup by container ID
 	const statsMap = useMemo<ContainerStatsMap>(() => {
 		if (!query.data?.stats) return {};
 

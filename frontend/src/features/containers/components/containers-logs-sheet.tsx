@@ -166,7 +166,6 @@ export function ContainersLogsSheet({
 												{container.command}
 											</span>
 										</div>
-										{/* Labels Section */}
 										{container.labels &&
 											Object.keys(container.labels).length > 0 && (
 												<div className="space-y-2 border-t pt-2">
@@ -206,7 +205,6 @@ export function ContainersLogsSheet({
 												</div>
 											)}
 
-										{/* Environment Variables Section */}
 										<div className="space-y-2 border-t pt-2">
 											<Button
 												variant="ghost"

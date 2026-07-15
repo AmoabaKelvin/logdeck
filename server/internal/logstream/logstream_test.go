@@ -267,7 +267,6 @@ func TestStartEventSpawnsTail(t *testing.T) {
 	rec := &recorder{}
 	h.Subscribe(ContainerSpec{Containers: []string{"api"}}, models.LogOptions{}, rec.sink)
 
-	// No running containers yet; then the container starts.
 	f.events <- docker.EngineEvent{Host: "h1", ContainerID: "c9", ContainerName: "api", Action: "start",
 		Labels: map[string]string{"name": "api"}}
 

@@ -202,7 +202,6 @@ export function EnvironmentVariables({
 		if (rawTail.length > 0) {
 			setNewValue(value);
 		}
-		// Move focus to the value field so the user can keep editing if needed.
 		requestAnimationFrame(() => {
 			const input = newValueInputRef.current;
 			if (!input) return;
@@ -405,7 +404,6 @@ export function EnvironmentVariables({
 				)}
 			</div>
 
-			{/* Variables list: one header row, then dense key/value rows */}
 			{(envEntries.length > 0 || showAddNew) && (
 				<div>
 					<div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_2rem] items-center gap-2 border-b pb-1.5 text-xs font-medium text-muted-foreground">

@@ -24,7 +24,6 @@ type ContainerEvent struct {
 	Timestamp     int64  `json:"timestamp"`
 }
 
-// LogOptions represents options for fetching container logs
 type LogOptions struct {
 	Follow     bool   `json:"follow"`
 	Timestamps bool   `json:"timestamps"`
@@ -38,7 +37,6 @@ type LogOptions struct {
 	Search     string `json:"search,omitempty"`
 }
 
-// DefaultLogOptions returns sensible defaults for log fetching
 func DefaultLogOptions() LogOptions {
 	return LogOptions{
 		Timestamps: true,
@@ -48,12 +46,10 @@ func DefaultLogOptions() LogOptions {
 	}
 }
 
-// EnvVariables represents the environment variables for a container
 type EnvVariables struct {
 	Env map[string]string `json:"env"`
 }
 
-// ContainerStats represents CPU and memory usage for a container
 type ContainerStats struct {
 	ID            string  `json:"id"`
 	Host          string  `json:"host"`

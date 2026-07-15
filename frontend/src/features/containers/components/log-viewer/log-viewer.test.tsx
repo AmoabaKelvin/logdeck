@@ -256,7 +256,6 @@ describe("LogViewer shortcut help overlay", () => {
 		});
 		expect(screen.getByText("Keyboard shortcuts")).toBeTruthy();
 
-		// Pressing ? again closes it.
 		await act(async () => {
 			fireEvent.keyDown(window, { key: "?", shiftKey: true });
 		});

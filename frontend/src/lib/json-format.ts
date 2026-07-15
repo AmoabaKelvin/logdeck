@@ -46,9 +46,7 @@ export function formatJson(text: string): {
 			setCachedValue(text, result);
 			return result;
 		}
-	} catch {
-		// fall through to non-JSON result
-	}
+	} catch {}
 
 	const result = { formatted: text, isJson: false };
 	setCachedValue(text, result);

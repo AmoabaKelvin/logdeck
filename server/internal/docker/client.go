@@ -176,7 +176,6 @@ func (c *MultiHostClient) EngineInfo(ctx context.Context, hostName string) (engi
 	return engine, v.Version, nil
 }
 
-// Close closes all underlying Docker API clients.
 func (c *MultiHostClient) Close() {
 	for _, cl := range c.clients {
 		cl.Close()

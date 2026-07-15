@@ -85,9 +85,7 @@ export function SheetToolbar({
 
 	return (
 		<div className="space-y-2">
-			{/* Row 1: Search + Stream controls */}
 			<div className="flex items-center gap-1.5">
-				{/* Search input with inset regex toggle */}
 				<div className="relative flex-1 min-w-[120px]">
 					<SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
 					<Input
@@ -117,7 +115,6 @@ export function SheetToolbar({
 					</button>
 				</div>
 
-				{/* Controls: log level, time range, stream, auto-scroll, overflow */}
 				<div className="flex items-center gap-1 shrink-0">
 					{isReconnecting && (
 						<span className="shrink-0 text-xs text-muted-foreground animate-pulse">
@@ -225,7 +222,6 @@ export function SheetToolbar({
 						</TooltipContent>
 					</Tooltip>
 
-					{/* Overflow menu: view options + download */}
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
 							<Button
@@ -294,7 +290,6 @@ export function SheetToolbar({
 				</div>
 			</div>
 
-			{/* Conditional row: search match navigation + pinned navigation */}
 			{((showMatchNav && searchMatches.length > 0) || showPinNav) && (
 				<div className="flex items-center gap-3">
 					{showMatchNav && (

@@ -80,7 +80,6 @@ func (s ContainerSpec) Matches(host, name string, labels map[string]string) bool
 	return false
 }
 
-// containerKey identifies one container on one host.
 type containerKey struct {
 	host string
 	id   string

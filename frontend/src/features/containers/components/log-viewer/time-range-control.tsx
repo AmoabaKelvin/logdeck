@@ -34,7 +34,6 @@ interface TimeRangeControlProps {
 	disabled?: boolean;
 }
 
-// Combine a calendar day with an "HH:mm" time-of-day into an ISO timestamp.
 function combineDateAndTime(day: Date, time: string): string {
 	const [hours = 0, minutes = 0] = time.split(":").map(Number);
 	const date = new Date(day);

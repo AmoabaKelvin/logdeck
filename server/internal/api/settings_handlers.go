@@ -27,7 +27,6 @@ func (ar *APIRouter) GetSettings(w http.ResponseWriter, r *http.Request) {
 	cfg := ar.registry.Config()
 	fc := ar.manager.FileConfigSnapshot()
 
-	// Docker hosts with per-entry source
 	envDockerNames := ar.manager.EnvDockerHostNames()
 	dockerHosts := make([]map[string]any, 0, len(cfg.DockerHosts))
 	for _, h := range cfg.DockerHosts {
@@ -42,7 +41,6 @@ func (ar *APIRouter) GetSettings(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// Coolify hosts with per-entry source (mask tokens)
 	envCoolifyNames := ar.manager.EnvCoolifyHostNames()
 	coolifyHosts := make([]map[string]any, 0, len(cfg.CoolifyHosts))
 	for _, ch := range cfg.CoolifyHosts {
@@ -58,7 +56,6 @@ func (ar *APIRouter) GetSettings(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// Auth
 	authResp := map[string]any{
 		"source":  sources.Auth,
 		"enabled": false,
