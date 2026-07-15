@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/coolify"
@@ -155,6 +156,48 @@ func (ar *APIRouter) RemoveContainer(w http.ResponseWriter, r *http.Request) {
 	}
 	WriteJsonResponse(w, http.StatusOK, map[string]any{
 		"message": "Container removed",
+	})
+}
+
+// execRunTimeout bounds a single RunCommand invocation.
+const execRunTimeout = 60 * time.Second
+
+type runCommandRequest struct {
+	Command string `json:"command"`
+}
+
+// RunCommand runs one non-interactive command in a container through the shell
+// and returns its separated stdout, stderr, and exit code. This is the
+// programmatic counterpart to the interactive terminal (HandleTerminal): no
+// TTY, so streams stay distinct and the exit code is authoritative.
+func (ar *APIRouter) RunCommand(w http.ResponseWriter, r *http.Request) {
+	host, id, ok := containerParams(w, r)
+	if !ok {
+		return
+	}
+
+	var req runCommandRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(req.Command) == "" {
+		http.Error(w, "command is required", http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), execRunTimeout)
+	defer cancel()
+
+	stdout, stderr, exitCode, err := ar.registry.Docker().RunExec(ctx, host, id, []string{"/bin/sh", "-c", req.Command})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	WriteJsonResponse(w, http.StatusOK, map[string]any{
+		"stdout":   stdout,
+		"stderr":   stderr,
+		"exitCode": exitCode,
 	})
 }
 

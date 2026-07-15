@@ -141,6 +141,9 @@ func (ar *APIRouter) registerContainerRoutes(r chi.Router) {
 			// Exec is GET (websocket upgrade) but spawns a shell, so
 			// read-scoped tokens are denied explicitly
 			mutating.With(auth.DenyReadScope).Get("/exec", ar.HandleTerminal)
+			// exec/run is the non-interactive counterpart: run one command and
+			// return its output. Same shell-spawning risk, so same denial.
+			mutating.With(auth.DenyReadScope).Post("/exec/run", ar.RunCommand)
 		})
 	})
 }

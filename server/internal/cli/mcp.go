@@ -2,12 +2,8 @@ package cli
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"net"
-	"net/http"
 	"net/url"
 	"os"
 	"regexp"
@@ -15,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 )
@@ -464,23 +459,21 @@ func registerListTool(s *mcp.Server, a *app, register func(*mcp.Tool), name, des
 	register(tool)
 }
 
-// execResult is the structured result of a run_command call. Output merges
-// stdout and stderr because the exec runs on a pseudo-terminal.
+// execResult is the structured result of a run_command call.
 type execResult struct {
 	Command  string `json:"command"`
 	ExitCode int    `json:"exitCode"`
-	Output   string `json:"output"`
-	TimedOut bool   `json:"timedOut,omitempty"`
+	Stdout   string `json:"stdout"`
+	Stderr   string `json:"stderr"`
 }
 
 func registerRunCommand(s *mcp.Server, a *app, register func(*mcp.Tool)) {
 	type runCommandInput struct {
-		Container      string `json:"container" jsonschema:"container name or ID"`
-		Host           string `json:"host,omitempty" jsonschema:"host name (disambiguates duplicate names)"`
-		Command        string `json:"command" jsonschema:"shell command to run, executed with the container's default shell"`
-		TimeoutSeconds int    `json:"timeout_seconds,omitempty" jsonschema:"max seconds to wait (default 15, max 60)"`
+		Container string `json:"container" jsonschema:"container name or ID"`
+		Host      string `json:"host,omitempty" jsonschema:"host name (disambiguates duplicate names)"`
+		Command   string `json:"command" jsonschema:"shell command to run, executed with /bin/sh -c"`
 	}
-	tool := &mcp.Tool{Name: "run_command", Description: "Run a one-shot, non-interactive command in a container and return combined output and exit code. Output merges stdout and stderr (the exec uses a pseudo-terminal).", Annotations: destructiveAnnot()}
+	tool := &mcp.Tool{Name: "run_command", Description: "Run a one-shot, non-interactive command in a container and return separate stdout, stderr, and the exit code.", Annotations: destructiveAnnot()}
 	mcp.AddTool(s, tool, func(ctx context.Context, _ *mcp.CallToolRequest, in runCommandInput) (*mcp.CallToolResult, any, error) {
 		if strings.TrimSpace(in.Command) == "" {
 			return nil, nil, fmt.Errorf("command is required")
@@ -489,120 +482,18 @@ func registerRunCommand(s *mcp.Server, a *app, register func(*mcp.Tool)) {
 		if err != nil {
 			return nil, nil, err
 		}
-		result, err := a.runExec(ctx, container, in.Command, time.Duration(clampInt(in.TimeoutSeconds, 15, 60))*time.Second)
-		if err != nil {
+		var resp struct {
+			Stdout   string `json:"stdout"`
+			Stderr   string `json:"stderr"`
+			ExitCode int    `json:"exitCode"`
+		}
+		body := map[string]string{"command": in.Command}
+		if err := a.client.post(ctx, "/containers/"+container.ID+"/exec/run", url.Values{"host": {container.Host}}, body, &resp); err != nil {
 			return nil, nil, err
 		}
-		return mcpJSON(result)
+		return mcpJSON(execResult{Command: in.Command, ExitCode: resp.ExitCode, Stdout: resp.Stdout, Stderr: resp.Stderr})
 	})
 	register(tool)
-}
-
-// runExec runs command in container over the existing exec WebSocket endpoint.
-//
-// The server only exposes an interactive PTY terminal, not a one-shot exec, so
-// this drives that terminal: it wraps the command between unique markers and a
-// "printf $?" trailer, reads until the end marker appears, and slices the pure
-// command output from between them. Because the session is a PTY, stdout and
-// stderr are merged and the very first echoed input line is discarded via the
-// marker boundary.
-func (a *app) runExec(ctx context.Context, container containerInfo, command string, timeout time.Duration) (execResult, error) {
-	endpoint, err := execWebSocketURL(a.conn.url, container.ID, container.Host)
-	if err != nil {
-		return execResult{}, err
-	}
-
-	header := http.Header{}
-	if a.conn.token != "" {
-		header.Set("Authorization", "Bearer "+a.conn.token)
-	}
-
-	dialCtx, cancel := context.WithTimeout(ctx, requestTimeout)
-	defer cancel()
-	conn, resp, err := websocket.DefaultDialer.DialContext(dialCtx, endpoint, header)
-	if err != nil {
-		if resp != nil {
-			return execResult{}, responseError(resp)
-		}
-		return execResult{}, fmt.Errorf("cannot open exec session on %s: %v", a.conn.url, err)
-	}
-	defer conn.Close()
-
-	nonce := execNonce()
-	begin := "__LDKB_" + nonce + "__"
-	endRe := regexp.MustCompile("__LDKE_" + nonce + "__([0-9]+)__")
-
-	// The markers reference $? so the real end marker carries the exit code;
-	// the echoed input line carries a literal %d and never matches endRe.
-	line := fmt.Sprintf("printf '\\n%s\\n'; { %s ; }; printf '\\n__LDKE_%s__%%d__\\n' \"$?\"\n", begin, command, nonce)
-	if err := conn.WriteMessage(websocket.TextMessage, []byte(line)); err != nil {
-		return execResult{}, err
-	}
-
-	deadline := time.Now().Add(timeout)
-	_ = conn.SetReadDeadline(deadline)
-
-	var buf strings.Builder
-	result := execResult{Command: command, ExitCode: -1}
-	for {
-		_, data, readErr := conn.ReadMessage()
-		if len(data) > 0 {
-			buf.WriteString(string(data))
-			if m := endRe.FindStringSubmatch(buf.String()); m != nil {
-				result.ExitCode, _ = strconv.Atoi(m[1])
-				break
-			}
-		}
-		if readErr != nil {
-			if ne, ok := readErr.(net.Error); ok && ne.Timeout() {
-				result.TimedOut = true
-			}
-			break
-		}
-	}
-
-	result.Output = sliceExecOutput(buf.String(), begin, endRe)
-	return result, nil
-}
-
-// sliceExecOutput extracts command output from the raw PTY stream: everything
-// after the last real begin marker and before the end marker, with carriage
-// returns stripped.
-func sliceExecOutput(raw, begin string, endRe *regexp.Regexp) string {
-	region := raw
-	if loc := endRe.FindStringIndex(region); loc != nil {
-		region = region[:loc[0]]
-	}
-	if i := strings.LastIndex(region, begin); i >= 0 {
-		region = region[i+len(begin):]
-	}
-	region = strings.ReplaceAll(region, "\r", "")
-	return strings.Trim(region, "\n")
-}
-
-// execWebSocketURL builds the exec terminal WebSocket URL from the API base.
-func execWebSocketURL(base, id, host string) (string, error) {
-	u, err := url.Parse(strings.TrimRight(base, "/"))
-	if err != nil {
-		return "", err
-	}
-	switch u.Scheme {
-	case "https":
-		u.Scheme = "wss"
-	default:
-		u.Scheme = "ws"
-	}
-	u.Path += "/api/v1/containers/" + id + "/exec"
-	u.RawQuery = url.Values{"host": {host}}.Encode()
-	return u.String(), nil
-}
-
-func execNonce() string {
-	var b [8]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return strconv.FormatInt(time.Now().UnixNano(), 16)
-	}
-	return hex.EncodeToString(b[:])
 }
 
 // mcpJSON packs a value as pretty-printed JSON text content.
