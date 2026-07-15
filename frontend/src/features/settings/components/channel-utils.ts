@@ -19,7 +19,6 @@ export function channelTypeLabel(type: AlertChannelType): string {
 	return TYPE_LABELS[type] ?? type;
 }
 
-/** channelDestination summarizes where a channel delivers, for the list row. */
 export function channelDestination(channel: AlertChannel): string {
 	if (channel.type === "telegram") {
 		return channel.target ? `chat ${channel.target}` : "—";
@@ -52,10 +51,7 @@ function isHttpUrl(value: string): boolean {
 	}
 }
 
-/**
- * buildChannelPayload validates a draft and returns the create payload, mirroring
- * the server's per-type rules so users get feedback before the request.
- */
+// Mirrors the server's per-type validation so users get feedback before the request.
 export function buildChannelPayload(
 	draft: ChannelDraft,
 ): { error: string } | { payload: AlertChannelPayload } {

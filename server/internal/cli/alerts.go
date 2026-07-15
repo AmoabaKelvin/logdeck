@@ -469,7 +469,6 @@ func newAlertChannelsCmd(a *app) *cobra.Command {
 	return cmd
 }
 
-// channelDest summarizes where a channel delivers.
 func channelDest(c alertChannel) string {
 	if c.Type == "telegram" {
 		if c.Target == "" {

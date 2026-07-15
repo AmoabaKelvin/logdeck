@@ -118,7 +118,6 @@ func (r *compiledRule) matchesEntry(entry models.LogEntry) bool {
 	return true
 }
 
-// hasEvent reports whether the rule watches the given event action.
 func (r *compiledRule) hasEvent(action string) bool {
 	return slices.Contains(r.events, action)
 }

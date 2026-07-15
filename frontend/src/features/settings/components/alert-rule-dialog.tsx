@@ -577,7 +577,6 @@ function RuleEditor({
 				</DialogTitle>
 			</DialogHeader>
 
-			{/* When */}
 			<div className="space-y-3">
 				<SectionLabel>When</SectionLabel>
 				<div className="flex gap-1">
@@ -711,7 +710,6 @@ function RuleEditor({
 				)}
 			</div>
 
-			{/* Where */}
 			<div className="space-y-3">
 				<div className="space-y-1.5">
 					<SectionLabel>Where</SectionLabel>
@@ -755,7 +753,6 @@ function RuleEditor({
 				</div>
 			</div>
 
-			{/* Then */}
 			<div className="space-y-2">
 				<SectionLabel>Then</SectionLabel>
 				<div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 text-sm">

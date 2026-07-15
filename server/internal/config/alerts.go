@@ -30,7 +30,6 @@ type AlertChannel struct {
 	Target  string `json:"target,omitempty"` // telegram: chat_id
 }
 
-// AlertRule describes one alerting rule.
 type AlertRule struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`

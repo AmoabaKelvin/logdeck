@@ -271,7 +271,6 @@ func (e *Engine) History(limit int) []models.Alert {
 	return e.hist.list(limit)
 }
 
-// ClearHistory removes all recorded alert history entries.
 func (e *Engine) ClearHistory() {
 	e.hist.clear()
 }
@@ -739,7 +738,6 @@ func eventReason(rule *compiledRule, action, exitCode string) string {
 	return fmt.Sprintf("%d container deaths within %ds (last exit %s)", rule.threshold, int(rule.window.Seconds()), exitCode)
 }
 
-// eventSample renders the sample detail for an event alert.
 func eventSample(action, exitCode string) string {
 	if action == "oom" {
 		return "oom"
