@@ -240,8 +240,14 @@ func calculateMemoryStats(stats *container.StatsResponse) (percent float64, usag
 	usage = stats.MemoryStats.Usage
 	limit = stats.MemoryStats.Limit
 
-	if cache, ok := stats.MemoryStats.Stats["cache"]; ok && usage > cache {
-		usage -= cache
+	// Subtract reclaimable page cache so the figure matches `docker stats`.
+	// cgroup v1 reports it as total_inactive_file, cgroup v2 (the modern
+	// default) as inactive_file; using only the old "cache" key over-reported
+	// memory on v2 hosts, where that key is absent.
+	if v, ok := stats.MemoryStats.Stats["total_inactive_file"]; ok && v < usage {
+		usage -= v
+	} else if v, ok := stats.MemoryStats.Stats["inactive_file"]; ok && v < usage {
+		usage -= v
 	}
 
 	if limit > 0 {

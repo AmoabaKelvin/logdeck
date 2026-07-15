@@ -6,15 +6,17 @@ import (
 	"github.com/docker/docker/api/types/container"
 )
 
-func TestCalculateMemoryStatsSubtractsCache(t *testing.T) {
+// cgroup v1 reports reclaimable page cache as total_inactive_file; it is
+// subtracted so the figure matches `docker stats`.
+func TestCalculateMemoryStatsCgroupV1(t *testing.T) {
 	var stats container.StatsResponse
 	stats.MemoryStats.Usage = 100
 	stats.MemoryStats.Limit = 200
-	stats.MemoryStats.Stats = map[string]uint64{"cache": 30}
+	stats.MemoryStats.Stats = map[string]uint64{"total_inactive_file": 30}
 
 	percent, usage, limit := calculateMemoryStats(&stats)
 	if usage != 70 {
-		t.Fatalf("usage = %d, want 70 (cache subtracted)", usage)
+		t.Fatalf("usage = %d, want 70 (total_inactive_file subtracted)", usage)
 	}
 	if limit != 200 {
 		t.Fatalf("limit = %d, want 200", limit)
@@ -24,16 +26,44 @@ func TestCalculateMemoryStatsSubtractsCache(t *testing.T) {
 	}
 }
 
-// A cache value larger than usage must not underflow the unsigned usage.
-func TestCalculateMemoryStatsCacheLargerThanUsageIgnored(t *testing.T) {
+// cgroup v2 (the modern default) reports it as inactive_file. Before this was
+// handled, the "cache" key was absent so nothing was subtracted and memory was
+// over-reported by the size of the page cache.
+func TestCalculateMemoryStatsCgroupV2(t *testing.T) {
+	var stats container.StatsResponse
+	stats.MemoryStats.Usage = 100
+	stats.MemoryStats.Limit = 200
+	stats.MemoryStats.Stats = map[string]uint64{"inactive_file": 40}
+
+	_, usage, _ := calculateMemoryStats(&stats)
+	if usage != 60 {
+		t.Fatalf("usage = %d, want 60 (inactive_file subtracted)", usage)
+	}
+}
+
+// The old raw cgroup-v1 "cache" key is no longer used on its own.
+func TestCalculateMemoryStatsIgnoresRawCache(t *testing.T) {
+	var stats container.StatsResponse
+	stats.MemoryStats.Usage = 100
+	stats.MemoryStats.Limit = 200
+	stats.MemoryStats.Stats = map[string]uint64{"cache": 30}
+
+	_, usage, _ := calculateMemoryStats(&stats)
+	if usage != 100 {
+		t.Fatalf("usage = %d, want 100 (raw cache is not subtracted)", usage)
+	}
+}
+
+// A reclaimable value larger than usage must not underflow the unsigned usage.
+func TestCalculateMemoryStatsInactiveLargerThanUsageIgnored(t *testing.T) {
 	var stats container.StatsResponse
 	stats.MemoryStats.Usage = 20
 	stats.MemoryStats.Limit = 200
-	stats.MemoryStats.Stats = map[string]uint64{"cache": 50}
+	stats.MemoryStats.Stats = map[string]uint64{"inactive_file": 50}
 
 	_, usage, _ := calculateMemoryStats(&stats)
 	if usage != 20 {
-		t.Fatalf("usage = %d, want 20 (cache subtraction skipped to avoid underflow)", usage)
+		t.Fatalf("usage = %d, want 20 (subtraction skipped to avoid underflow)", usage)
 	}
 }
 
