@@ -19,9 +19,11 @@ import (
 )
 
 const (
-	maxAlertRules        = 50
-	maxAlertRuleNameLen  = 64
-	maxAlertThreshold    = 1000
+	maxAlertRules          = 50
+	maxAlertRuleNameLen    = 64
+	maxAlertChannels       = 20
+	maxAlertChannelNameLen = 64
+	maxAlertThreshold      = 1000
 	minAlertWindowSecs   = 5
 	maxAlertWindowSecs   = 3600
 	maxAlertCooldownSecs = 86400
@@ -31,8 +33,10 @@ const (
 )
 
 var (
-	errAlertRuleLimit    = fmt.Errorf("maximum of %d alert rules reached", maxAlertRules)
-	errAlertRuleNotFound = errors.New("alert rule not found")
+	errAlertRuleLimit       = fmt.Errorf("maximum of %d alert rules reached", maxAlertRules)
+	errAlertRuleNotFound    = errors.New("alert rule not found")
+	errAlertChannelLimit    = fmt.Errorf("maximum of %d alert channels reached", maxAlertChannels)
+	errAlertChannelNotFound = errors.New("alert channel not found")
 )
 
 // alertRuleRequest is the client-supplied portion of an alert rule. Enabled is
@@ -66,8 +70,9 @@ var validAlertMinLevels = map[string]bool{
 }
 
 var validAlertEvents = map[string]bool{
-	"die": true,
-	"oom": true,
+	"die":       true,
+	"oom":       true,
+	"unhealthy": true,
 }
 
 // buildAlertRule validates and normalizes a rule request into a config rule.
@@ -126,7 +131,7 @@ func buildAlertRule(req alertRuleRequest) (config.AlertRule, error) {
 		}
 		for _, ev := range rule.Events {
 			if !validAlertEvents[ev] {
-				return rule, fmt.Errorf("events contains invalid value %q (must be \"die\" or \"oom\")", ev)
+				return rule, fmt.Errorf("events contains invalid value %q (must be \"die\", \"oom\", or \"unhealthy\")", ev)
 			}
 		}
 		if rule.MinLevel != "" {
@@ -185,8 +190,9 @@ func buildAlertRule(req alertRuleRequest) (config.AlertRule, error) {
 	return rule, nil
 }
 
-// generateAlertRuleID returns a random 8-character hex rule identifier.
-func generateAlertRuleID() (string, error) {
+// generateAlertID returns a random 8-character hex identifier for a rule or
+// channel.
+func generateAlertID() (string, error) {
 	buf := make([]byte, 4)
 	if _, err := rand.Read(buf); err != nil {
 		return "", err
@@ -226,7 +232,7 @@ func (ar *APIRouter) CreateAlertRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := generateAlertRuleID()
+	id, err := generateAlertID()
 	if err != nil {
 		http.Error(w, "failed to generate rule id", http.StatusInternalServerError)
 		return
@@ -324,61 +330,236 @@ func (ar *APIRouter) DeleteAlertRule(w http.ResponseWriter, r *http.Request) {
 	WriteJsonResponse(w, http.StatusOK, map[string]any{"message": "rule deleted"})
 }
 
-// GetAlertsWebhook handles GET /api/v1/alerts/webhook.
-func (ar *APIRouter) GetAlertsWebhook(w http.ResponseWriter, r *http.Request) {
-	fc := ar.manager.FileConfigSnapshot()
-	webhookURL := ""
-	if fc.Alerts != nil {
-		webhookURL = fc.Alerts.WebhookURL
-	}
-	WriteJsonResponse(w, http.StatusOK, map[string]any{"url": webhookURL})
+// alertChannelRequest is the client-supplied portion of a channel. Enabled is
+// a pointer so an omitted value can default to true.
+type alertChannelRequest struct {
+	Type    string `json:"type"`
+	Name    string `json:"name"`
+	Enabled *bool  `json:"enabled"`
+	URL     string `json:"url"`
+	Token   string `json:"token"`
+	Target  string `json:"target"`
 }
 
-// UpdateAlertsWebhook handles PUT /api/v1/alerts/webhook.
-func (ar *APIRouter) UpdateAlertsWebhook(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		URL string `json:"url"`
+var validAlertChannelTypes = map[string]bool{
+	"webhook":  true,
+	"ntfy":     true,
+	"gotify":   true,
+	"telegram": true,
+}
+
+// validateHTTPURL rejects empty or non-http(s) URLs with a field-named error.
+func validateHTTPURL(raw string) error {
+	if raw == "" {
+		return errors.New("url is required")
 	}
+	parsed, err := url.Parse(raw)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return errors.New("url must be a valid http or https URL")
+	}
+	return nil
+}
+
+// buildAlertChannel validates and normalizes a channel request into a config
+// channel. ID is left empty for the caller to fill in. Fields irrelevant to the
+// chosen type are cleared so stored channels stay minimal.
+func buildAlertChannel(req alertChannelRequest) (config.AlertChannel, error) {
+	ch := config.AlertChannel{
+		Type:    strings.TrimSpace(req.Type),
+		Name:    strings.TrimSpace(req.Name),
+		Enabled: true,
+		URL:     strings.TrimSpace(req.URL),
+		Token:   strings.TrimSpace(req.Token),
+		Target:  strings.TrimSpace(req.Target),
+	}
+	if req.Enabled != nil {
+		ch.Enabled = *req.Enabled
+	}
+
+	if !validAlertChannelTypes[ch.Type] {
+		return ch, fmt.Errorf("type %q is invalid (must be \"webhook\", \"ntfy\", \"gotify\", or \"telegram\")", ch.Type)
+	}
+	if len(ch.Name) > maxAlertChannelNameLen {
+		return ch, fmt.Errorf("name must be at most %d characters", maxAlertChannelNameLen)
+	}
+
+	switch ch.Type {
+	case "webhook", "ntfy":
+		if err := validateHTTPURL(ch.URL); err != nil {
+			return ch, err
+		}
+		ch.Token = ""
+		ch.Target = ""
+	case "gotify":
+		if err := validateHTTPURL(ch.URL); err != nil {
+			return ch, err
+		}
+		if ch.Token == "" {
+			return ch, errors.New("token is required for a gotify channel")
+		}
+		ch.Target = ""
+	case "telegram":
+		if ch.Token == "" {
+			return ch, errors.New("token is required for a telegram channel")
+		}
+		if ch.Target == "" {
+			return ch, errors.New("target is required for a telegram channel (the chat id)")
+		}
+		ch.URL = ""
+	}
+
+	return ch, nil
+}
+
+// ListAlertChannels handles GET /api/v1/alerts/channels.
+func (ar *APIRouter) ListAlertChannels(w http.ResponseWriter, r *http.Request) {
+	fc := ar.manager.FileConfigSnapshot()
+	channels := []config.AlertChannel{}
+	if fc.Alerts != nil {
+		channels = append(channels, fc.Alerts.Channels...)
+	}
+	WriteJsonResponse(w, http.StatusOK, map[string]any{"channels": channels})
+}
+
+// CreateAlertChannel handles POST /api/v1/alerts/channels.
+func (ar *APIRouter) CreateAlertChannel(w http.ResponseWriter, r *http.Request) {
+	var req alertChannelRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	webhookURL := strings.TrimSpace(req.URL)
-	if webhookURL != "" {
-		parsed, err := url.Parse(webhookURL)
-		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
-			http.Error(w, "url must be a valid http or https URL", http.StatusBadRequest)
-			return
-		}
+	channel, err := buildAlertChannel(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
-	err := ar.manager.UpdateAlerts(func(current config.AlertsConfig) (config.AlertsConfig, error) {
-		current.WebhookURL = webhookURL
+	id, err := generateAlertID()
+	if err != nil {
+		http.Error(w, "failed to generate channel id", http.StatusInternalServerError)
+		return
+	}
+	channel.ID = id
+
+	err = ar.manager.UpdateAlerts(func(current config.AlertsConfig) (config.AlertsConfig, error) {
+		if len(current.Channels) >= maxAlertChannels {
+			return current, errAlertChannelLimit
+		}
+		current.Channels = append(current.Channels, channel)
 		return current, nil
 	})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		status := http.StatusInternalServerError
+		if errors.Is(err, errAlertChannelLimit) {
+			status = http.StatusBadRequest
+		}
+		http.Error(w, err.Error(), status)
 		return
 	}
 
 	ar.reconcileAlerts()
-	message := "Webhook updated"
-	if webhookURL == "" {
-		message = "Webhook cleared"
-	}
-	WriteJsonResponse(w, http.StatusOK, map[string]any{"message": message})
+	WriteJsonResponse(w, http.StatusCreated, channel)
 }
 
-// TestAlertsWebhook handles POST /api/v1/alerts/test. The delivery result is
-// returned with a 200 whether or not the delivery itself succeeded; the
-// result's status field carries the outcome.
-func (ar *APIRouter) TestAlertsWebhook(w http.ResponseWriter, r *http.Request) {
+// UpdateAlertChannel handles PUT /api/v1/alerts/channels/{id}.
+func (ar *APIRouter) UpdateAlertChannel(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	var req alertChannelRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	channel, err := buildAlertChannel(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	err = ar.manager.UpdateAlerts(func(current config.AlertsConfig) (config.AlertsConfig, error) {
+		for i, existing := range current.Channels {
+			if existing.ID == id {
+				channel.ID = existing.ID
+				current.Channels[i] = channel
+				return current, nil
+			}
+		}
+		return current, errAlertChannelNotFound
+	})
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, errAlertChannelNotFound) {
+			status = http.StatusNotFound
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+
+	ar.reconcileAlerts()
+	WriteJsonResponse(w, http.StatusOK, channel)
+}
+
+// DeleteAlertChannel handles DELETE /api/v1/alerts/channels/{id}.
+func (ar *APIRouter) DeleteAlertChannel(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	err := ar.manager.UpdateAlerts(func(current config.AlertsConfig) (config.AlertsConfig, error) {
+		next := current.Channels[:0]
+		for _, ch := range current.Channels {
+			if ch.ID != id {
+				next = append(next, ch)
+			}
+		}
+		if len(next) == len(current.Channels) {
+			return current, errAlertChannelNotFound
+		}
+		current.Channels = next
+		return current, nil
+	})
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, errAlertChannelNotFound) {
+			status = http.StatusNotFound
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+
+	ar.reconcileAlerts()
+	WriteJsonResponse(w, http.StatusOK, map[string]any{"message": "channel deleted"})
+}
+
+// TestAlertChannel handles POST /api/v1/alerts/channels/{id}/test. It delivers
+// a synthetic alert to the one channel and returns the delivery result with a
+// 200 whether or not the delivery itself succeeded; the result's status field
+// carries the outcome.
+func (ar *APIRouter) TestAlertChannel(w http.ResponseWriter, r *http.Request) {
 	if ar.engine == nil {
 		http.Error(w, "alerting engine not available", http.StatusInternalServerError)
 		return
 	}
-	result := ar.engine.TestWebhook(r.Context())
+	id := chi.URLParam(r, "id")
+
+	fc := ar.manager.FileConfigSnapshot()
+	var channel config.AlertChannel
+	found := false
+	if fc.Alerts != nil {
+		for _, ch := range fc.Alerts.Channels {
+			if ch.ID == id {
+				channel = ch
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		http.Error(w, errAlertChannelNotFound.Error(), http.StatusNotFound)
+		return
+	}
+
+	result := ar.engine.TestChannel(r.Context(), channel)
 	WriteJsonResponse(w, http.StatusOK, result)
 }
 

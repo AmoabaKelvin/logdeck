@@ -32,7 +32,7 @@ type compiledRule struct {
 	// logstream.ContainerSpec.Matches.
 	spec logstream.ContainerSpec
 
-	events []string // event rules: "die" | "oom"
+	events []string // event rules: "die" | "oom" | "unhealthy"
 
 	minLevel    string // normalized upper-case, "" when unset
 	minSeverity int    // >= 1 when minLevel is set; UNKNOWN (0) never passes
@@ -118,7 +118,6 @@ func (r *compiledRule) matchesEntry(entry models.LogEntry) bool {
 	return true
 }
 
-// hasEvent reports whether the rule watches the given event action.
 func (r *compiledRule) hasEvent(action string) bool {
 	return slices.Contains(r.events, action)
 }

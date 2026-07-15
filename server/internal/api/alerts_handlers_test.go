@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -160,6 +161,14 @@ func TestAlertRulesCRUDRoundTrip(t *testing.T) {
 	}
 }
 
+func TestCreateAlertRuleAcceptsUnhealthyEvent(t *testing.T) {
+	router, _ := newAlertsTestRouter(t, nil)
+	created := createAlertRule(t, router, `{"name":"health check failing","type":"event","events":["unhealthy"]}`)
+	if len(created.Events) != 1 || created.Events[0] != "unhealthy" {
+		t.Fatalf("unexpected events: %v", created.Events)
+	}
+}
+
 var alertRuleValidationCases = []struct{ name, body string }{
 	{"invalid json", `{`},
 	{"missing name", `{"type":"log","minLevel":"ERROR"}`},
@@ -279,76 +288,175 @@ func TestUpdateAndDeleteUnknownAlertRule(t *testing.T) {
 	}
 }
 
-func TestAlertsWebhookSetAndClear(t *testing.T) {
+func listAlertChannelsRaw(t *testing.T, router http.Handler) (json.RawMessage, []config.AlertChannel) {
+	t.Helper()
+	w := doAlertsRequest(t, router, "GET", "/api/v1/alerts/channels", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 listing channels, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Channels json.RawMessage `json:"channels"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse list response: %v", err)
+	}
+	var channels []config.AlertChannel
+	if err := json.Unmarshal(resp.Channels, &channels); err != nil {
+		t.Fatalf("failed to parse channels array: %v", err)
+	}
+	return resp.Channels, channels
+}
+
+func TestListAlertChannelsEmptyIsNotNull(t *testing.T) {
 	router, _ := newAlertsTestRouter(t, nil)
-
-	getURL := func() string {
-		t.Helper()
-		w := doAlertsRequest(t, router, "GET", "/api/v1/alerts/webhook", "")
-		if w.Code != http.StatusOK {
-			t.Fatalf("expected 200 getting webhook, got %d: %s", w.Code, w.Body.String())
-		}
-		var resp struct {
-			URL string `json:"url"`
-		}
-		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-			t.Fatalf("failed to parse webhook response: %v", err)
-		}
-		return resp.URL
-	}
-
-	if got := getURL(); got != "" {
-		t.Errorf("expected empty webhook url initially, got %q", got)
-	}
-
-	w := doAlertsRequest(t, router, "PUT", "/api/v1/alerts/webhook", `{"url":"https://example.com/hook"}`)
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 setting webhook, got %d: %s", w.Code, w.Body.String())
-	}
-	if !strings.Contains(w.Body.String(), "Webhook updated") {
-		t.Errorf("unexpected set response: %s", w.Body.String())
-	}
-	if got := getURL(); got != "https://example.com/hook" {
-		t.Errorf("expected webhook url to persist, got %q", got)
-	}
-
-	for _, body := range []string{
-		`{"url":"not a url"}`,
-		`{"url":"ftp://example.com/hook"}`,
-		`{"url":"http://"}`,
-		`{`,
-	} {
-		w = doAlertsRequest(t, router, "PUT", "/api/v1/alerts/webhook", body)
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("body %s: expected 400, got %d: %s", body, w.Code, w.Body.String())
-		}
-	}
-	if got := getURL(); got != "https://example.com/hook" {
-		t.Errorf("invalid updates must not change the webhook, got %q", got)
-	}
-
-	w = doAlertsRequest(t, router, "PUT", "/api/v1/alerts/webhook", `{"url":""}`)
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 clearing webhook, got %d: %s", w.Code, w.Body.String())
-	}
-	if !strings.Contains(w.Body.String(), "Webhook cleared") {
-		t.Errorf("unexpected clear response: %s", w.Body.String())
-	}
-	if got := getURL(); got != "" {
-		t.Errorf("expected webhook cleared, got %q", got)
+	raw, _ := listAlertChannelsRaw(t, router)
+	if string(raw) != "[]" {
+		t.Errorf("expected channels to be [], got %s", raw)
 	}
 }
 
-func TestAlertsTestWebhookEndpoint(t *testing.T) {
+func TestAlertChannelsCRUD(t *testing.T) {
 	router, _ := newAlertsTestRouter(t, nil)
 
-	w := doAlertsRequest(t, router, "POST", "/api/v1/alerts/test", "")
+	// Create one of each type.
+	create := func(body string) config.AlertChannel {
+		t.Helper()
+		w := doAlertsRequest(t, router, "POST", "/api/v1/alerts/channels", body)
+		if w.Code != http.StatusCreated {
+			t.Fatalf("expected 201 creating channel, got %d: %s", w.Code, w.Body.String())
+		}
+		var ch config.AlertChannel
+		if err := json.Unmarshal(w.Body.Bytes(), &ch); err != nil {
+			t.Fatalf("failed to parse create response: %v", err)
+		}
+		if ch.ID == "" {
+			t.Fatalf("server must assign an id, got %+v", ch)
+		}
+		return ch
+	}
+
+	hook := create(`{"type":"webhook","name":"Slack","url":"https://example.com/hook"}`)
+	create(`{"type":"ntfy","url":"https://ntfy.sh/mytopic"}`)
+	create(`{"type":"gotify","url":"https://gotify.example.com","token":"apptoken"}`)
+	tg := create(`{"type":"telegram","token":"bot42:secret","target":"-1001234"}`)
+
+	_, channels := listAlertChannelsRaw(t, router)
+	if len(channels) != 4 {
+		t.Fatalf("expected 4 channels, got %d", len(channels))
+	}
+
+	// Irrelevant fields are cleared for the chosen type.
+	if tg.URL != "" {
+		t.Errorf("telegram channel should not store a url, got %q", tg.URL)
+	}
+
+	// Update: disable the webhook channel.
+	w := doAlertsRequest(t, router, "PUT", "/api/v1/alerts/channels/"+hook.ID,
+		`{"type":"webhook","name":"Slack","url":"https://example.com/hook","enabled":false}`)
 	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 from test webhook, got %d: %s", w.Code, w.Body.String())
+		t.Fatalf("expected 200 updating channel, got %d: %s", w.Code, w.Body.String())
+	}
+	var updated config.AlertChannel
+	if err := json.Unmarshal(w.Body.Bytes(), &updated); err != nil {
+		t.Fatalf("failed to parse update response: %v", err)
+	}
+	if updated.ID != hook.ID || updated.Enabled {
+		t.Errorf("expected update to keep id and disable, got %+v", updated)
+	}
+
+	// Delete.
+	w = doAlertsRequest(t, router, "DELETE", "/api/v1/alerts/channels/"+hook.ID, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 deleting channel, got %d: %s", w.Code, w.Body.String())
+	}
+	_, channels = listAlertChannelsRaw(t, router)
+	if len(channels) != 3 {
+		t.Fatalf("expected 3 channels after delete, got %d", len(channels))
+	}
+
+	// Update / delete of an unknown id are 404s.
+	w = doAlertsRequest(t, router, "PUT", "/api/v1/alerts/channels/nope",
+		`{"type":"webhook","url":"https://example.com/hook"}`)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404 updating unknown channel, got %d", w.Code)
+	}
+	w = doAlertsRequest(t, router, "DELETE", "/api/v1/alerts/channels/nope", "")
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404 deleting unknown channel, got %d", w.Code)
+	}
+}
+
+func TestAlertChannelValidation(t *testing.T) {
+	router, _ := newAlertsTestRouter(t, nil)
+
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{"unknown type", `{"type":"pushover","url":"https://x.com"}`},
+		{"webhook empty url", `{"type":"webhook"}`},
+		{"webhook bad url", `{"type":"webhook","url":"not a url"}`},
+		{"webhook non-http", `{"type":"webhook","url":"ftp://x.com"}`},
+		{"ntfy empty url", `{"type":"ntfy"}`},
+		{"gotify no token", `{"type":"gotify","url":"https://gotify.example.com"}`},
+		{"gotify no url", `{"type":"gotify","token":"t"}`},
+		{"telegram no token", `{"type":"telegram","target":"123"}`},
+		{"telegram no target", `{"type":"telegram","token":"bot:secret"}`},
+		{"malformed json", `{`},
+	} {
+		w := doAlertsRequest(t, router, "POST", "/api/v1/alerts/channels", tc.body)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("%s: expected 400, got %d: %s", tc.name, w.Code, w.Body.String())
+		}
+	}
+
+	// No invalid channel was stored.
+	_, channels := listAlertChannelsRaw(t, router)
+	if len(channels) != 0 {
+		t.Errorf("expected no channels stored after invalid requests, got %d", len(channels))
+	}
+}
+
+func TestAlertChannelTestEndpoint(t *testing.T) {
+	router, _ := newAlertsTestRouter(t, nil)
+
+	// A local server stands in for the webhook so the test never reaches the
+	// public network (CI must not depend on DNS or egress).
+	var delivered int32
+	hook := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&delivered, 1)
+	}))
+	defer hook.Close()
+
+	w := doAlertsRequest(t, router, "POST", "/api/v1/alerts/channels",
+		fmt.Sprintf(`{"type":"webhook","url":%q}`, hook.URL))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 creating channel, got %d: %s", w.Code, w.Body.String())
+	}
+	var ch config.AlertChannel
+	if err := json.Unmarshal(w.Body.Bytes(), &ch); err != nil {
+		t.Fatalf("failed to parse create response: %v", err)
+	}
+
+	w = doAlertsRequest(t, router, "POST", "/api/v1/alerts/channels/"+ch.ID+"/test", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 from channel test, got %d: %s", w.Code, w.Body.String())
 	}
 	var result models.DeliveryResult
 	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
 		t.Fatalf("failed to parse delivery result: %v", err)
+	}
+	if result.Status != "ok" {
+		t.Fatalf("delivery = %+v, want ok", result)
+	}
+	if atomic.LoadInt32(&delivered) != 1 {
+		t.Fatalf("webhook received %d deliveries, want 1", delivered)
+	}
+
+	// Testing an unknown channel is a 404.
+	w = doAlertsRequest(t, router, "POST", "/api/v1/alerts/channels/nope/test", "")
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404 testing unknown channel, got %d", w.Code)
 	}
 }
 
@@ -398,9 +506,13 @@ func TestAlertRulesPersistAcrossManagerReload(t *testing.T) {
 	router, _ := newAlertsTestRouter(t, nil)
 
 	created := createAlertRule(t, router, `{"name":"persisted","type":"log","minLevel":"ERROR"}`)
-	w := doAlertsRequest(t, router, "PUT", "/api/v1/alerts/webhook", `{"url":"https://example.com/hook"}`)
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 setting webhook, got %d: %s", w.Code, w.Body.String())
+	w := doAlertsRequest(t, router, "POST", "/api/v1/alerts/channels", `{"type":"webhook","url":"https://example.com/hook"}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 creating channel, got %d: %s", w.Code, w.Body.String())
+	}
+	var ch config.AlertChannel
+	if err := json.Unmarshal(w.Body.Bytes(), &ch); err != nil {
+		t.Fatalf("failed to parse create response: %v", err)
 	}
 
 	// Re-open the config file with a fresh manager (CONFIG_PATH is still set).
@@ -409,8 +521,8 @@ func TestAlertRulesPersistAcrossManagerReload(t *testing.T) {
 	if fc.Alerts == nil {
 		t.Fatal("expected alerts config to persist across reload")
 	}
-	if fc.Alerts.WebhookURL != "https://example.com/hook" {
-		t.Errorf("expected webhook url to persist, got %q", fc.Alerts.WebhookURL)
+	if len(fc.Alerts.Channels) != 1 || fc.Alerts.Channels[0].ID != ch.ID || fc.Alerts.Channels[0].URL != "https://example.com/hook" {
+		t.Errorf("expected created channel to persist, got %+v", fc.Alerts.Channels)
 	}
 	if len(fc.Alerts.Rules) != 1 || fc.Alerts.Rules[0].ID != created.ID || fc.Alerts.Rules[0].Name != "persisted" {
 		t.Errorf("expected created rule to persist, got %+v", fc.Alerts.Rules)
@@ -425,9 +537,11 @@ func TestAlertRoutesRequireAuthWhenEnabled(t *testing.T) {
 		{"POST", "/api/v1/alerts/rules"},
 		{"PUT", "/api/v1/alerts/rules/deadbeef"},
 		{"DELETE", "/api/v1/alerts/rules/deadbeef"},
-		{"GET", "/api/v1/alerts/webhook"},
-		{"PUT", "/api/v1/alerts/webhook"},
-		{"POST", "/api/v1/alerts/test"},
+		{"GET", "/api/v1/alerts/channels"},
+		{"POST", "/api/v1/alerts/channels"},
+		{"PUT", "/api/v1/alerts/channels/deadbeef"},
+		{"DELETE", "/api/v1/alerts/channels/deadbeef"},
+		{"POST", "/api/v1/alerts/channels/deadbeef/test"},
 		{"GET", "/api/v1/alerts/history"},
 		{"DELETE", "/api/v1/alerts/history"},
 	}

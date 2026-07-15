@@ -57,16 +57,27 @@ type alertInfo struct {
 	Delivery      alertDelivery `json:"delivery"`
 }
 
+// alertChannel doubles as the create request body: omitempty keeps fields the
+// user didn't set out of the payload, so the server applies its defaults.
+type alertChannel struct {
+	ID      string `json:"id,omitempty"`
+	Type    string `json:"type"`
+	Name    string `json:"name,omitempty"`
+	Enabled bool   `json:"enabled"`
+	URL     string `json:"url,omitempty"`
+	Token   string `json:"token,omitempty"`
+	Target  string `json:"target,omitempty"`
+}
+
 func newAlertsCmd(a *app) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "alerts",
-		Short: "Manage alert rules, the webhook, and fired-alert history",
+		Short: "Manage alert rules, notification channels, and fired-alert history",
 	}
 	cmd.AddCommand(
 		newAlertRulesCmd(a),
 		newAlertHistoryCmd(a),
-		newAlertWebhookCmd(a),
-		newAlertTestCmd(a),
+		newAlertChannelsCmd(a),
 	)
 	return cmd
 }
@@ -218,11 +229,11 @@ func newAlertRuleCreateCmd(a *app) *cobra.Command {
 				}
 			case "event":
 				if len(events) == 0 {
-					return fmt.Errorf("--events is required for --type event (die, oom)")
+					return fmt.Errorf("--events is required for --type event (die, oom, unhealthy)")
 				}
 				for _, e := range events {
-					if e != "die" && e != "oom" {
-						return fmt.Errorf("invalid event %q (must be die or oom)", e)
+					if e != "die" && e != "oom" && e != "unhealthy" {
+						return fmt.Errorf("invalid event %q (must be die, oom, or unhealthy)", e)
 					}
 				}
 				if minLevel != "" {
@@ -283,7 +294,7 @@ func newAlertRuleCreateCmd(a *app) *cobra.Command {
 	cmd.Flags().StringSliceVar(&hosts, "host", nil, "limit to these hosts (repeatable)")
 	cmd.Flags().StringSliceVar(&containers, "container", nil, "limit to these container names (repeatable)")
 	cmd.Flags().StringSliceVar(&projects, "project", nil, "limit to these compose projects (repeatable)")
-	cmd.Flags().StringSliceVar(&events, "events", nil, "events to match: die, oom (only with --type event)")
+	cmd.Flags().StringSliceVar(&events, "events", nil, "events to match: die, oom, unhealthy (only with --type event)")
 	cmd.Flags().StringVar(&minLevel, "min-level", "", "minimum log level to match, e.g. ERROR (only with --type log)")
 	cmd.Flags().StringVar(&pattern, "pattern", "", "regex the log message must match (only with --type log)")
 	cmd.Flags().IntVar(&threshold, "threshold", 0, "fire only after this many matches within --window")
@@ -444,82 +455,162 @@ func newAlertHistoryClearCmd(a *app) *cobra.Command {
 	}
 }
 
-func newAlertWebhookCmd(a *app) *cobra.Command {
+func newAlertChannelsCmd(a *app) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "webhook",
-		Short: "Show the alert webhook URL",
-		Args:  cobra.NoArgs,
-		RunE: a.run(func(cmd *cobra.Command, args []string) error {
-			var resp struct {
-				URL string `json:"url"`
-			}
-			if err := a.client.get(cmd.Context(), "/alerts/webhook", nil, &resp); err != nil {
-				return err
-			}
-
-			if a.jsonOutput() {
-				return a.printJSON(map[string]string{"url": resp.URL})
-			}
-			if resp.URL == "" {
-				fmt.Println("(not set)")
-			} else {
-				fmt.Println(resp.URL)
-			}
-			return nil
-		}),
+		Use:   "channels",
+		Short: "Manage notification channels (webhook, ntfy, gotify, telegram)",
 	}
-	cmd.AddCommand(newAlertWebhookSetCmd(a), newAlertWebhookClearCmd(a))
+	cmd.AddCommand(
+		newAlertChannelsListCmd(a),
+		newAlertChannelAddCmd(a),
+		newAlertChannelTestCmd(a),
+		newAlertChannelDeleteCmd(a),
+	)
 	return cmd
 }
 
-func newAlertWebhookSetCmd(a *app) *cobra.Command {
+func channelDest(c alertChannel) string {
+	if c.Type == "telegram" {
+		if c.Target == "" {
+			return "-"
+		}
+		return "chat " + c.Target
+	}
+	if c.URL == "" {
+		return "-"
+	}
+	return c.URL
+}
+
+func newAlertChannelsListCmd(a *app) *cobra.Command {
 	return &cobra.Command{
-		Use:   "set <url>",
-		Short: "Set the alert webhook URL",
+		Use:   "list",
+		Short: "List notification channels",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(cmd *cobra.Command, args []string) error {
+			var resp struct {
+				Channels json.RawMessage `json:"channels"`
+			}
+			if err := a.client.get(cmd.Context(), "/alerts/channels", nil, &resp); err != nil {
+				return err
+			}
+
+			if a.jsonOutput() {
+				var channels any
+				if len(resp.Channels) > 0 {
+					if err := json.Unmarshal(resp.Channels, &channels); err != nil {
+						return err
+					}
+				}
+				if channels == nil {
+					channels = []any{}
+				}
+				return a.printJSON(map[string]any{"channels": channels})
+			}
+
+			var channels []alertChannel
+			if len(resp.Channels) > 0 {
+				if err := json.Unmarshal(resp.Channels, &channels); err != nil {
+					return err
+				}
+			}
+			rows := make([][]string, 0, len(channels))
+			for _, c := range channels {
+				rows = append(rows, []string{
+					c.ID,
+					c.Type,
+					c.Name,
+					strconv.FormatBool(c.Enabled),
+					channelDest(c),
+				})
+			}
+			renderTable(os.Stdout, []string{"ID", "TYPE", "NAME", "ENABLED", "DESTINATION"}, rows)
+			return nil
+		}),
+	}
+}
+
+func newAlertChannelAddCmd(a *app) *cobra.Command {
+	var (
+		channelType, name, channelURL, token, target string
+		disabled                                      bool
+		req                                           alertChannel
+	)
+
+	cmd := &cobra.Command{
+		Use:   "add --type <webhook|ntfy|gotify|telegram>",
+		Short: "Add a notification channel",
+		Args:  cobra.NoArgs,
+		// Flag validation runs in PreRunE so bad combinations are usage errors
+		// (exit 2) and never reach the server.
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			switch channelType {
+			case "webhook", "ntfy":
+				if channelURL == "" {
+					return fmt.Errorf("--endpoint is required for --type %s", channelType)
+				}
+			case "gotify":
+				if channelURL == "" {
+					return fmt.Errorf("--endpoint is required for --type gotify (the server base URL)")
+				}
+				if token == "" {
+					return fmt.Errorf("--secret is required for --type gotify (the app token)")
+				}
+			case "telegram":
+				if token == "" {
+					return fmt.Errorf("--secret is required for --type telegram (the bot token)")
+				}
+				if target == "" {
+					return fmt.Errorf("--target is required for --type telegram (the chat id)")
+				}
+			case "":
+				return fmt.Errorf("--type is required (webhook, ntfy, gotify, or telegram)")
+			default:
+				return fmt.Errorf("invalid --type %q (must be webhook, ntfy, gotify, or telegram)", channelType)
+			}
+
+			req = alertChannel{
+				Type:    channelType,
+				Name:    name,
+				Enabled: !disabled,
+				URL:     channelURL,
+				Token:   token,
+				Target:  target,
+			}
+			return nil
+		},
+		RunE: a.run(func(cmd *cobra.Command, args []string) error {
+			var created map[string]any
+			if err := a.client.post(cmd.Context(), "/alerts/channels", nil, req, &created); err != nil {
+				return err
+			}
+
+			if a.jsonOutput() {
+				return a.printJSON(created)
+			}
+			id, _ := created["id"].(string)
+			fmt.Printf("added %s channel (%s)\n", channelType, id)
+			return nil
+		}),
+	}
+
+	cmd.Flags().StringVar(&channelType, "type", "", "channel type: webhook, ntfy, gotify, or telegram")
+	cmd.Flags().StringVar(&name, "name", "", "display name for the channel")
+	cmd.Flags().StringVar(&channelURL, "endpoint", "", "webhook/ntfy: full destination URL; gotify: server base URL")
+	cmd.Flags().StringVar(&token, "secret", "", "gotify app token or telegram bot token")
+	cmd.Flags().StringVar(&target, "target", "", "telegram chat id")
+	cmd.Flags().BoolVar(&disabled, "disabled", false, "add the channel disabled")
+	return cmd
+}
+
+func newAlertChannelTestCmd(a *app) *cobra.Command {
+	return &cobra.Command{
+		Use:   "test <id>",
+		Short: "Send a test alert to a channel",
 		Args:  cobra.ExactArgs(1),
 		RunE: a.run(func(cmd *cobra.Command, args []string) error {
-			body := map[string]string{"url": args[0]}
-			if err := a.client.put(cmd.Context(), "/alerts/webhook", nil, body, nil); err != nil {
-				return err
-			}
-
-			if a.jsonOutput() {
-				return a.printJSON(map[string]string{"message": "webhook updated", "url": args[0]})
-			}
-			fmt.Printf("webhook set to %s\n", args[0])
-			return nil
-		}),
-	}
-}
-
-func newAlertWebhookClearCmd(a *app) *cobra.Command {
-	return &cobra.Command{
-		Use:   "clear",
-		Short: "Clear the alert webhook URL",
-		Args:  cobra.NoArgs,
-		RunE: a.run(func(cmd *cobra.Command, args []string) error {
-			body := map[string]string{"url": ""}
-			if err := a.client.put(cmd.Context(), "/alerts/webhook", nil, body, nil); err != nil {
-				return err
-			}
-
-			if a.jsonOutput() {
-				return a.printJSON(map[string]string{"message": "webhook cleared"})
-			}
-			fmt.Println("webhook cleared")
-			return nil
-		}),
-	}
-}
-
-func newAlertTestCmd(a *app) *cobra.Command {
-	return &cobra.Command{
-		Use:   "test",
-		Short: "Send a test alert to the webhook",
-		Args:  cobra.NoArgs,
-		RunE: a.run(func(cmd *cobra.Command, args []string) error {
 			var result alertDelivery
-			if err := a.client.post(cmd.Context(), "/alerts/test", nil, nil, &result); err != nil {
+			if err := a.client.post(cmd.Context(), "/alerts/channels/"+args[0]+"/test", nil, nil, &result); err != nil {
 				return err
 			}
 
@@ -531,12 +622,31 @@ func newAlertTestCmd(a *app) *cobra.Command {
 				fmt.Println("delivery " + deliverySummary(result))
 			}
 			if result.Status != "ok" {
-				msg := "webhook test failed"
+				msg := "channel test failed"
 				if result.Error != "" {
 					msg += ": " + result.Error
 				}
 				return fmt.Errorf("%s", msg)
 			}
+			return nil
+		}),
+	}
+}
+
+func newAlertChannelDeleteCmd(a *app) *cobra.Command {
+	return &cobra.Command{
+		Use:   "delete <id>",
+		Short: "Delete a notification channel",
+		Args:  cobra.ExactArgs(1),
+		RunE: a.run(func(cmd *cobra.Command, args []string) error {
+			if err := a.client.do(cmd.Context(), http.MethodDelete, "/alerts/channels/"+args[0], nil, nil, nil); err != nil {
+				return err
+			}
+
+			if a.jsonOutput() {
+				return a.printJSON(map[string]string{"message": "channel deleted", "id": args[0]})
+			}
+			fmt.Printf("deleted channel %q\n", args[0])
 			return nil
 		}),
 	}

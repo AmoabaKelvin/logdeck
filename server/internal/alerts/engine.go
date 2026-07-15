@@ -1,13 +1,14 @@
 // Package alerts contains the alerting engine: it watches container events
 // and log streams, matches them against the configured rules, and delivers
-// webhook notifications.
+// notifications to the configured channels.
 //
 // Concurrency model: a single run goroutine owns all mutable state (compiled
 // rules, subscription handles, rate/cooldown windows, the event-stream child
 // context). Log-rule sinks run on the hub's delivery goroutines and only push
 // non-blocking match messages onto firedCh. A single dispatcher goroutine
-// consumes fired alerts, appends them to history, delivers webhooks, and
-// records each delivery outcome on the history entry. Helper
+// consumes fired alerts, appends them to history, delivers them to the
+// configured channels, and records each delivery outcome on the history entry.
+// Helper
 // goroutines exist only for single container-inspect exit-code lookups.
 package alerts
 
@@ -72,6 +73,7 @@ type engineHub interface {
 type eventClient interface {
 	streamEvents(ctx context.Context) <-chan docker.EngineEvent
 	inspectExit(ctx context.Context, host, containerID string) (exitCode string, oomKilled bool, err error)
+	inspectHealth(ctx context.Context, host, containerID string) (status string, err error)
 }
 
 // dockerEventAdapter adapts *docker.MultiHostClient to eventClient. It is a
@@ -96,6 +98,21 @@ func (a dockerEventAdapter) inspectExit(ctx context.Context, host, containerID s
 	return strconv.Itoa(resp.State.ExitCode), resp.State.OOMKilled, nil
 }
 
+// inspectHealth resolves a container's current healthcheck state. Returns ""
+// (not an error) for a container with no healthcheck configured. Works on both
+// Docker and Podman, which is why it can recover Podman's health state after
+// the SDK drops it from the bare-action event.
+func (a dockerEventAdapter) inspectHealth(ctx context.Context, host, containerID string) (string, error) {
+	resp, err := a.c.GetContainer(ctx, host, containerID)
+	if err != nil {
+		return "", err
+	}
+	if resp.State == nil || resp.State.Health == nil {
+		return "", nil
+	}
+	return resp.State.Health.Status, nil
+}
+
 // matchMsg is one log-rule match pushed from a sink to the run loop.
 type matchMsg struct {
 	gen           uint64
@@ -106,11 +123,13 @@ type matchMsg struct {
 	sample        string
 }
 
-// inspectResult is the outcome of a die-event exit-code lookup posted back to
-// the run loop.
+// inspectResult is the outcome of an event lookup that needed a container
+// inspect (a die-event exit code, or a Podman bare-action health state) posted
+// back to the run loop.
 type inspectResult struct {
 	ev       docker.EngineEvent
-	exitCode string
+	action   string // "die" | "unhealthy"
+	exitCode string // die only
 	fire     bool
 }
 
@@ -232,22 +251,18 @@ func (e *Engine) Reconcile() {
 	}
 }
 
-// TestWebhook sends a test notification to the configured webhook URL and
-// reports the delivery outcome. The test alert is not recorded in history.
-func (e *Engine) TestWebhook(ctx context.Context) models.DeliveryResult {
-	url := e.alertsFn().WebhookURL
-	if url == "" {
-		return models.DeliveryResult{Status: "failed", Error: "no webhook configured"}
-	}
+// TestChannel delivers a synthetic alert to a single channel and reports the
+// delivery outcome. The test alert is not recorded in history.
+func (e *Engine) TestChannel(ctx context.Context, channel config.AlertChannel) models.DeliveryResult {
 	alert := models.Alert{
 		ID:       newAlertID(),
-		RuleName: "Test webhook",
+		RuleName: "Test channel",
 		Type:     "test",
 		Reason:   "test notification from LogDeck",
 		Count:    1,
 		FiredAt:  e.now().UTC().Format(time.RFC3339),
 	}
-	return e.notif.deliver(ctx, url, alert, ctx.Done())
+	return e.notif.deliver(ctx, channel, alert, ctx.Done())
 }
 
 // History returns the most recent fired alerts, newest first, capped at
@@ -256,7 +271,6 @@ func (e *Engine) History(limit int) []models.Alert {
 	return e.hist.list(limit)
 }
 
-// ClearHistory removes all recorded alert history entries.
 func (e *Engine) ClearHistory() {
 	e.hist.clear()
 }
@@ -450,8 +464,9 @@ func (e *Engine) handleMatch(st *runState, m matchMsg) {
 	e.emit(m.rule, m.host, m.containerID, m.containerName, logReason(m.rule), m.sample, res.suppressed)
 }
 
-// handleEvent routes one engine event. Only die and oom can fire rules; the
-// other watched actions exist for the log hub and are ignored here.
+// handleEvent routes one engine event. Only die, oom, and unhealthy health
+// transitions can fire rules; the other watched actions exist for the log hub
+// and are ignored here.
 func (e *Engine) handleEvent(st *runState, ev docker.EngineEvent) {
 	base, _, _ := strings.Cut(ev.Action, ": ")
 	switch base {
@@ -466,6 +481,19 @@ func (e *Engine) handleEvent(st *runState, ev docker.EngineEvent) {
 		}
 	case "oom":
 		e.recordEventMatch(st, ev, "oom", "")
+	case "health_status":
+		// Only the unhealthy transition is an alert; healthy/starting are
+		// recoveries and never fire.
+		switch ev.HealthStatus {
+		case "unhealthy":
+			// Docker put the state in the action suffix; use it directly.
+			e.recordEventMatch(st, ev, "unhealthy", "")
+		case "":
+			// Podman emits a bare "health_status" action and carries the state
+			// only in a top-level field the SDK drops on decode. Resolve it
+			// with a bounded inspect, mirroring the die exit-code fallback.
+			e.spawnHealthInspect(st, ev)
+		}
 	}
 }
 
@@ -481,7 +509,7 @@ func (e *Engine) spawnInspect(st *runState, ev docker.EngineEvent) {
 		defer e.wg.Done()
 		ictx, cancel := context.WithTimeout(runCtx, inspectTimeout)
 		defer cancel()
-		res := inspectResult{ev: ev}
+		res := inspectResult{ev: ev, action: "die"}
 		exitCode, oomKilled, err := client.inspectExit(ictx, ev.Host, ev.ContainerID)
 		if err != nil {
 			res.exitCode = "unknown"
@@ -497,12 +525,35 @@ func (e *Engine) spawnInspect(st *runState, ev docker.EngineEvent) {
 	}()
 }
 
-// handleInspect completes a die event whose exit code needed an inspect.
+// spawnHealthInspect resolves the health state of a Podman bare-action
+// "health_status" event (single inspect, bounded timeout) and posts the result
+// back to the run loop. Only a confirmed "unhealthy" fires: unlike a die, an
+// unresolvable state is not fired, since firing on an unknown state would be a
+// false positive on a container that may well be healthy.
+func (e *Engine) spawnHealthInspect(st *runState, ev docker.EngineEvent) {
+	client := st.eventsClient
+	runCtx := st.ctx
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		ictx, cancel := context.WithTimeout(runCtx, inspectTimeout)
+		defer cancel()
+		status, err := client.inspectHealth(ictx, ev.Host, ev.ContainerID)
+		res := inspectResult{ev: ev, action: "unhealthy", fire: err == nil && status == "unhealthy"}
+		select {
+		case e.inspectCh <- res:
+		case <-runCtx.Done():
+		}
+	}()
+}
+
+// handleInspect completes an event whose alert condition needed an inspect (a
+// die exit code, or a Podman bare-action health state).
 func (e *Engine) handleInspect(st *runState, r inspectResult) {
 	if !r.fire {
 		return
 	}
-	e.recordEventMatch(st, r.ev, "die", r.exitCode)
+	e.recordEventMatch(st, r.ev, r.action, r.exitCode)
 }
 
 // recordEventMatch runs one die/oom occurrence through every matching event
@@ -618,18 +669,19 @@ func (e *Engine) shutdownRun(st *runState) {
 }
 
 // dispatchLoop consumes fired alerts: each alert is appended to history first
-// (Delivery nil) so a hung webhook can never lose it, then delivered to the
-// webhook (read live from config; empty means history-only) and its history
-// entry updated with the result. It exits when the run loop closes
-// dispatchCh, then stops the history flusher, which performs the final
-// synchronous flush. Once the shutdown drain budget has expired, remaining
-// alerts are recorded as failed ("shutdown") without a delivery attempt.
+// (Delivery nil) so a hung channel can never lose it, then delivered to every
+// enabled channel (read live from config; no enabled channels means
+// history-only) and its history entry updated with the summary result. It exits
+// when the run loop closes dispatchCh, then stops the history flusher, which
+// performs the final synchronous flush. Once the shutdown drain budget has
+// expired, remaining alerts are recorded as failed ("shutdown") without a
+// delivery attempt.
 func (e *Engine) dispatchLoop() {
 	defer close(e.flushStop)
 	for alert := range e.dispatchCh {
 		e.hist.append(alert)
-		url := e.alertsFn().WebhookURL
-		if url == "" {
+		channels := enabledChannels(e.alertsFn().Channels)
+		if len(channels) == 0 {
 			continue
 		}
 		var result models.DeliveryResult
@@ -637,7 +689,7 @@ func (e *Engine) dispatchLoop() {
 			result = models.DeliveryResult{Status: "failed", Error: "shutdown"}
 		} else {
 			ctx, cancel := context.WithTimeout(e.deliverCtx, deliverBudget)
-			result = e.notif.deliver(ctx, url, alert, e.skipRetry)
+			result = e.notif.deliverAll(ctx, channels, alert, e.skipRetry)
 			cancel()
 		}
 		e.hist.setDelivery(alert.ID, result)
@@ -672,18 +724,26 @@ func eventReason(rule *compiledRule, action, exitCode string) string {
 		if action == "oom" {
 			return "container OOM-killed"
 		}
+		if action == "unhealthy" {
+			return "container became unhealthy"
+		}
 		return fmt.Sprintf("container died (exit %s)", exitCode)
 	}
 	if action == "oom" {
 		return fmt.Sprintf("%d OOM kills within %ds", rule.threshold, int(rule.window.Seconds()))
 	}
+	if action == "unhealthy" {
+		return fmt.Sprintf("%d unhealthy transitions within %ds", rule.threshold, int(rule.window.Seconds()))
+	}
 	return fmt.Sprintf("%d container deaths within %ds (last exit %s)", rule.threshold, int(rule.window.Seconds()), exitCode)
 }
 
-// eventSample renders the sample detail for an event alert.
 func eventSample(action, exitCode string) string {
 	if action == "oom" {
 		return "oom"
+	}
+	if action == "unhealthy" {
+		return "unhealthy"
 	}
 	return "die (exit " + exitCode + ")"
 }

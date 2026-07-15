@@ -13,7 +13,7 @@ import { Separator } from "@/components/ui/separator";
 export const metadata: Metadata = {
   title: "Alerting",
   description:
-    "Alert on container deaths, OOM kills, and log patterns. Rate thresholds, per-rule cooldowns, a generic JSON webhook that works with Slack and Discord, and alert history.",
+    "Alert on container deaths, OOM kills, unhealthy health checks, and log patterns. Rate thresholds, per-rule cooldowns, notification channels (generic webhook, ntfy, Gotify, Telegram), and alert history.",
   alternates: { canonical: "/docs/alerting" },
 };
 
@@ -35,8 +35,9 @@ export default function AlertingPage() {
       <div className="prose prose-neutral dark:prose-invert max-w-none">
         <p className="text-base">
           LogDeck already watches every container&apos;s events and log stream.
-          Alert rules put that to use: they match on what LogDeck sees and POST
-          a JSON payload to one webhook URL. Rules are managed under{" "}
+          Alert rules put that to use: they match on what LogDeck sees and
+          deliver each fired alert to every enabled notification channel. Rules
+          and channels are managed under{" "}
           <strong>Settings &rarr; Alerts</strong> in the UI, or with{" "}
           <code>logdeck alerts</code> from the terminal.
         </p>
@@ -47,7 +48,7 @@ export default function AlertingPage() {
 
         <h3 className="mb-3 mt-8 text-xl font-semibold">Event rules</h3>
         <p className="mb-4 text-base">
-          Event rules watch container lifecycle events. Two are alertable:
+          Event rules watch container lifecycle events. Three are alertable:
         </p>
         <ul className="mb-4 space-y-2">
           <li>
@@ -58,6 +59,11 @@ export default function AlertingPage() {
           </li>
           <li>
             <code>oom</code> — the container was killed by the OOM killer.
+          </li>
+          <li>
+            <code>unhealthy</code> — the container&apos;s health check
+            transitioned to unhealthy. Recoveries (healthy/starting) do not
+            fire.
           </li>
         </ul>
         <p className="mb-6 text-base">
@@ -126,12 +132,38 @@ export default function AlertingPage() {
 
         <Separator className="my-12" />
 
-        <h2 className="mb-4 text-3xl font-bold tracking-tight">The webhook</h2>
+        <h2 className="mb-4 text-3xl font-bold tracking-tight">Channels</h2>
         <p className="mb-4 text-base">
-          There is one webhook URL for the whole instance, set under{" "}
-          <strong>Settings &rarr; Alerts</strong> (or{" "}
-          <code>logdeck alerts webhook set &lt;url&gt;</code>). Every fired
-          alert is POSTed to it as JSON:
+          A channel is one notification destination. Every fired alert is
+          delivered to <strong>every enabled channel</strong>. Add channels
+          under <strong>Settings &rarr; Alerts</strong> (or with{" "}
+          <code>logdeck alerts channels add</code>). Four types are supported:
+        </p>
+        <ul className="mb-6 space-y-2">
+          <li>
+            <strong>Webhook</strong> — POSTs the JSON payload below to a URL.
+            The generic shape works with Slack and Discord incoming webhooks
+            unchanged (see below), and anything else that accepts a JSON POST.
+          </li>
+          <li>
+            <strong>ntfy</strong> — POSTs the alert text as a plain-text body to
+            a topic URL (e.g. <code>https://ntfy.sh/mytopic</code>), with a{" "}
+            <code>Title</code> header.
+          </li>
+          <li>
+            <strong>Gotify</strong> — POSTs{" "}
+            <code>{`{title, message, priority}`}</code> to{" "}
+            <code>&lt;server URL&gt;/message</code> using the channel&apos;s app
+            token.
+          </li>
+          <li>
+            <strong>Telegram</strong> — calls the Bot API{" "}
+            <code>sendMessage</code> with the alert text, using a bot token and
+            a chat id.
+          </li>
+        </ul>
+        <p className="mb-4 text-base">
+          The webhook payload is:
         </p>
 
         <div className="not-prose mb-6">
@@ -189,16 +221,17 @@ export default function AlertingPage() {
         </div>
 
         <p className="mb-4 text-base">
-          Delivery has a 10-second timeout. Network errors and 5xx responses are
-          retried once after 5 seconds; other statuses are treated as permanent.
-          The outcome of each delivery (status, HTTP code, error) is recorded in
-          the alert history.
+          Each delivery has a 10-second timeout. Network errors and 5xx
+          responses are retried once after 5 seconds; other statuses are treated
+          as permanent. The alert history records one summary result per fired
+          alert: it succeeds only if every enabled channel accepted it, and
+          otherwise names the channel that failed.
         </p>
         <p className="mb-8 text-base">
-          Use <strong>Send test</strong> in Settings (or{" "}
-          <code>logdeck alerts test</code>) to verify the URL. With no webhook
-          configured, rules still evaluate and fire — the alerts are simply
-          recorded in history and delivered nowhere.
+          Use <strong>Test</strong> next to a channel in Settings (or{" "}
+          <code>logdeck alerts channels test &lt;id&gt;</code>) to verify it.
+          With no channels configured, rules still evaluate and fire — the
+          alerts are simply recorded in history and delivered nowhere.
         </p>
 
         <Separator className="my-12" />
@@ -232,8 +265,11 @@ export default function AlertingPage() {
 
       <CodeBlock
         code={`# Point alerts somewhere
-logdeck alerts webhook set https://hooks.slack.com/services/...
-logdeck alerts test
+logdeck alerts channels add --type webhook --name slack \\
+  --endpoint https://hooks.slack.com/services/...
+logdeck alerts channels add --type telegram --secret "$TELEGRAM_BOT_TOKEN" --target "$CHAT_ID"
+logdeck alerts channels list
+logdeck alerts channels test <channel-id>
 
 # Tell me when anything gets OOM-killed
 logdeck alerts rules create --type event --name oom-watch --events oom
@@ -283,7 +319,7 @@ logdeck alerts history --limit 20`}
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground space-y-2">
             <p>
-              Alert rules and the webhook URL are persisted to{" "}
+              Alert rules and channels are persisted to{" "}
               <code>config.json</code> (<code>/data/config.json</code> by
               default), and fired alerts to <code>alerts-history.json</code>{" "}
               beside it. Mount <code>/data</code> as a volume, or both are lost

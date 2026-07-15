@@ -24,6 +24,7 @@ var engineEventActions = []string{
 	"oom",
 	"destroy",
 	"rename",
+	"health_status",
 }
 
 // EngineEvent is the richer event shape consumed by the alerting engine. It
@@ -35,6 +36,7 @@ type EngineEvent struct {
 	ContainerName string
 	Action        string
 	ExitCode      string            // die events, from Actor.Attributes["exitCode"], "" if absent
+	HealthStatus  string            // health_status events, "healthy"/"unhealthy"/"starting", "" otherwise
 	Labels        map[string]string // full Actor.Attributes copy
 	Timestamp     int64
 }
@@ -57,7 +59,7 @@ func mapEngineEvent(hostName string, msg events.Message) (EngineEvent, bool) {
 	// Some actions arrive suffixed with detail, e.g. "health_status: healthy";
 	// match the watched set against the base action before ": ".
 	action := string(msg.Action)
-	base, _, _ := strings.Cut(action, ": ")
+	base, suffix, _ := strings.Cut(action, ": ")
 	if !slices.Contains(engineEventActions, base) {
 		return EngineEvent{}, false
 	}
@@ -72,12 +74,22 @@ func mapEngineEvent(hostName string, msg events.Message) (EngineEvent, bool) {
 		exitCode = msg.Actor.Attributes["exitCode"]
 	}
 
+	// Docker suffixes the new state onto the action ("health_status: unhealthy").
+	// Podman emits the bare "health_status" action and carries the state only in
+	// a top-level field the Docker SDK drops on decode, so on Podman this stays
+	// empty and the alerts engine resolves it with a container inspect.
+	healthStatus := ""
+	if base == "health_status" {
+		healthStatus = suffix
+	}
+
 	return EngineEvent{
 		Host:          hostName,
 		ContainerID:   msg.Actor.ID,
 		ContainerName: msg.Actor.Attributes["name"],
 		Action:        action,
 		ExitCode:      exitCode,
+		HealthStatus:  healthStatus,
 		Labels:        maps.Clone(msg.Actor.Attributes),
 		Timestamp:     timestamp,
 	}, true

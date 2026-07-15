@@ -2,19 +2,24 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { clearAlertHistory } from "../api/clear-alert-history";
 import {
+	type AlertChannelPayload,
+	createAlertChannel,
+} from "../api/create-alert-channel";
+import {
 	type AlertRulePayload,
 	createAlertRule,
 } from "../api/create-alert-rule";
+import { deleteAlertChannel } from "../api/delete-alert-channel";
 import { deleteAlertRule } from "../api/delete-alert-rule";
+import { getAlertChannels } from "../api/get-alert-channels";
 import { getAlertHistory } from "../api/get-alert-history";
 import { getAlertRules } from "../api/get-alert-rules";
-import { getAlertWebhook } from "../api/get-alert-webhook";
-import { testAlertWebhook } from "../api/test-alert-webhook";
+import { testAlertChannel } from "../api/test-alert-channel";
+import { updateAlertChannel } from "../api/update-alert-channel";
 import { updateAlertRule } from "../api/update-alert-rule";
-import { updateAlertWebhook } from "../api/update-alert-webhook";
 
 const RULES_KEY = ["alerts", "rules"] as const;
-const WEBHOOK_KEY = ["alerts", "webhook"] as const;
+const CHANNELS_KEY = ["alerts", "channels"] as const;
 const HISTORY_KEY = ["alerts", "history"] as const;
 
 export function useAlertRules() {
@@ -56,27 +61,53 @@ export function useDeleteAlertRule() {
 	});
 }
 
-export function useAlertWebhook() {
+export function useAlertChannels() {
 	return useQuery({
-		queryKey: WEBHOOK_KEY,
-		queryFn: getAlertWebhook,
+		queryKey: CHANNELS_KEY,
+		queryFn: getAlertChannels,
 		staleTime: 30_000,
 	});
 }
 
-export function useUpdateAlertWebhook() {
+export function useCreateAlertChannel() {
 	const queryClient = useQueryClient();
 	return useMutation({
-		mutationFn: (url: string) => updateAlertWebhook(url),
+		mutationFn: (channel: AlertChannelPayload) => createAlertChannel(channel),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: WEBHOOK_KEY });
+			queryClient.invalidateQueries({ queryKey: CHANNELS_KEY });
 		},
 	});
 }
 
-export function useTestAlertWebhook() {
+export function useUpdateAlertChannel() {
+	const queryClient = useQueryClient();
 	return useMutation({
-		mutationFn: () => testAlertWebhook(),
+		mutationFn: ({
+			id,
+			channel,
+		}: {
+			id: string;
+			channel: AlertChannelPayload;
+		}) => updateAlertChannel(id, channel),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: CHANNELS_KEY });
+		},
+	});
+}
+
+export function useDeleteAlertChannel() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (id: string) => deleteAlertChannel(id),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: CHANNELS_KEY });
+		},
+	});
+}
+
+export function useTestAlertChannel() {
+	return useMutation({
+		mutationFn: (id: string) => testAlertChannel(id),
 	});
 }
 

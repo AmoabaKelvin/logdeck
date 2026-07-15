@@ -642,7 +642,6 @@ volumes:
         <ul className="mb-4 space-y-2">
           <li>Read live logs, stored log history, container details, stats, and events</li>
           <li>List images, volumes, networks, and hosts</li>
-          <li>Read alert rules, the alert webhook URL, and alert history</li>
         </ul>
         <p className="mb-2 text-base">A read token <strong>cannot</strong>:</p>
         <ul className="mb-4 space-y-2">
@@ -654,11 +653,11 @@ volumes:
           <li>Open the web terminal</li>
           <li>Read a container&apos;s environment variables (they carry secrets)</li>
           <li>Read the settings endpoint, which exposes host topology and the token inventory</li>
+          <li>
+            Read anything under <code>/alerts</code> — rules, channels, and history are denied,
+            because channel URLs and tokens (Slack/Discord webhooks, bot tokens) are secrets
+          </li>
         </ul>
-        <p className="mb-4 text-base">
-          Note that the webhook URL <em>is</em> readable with a read token. If your webhook URL
-          embeds a secret (Slack and Discord URLs do), treat a read token as sensitive accordingly.
-        </p>
         <p className="mb-8 text-base">
           Tokens only matter when authentication is enabled; on an open instance the API is
           reachable without them.

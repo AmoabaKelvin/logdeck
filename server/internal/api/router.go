@@ -192,18 +192,20 @@ func (ar *APIRouter) registerAlertRoutes(r chi.Router) {
 	r.Route("/alerts", func(r chi.Router) {
 		// Alerts follow the same auth pattern — protected when auth is enabled
 		r.Use(auth.DynamicMiddleware(ar.registry.Auth, ar.lookupAPIToken))
-		// The webhook URL is a secret (a Slack or Discord webhook lets its holder
-		// post to the channel), so alerts are denied to read-scoped tokens for the
-		// whole group, as settings are.
+		// Channel URLs and tokens are secrets (a Slack or Discord webhook, or a
+		// bot token, lets its holder post to the channel), so alerts are denied
+		// to read-scoped tokens for the whole group, as settings are.
 		r.Use(auth.DenyReadScope)
 
 		r.Get("/rules", ar.ListAlertRules)
 		r.Post("/rules", ar.CreateAlertRule)
 		r.Put("/rules/{id}", ar.UpdateAlertRule)
 		r.Delete("/rules/{id}", ar.DeleteAlertRule)
-		r.Get("/webhook", ar.GetAlertsWebhook)
-		r.Put("/webhook", ar.UpdateAlertsWebhook)
-		r.Post("/test", ar.TestAlertsWebhook)
+		r.Get("/channels", ar.ListAlertChannels)
+		r.Post("/channels", ar.CreateAlertChannel)
+		r.Put("/channels/{id}", ar.UpdateAlertChannel)
+		r.Delete("/channels/{id}", ar.DeleteAlertChannel)
+		r.Post("/channels/{id}/test", ar.TestAlertChannel)
 		r.Get("/history", ar.GetAlertHistory)
 		r.Delete("/history", ar.ClearAlertHistory)
 	})
