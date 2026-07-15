@@ -533,8 +533,8 @@ func newAlertChannelsListCmd(a *app) *cobra.Command {
 func newAlertChannelAddCmd(a *app) *cobra.Command {
 	var (
 		channelType, name, channelURL, token, target string
-		disabled                                      bool
-		req                                           alertChannel
+		disabled                                     bool
+		req                                          alertChannel
 	)
 
 	cmd := &cobra.Command{

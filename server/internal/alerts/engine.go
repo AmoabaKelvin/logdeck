@@ -8,8 +8,7 @@
 // non-blocking match messages onto firedCh. A single dispatcher goroutine
 // consumes fired alerts, appends them to history, delivers them to the
 // configured channels, and records each delivery outcome on the history entry.
-// Helper
-// goroutines exist only for single container-inspect exit-code lookups.
+// Helper goroutines exist only for single container-inspect lookups.
 package alerts
 
 import (

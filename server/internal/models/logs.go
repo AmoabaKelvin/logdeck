@@ -428,11 +428,8 @@ func tryParseTimestampCandidate(candidate string) (time.Time, bool) {
 		return time.Time{}, false
 	}
 
-	// Every supported layout renders between these lengths (the shortest is a
-	// bare "2006/01/02 15:04:05" at 19; the longest is RFC3339Nano with nine
-	// fractional digits and a numeric offset at 35). A candidate outside that
-	// band cannot match any layout, so skip the time.Parse attempts entirely —
-	// this is what keeps the prefix scan cheap without dropping any real match.
+	// A candidate outside the layout length bounds cannot match any format, so
+	// skip the time.Parse attempts entirely and keep the prefix scan cheap.
 	if n := len(sanitized); n < minTimestampLen || n > maxTimestampLen {
 		return time.Time{}, false
 	}

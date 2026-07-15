@@ -16,7 +16,7 @@ const TYPE_LABELS: Record<AlertChannelType, string> = {
 };
 
 export function channelTypeLabel(type: AlertChannelType): string {
-	return TYPE_LABELS[type] ?? type;
+	return TYPE_LABELS[type];
 }
 
 export function channelDestination(channel: AlertChannel): string {

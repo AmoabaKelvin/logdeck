@@ -59,7 +59,7 @@ type AlertRule struct {
 // (enabled) at the front of the channel list and clears WebhookURL. It reports
 // whether it changed the config so the caller can persist the result once.
 func migrateAlertChannels(a *AlertsConfig) bool {
-	if a == nil || a.WebhookURL == "" {
+	if a.WebhookURL == "" {
 		return false
 	}
 	a.Channels = append([]AlertChannel{{

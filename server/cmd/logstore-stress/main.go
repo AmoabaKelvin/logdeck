@@ -75,11 +75,11 @@ var presets = map[string]scenarioPreset{
 func main() {
 	cfg, err := parseFlags()
 	if err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, "logstore-stress:", err)
+		fmt.Fprintln(os.Stderr, "logstore-stress:", err)
 		os.Exit(2)
 	}
 	if err := run(cfg); err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, "logstore-stress:", err)
+		fmt.Fprintln(os.Stderr, "logstore-stress:", err)
 		os.Exit(1)
 	}
 }
@@ -211,27 +211,27 @@ type queryStats struct {
 
 // report is the full machine-readable result.
 type report struct {
-	Config           runConfig   `json:"config"`
-	OfferedLines     uint64      `json:"offeredLines"`
-	CommittedLines   int64       `json:"committedLines"`
-	RetainedLines    int64       `json:"retainedLines"`
-	SampleErrors     int         `json:"sampleErrors"`
-	DroppedLines     uint64      `json:"droppedLines"`
-	OfferedRate      float64     `json:"offeredRateLinesPerSec"`
-	CommitRate       float64     `json:"committedRateLinesPerSec"`
-	DropFraction     float64     `json:"dropFraction"`
-	DBBytesFinal     int64       `json:"dbBytesFinal"`
-	DBBytesPeak      int64       `json:"dbBytesPeak"`
-	TotalCapBytes    int64       `json:"totalCapBytes"`
-	HeapAllocPeak    uint64      `json:"heapAllocPeakBytes"`
-	HeapInusePeak    uint64      `json:"heapInusePeakBytes"`
-	HeapAllocFirst   uint64      `json:"heapAllocFirstBytes"`
-	HeapAllocLast    uint64      `json:"heapAllocLastBytes"`
-	GoroutinesPeak   int         `json:"goroutinesPeak"`
-	GoroutinesFirst  int         `json:"goroutinesFirst"`
-	GoroutinesLast   int         `json:"goroutinesLast"`
-	Query            *queryStats `json:"query"`
-	Samples          []sample    `json:"samples"`
+	Config          runConfig   `json:"config"`
+	OfferedLines    uint64      `json:"offeredLines"`
+	CommittedLines  int64       `json:"committedLines"`
+	RetainedLines   int64       `json:"retainedLines"`
+	SampleErrors    int         `json:"sampleErrors"`
+	DroppedLines    uint64      `json:"droppedLines"`
+	OfferedRate     float64     `json:"offeredRateLinesPerSec"`
+	CommitRate      float64     `json:"committedRateLinesPerSec"`
+	DropFraction    float64     `json:"dropFraction"`
+	DBBytesFinal    int64       `json:"dbBytesFinal"`
+	DBBytesPeak     int64       `json:"dbBytesPeak"`
+	TotalCapBytes   int64       `json:"totalCapBytes"`
+	HeapAllocPeak   uint64      `json:"heapAllocPeakBytes"`
+	HeapInusePeak   uint64      `json:"heapInusePeakBytes"`
+	HeapAllocFirst  uint64      `json:"heapAllocFirstBytes"`
+	HeapAllocLast   uint64      `json:"heapAllocLastBytes"`
+	GoroutinesPeak  int         `json:"goroutinesPeak"`
+	GoroutinesFirst int         `json:"goroutinesFirst"`
+	GoroutinesLast  int         `json:"goroutinesLast"`
+	Query           *queryStats `json:"query"`
+	Samples         []sample    `json:"samples"`
 }
 
 // --- run --------------------------------------------------------------------
@@ -668,7 +668,7 @@ func emitJSON(rep report) error {
 
 func writeHumanSummary(rep report) {
 	w := os.Stderr
-	p := func(format string, args ...any) { _, _ = fmt.Fprintf(w, format, args...) }
+	p := func(format string, args ...any) { fmt.Fprintf(w, format, args...) }
 
 	p("\n=== logstore-stress: %s ===\n", rep.Config.Scenario)
 	p("containers=%d rate=%s duration=%.0fs line-bytes=%d caps=%d/%dMB queryWorkers=%d\n",
