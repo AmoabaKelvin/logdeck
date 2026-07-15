@@ -25,7 +25,7 @@ jobs:
           touch internal/static/dist/index.html
 
       - name: Lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: latest
           working-directory: server
