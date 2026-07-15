@@ -16,7 +16,7 @@ COPY frontend/ ./
 RUN bun run build
 
 # Stage 2: Build the backend with embedded frontend
-FROM --platform=$BUILDPLATFORM golang:1.23 AS backend-builder
+FROM --platform=$BUILDPLATFORM golang:1.25 AS backend-builder
 
 WORKDIR /app
 
