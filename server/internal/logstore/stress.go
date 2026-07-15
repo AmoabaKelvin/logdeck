@@ -16,8 +16,15 @@ func (s *Store) Drops() uint64 {
 	return s.drops.Load()
 }
 
-// CountLines reports how many log lines are currently committed to the
-// database. Stress/measurement use only.
+// Committed reports the cumulative number of log lines the writer has inserted.
+// It never decreases when retention evicts, so it measures true ingestion,
+// whereas CountLines reports only what currently survives. Stress use only.
+func (s *Store) Committed() int64 {
+	return s.committed.Load()
+}
+
+// CountLines reports how many log lines are currently retained in the database
+// (i.e. after retention eviction). Stress/measurement use only.
 func (s *Store) CountLines(ctx context.Context) (int64, error) {
 	var n int64
 	err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM log_lines").Scan(&n)

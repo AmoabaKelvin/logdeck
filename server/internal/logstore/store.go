@@ -93,6 +93,10 @@ type Store struct {
 	// checkpoints the WAL only when this advances, so a store that is under its
 	// cap (nothing to evict) never pays for a checkpoint on its hot path.
 	evictions atomic.Uint64
+	// committed counts log lines successfully inserted, cumulatively. Unlike the
+	// live row count it never decreases when retention evicts, so measurement can
+	// report true ingestion throughput. Maintained only for the stress harness.
+	committed atomic.Int64
 
 	// mu guards resume, gaps, and invalidated, all read by goroutines other
 	// than the one that writes them.

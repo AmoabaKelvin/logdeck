@@ -207,6 +207,7 @@ func (s *Store) commit(batch []ingestMsg, refs map[genKey]int64) error {
 	aggs := make(map[int64]*agg)
 	fresh := make(map[genKey]int64) // ids this transaction discovered
 	nowMS := time.Now().UnixMilli()
+	insertedCount := int64(0)
 
 	for _, msg := range batch {
 		ref, ok := refs[msg.key]
@@ -238,6 +239,7 @@ func (s *Store) commit(batch []ingestMsg, refs map[genKey]int64) error {
 		if !inserted {
 			continue
 		}
+		insertedCount++
 
 		a := aggs[ref]
 		if a == nil {
@@ -269,6 +271,7 @@ func (s *Store) commit(batch []ingestMsg, refs map[genKey]int64) error {
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+	s.committed.Add(insertedCount)
 
 	// The ids are real only now.
 	for key, ref := range fresh {

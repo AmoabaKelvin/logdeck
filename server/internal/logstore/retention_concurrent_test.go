@@ -48,14 +48,15 @@ func TestRetentionHoldsCapUnderConcurrentIngestion(t *testing.T) {
 	hub := &fakeHub{}
 	store.start(ctx, hub, func() Engine { return newFakeEngine() })
 
-	// Flood eight containers with unique lines for a couple of seconds — long
-	// enough that the pre-fix store commits tens of megabytes with nothing
-	// evicted, while the fixed store sweeps continuously and plateaus near the
-	// 1 MB cap.
+	// Flood eight containers with unique lines until the writer has committed far
+	// more than the ~1 MB cap can hold (~4.5k lines at this size), so retention is
+	// forced to evict no matter how fast this worker is. Driving to a commit
+	// target rather than a fixed wall-clock duration is what keeps the eviction
+	// assertion below meaningful on a slow CI machine.
 	const (
-		containers = 8
-		lineBytes  = 200
-		floodFor   = 2 * time.Second
+		containers      = 8
+		lineBytes       = 200
+		targetCommitted = 12_000
 	)
 	var (
 		seq  atomic.Uint64
@@ -77,7 +78,10 @@ func TestRetentionHoldsCapUnderConcurrentIngestion(t *testing.T) {
 			}
 		}()
 	}
-	time.Sleep(floodFor)
+	deadline := time.Now().Add(90 * time.Second)
+	for store.Committed() < targetCommitted && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
 	close(stop)
 	wg.Wait()
 
@@ -98,11 +102,19 @@ func TestRetentionHoldsCapUnderConcurrentIngestion(t *testing.T) {
 			size, maxSize)
 	}
 
-	// The store must actually have persisted and evicted, not simply stalled.
-	if lines, err := store.CountLines(context.Background()); err != nil {
+	// Retention must actually have evicted: committing well past the cap is only
+	// possible if the janitor swept. This is the real regression guard — on the
+	// pre-fix code the sweep loses the write lock (SQLITE_BUSY) and evicts
+	// nothing, rather than the test passing because a slow worker never filled up.
+	if store.evictions.Load() == 0 {
+		t.Fatal("retention never evicted; the cap-holding path was not exercised")
+	}
+	retained, err := store.CountLines(context.Background())
+	if err != nil {
 		t.Fatalf("CountLines: %v", err)
-	} else if lines == 0 {
-		t.Fatal("no lines were stored; the flood never reached the writer")
+	}
+	if committed := store.Committed(); committed <= retained {
+		t.Fatalf("committed=%d retained=%d: retention did not evict any lines", committed, retained)
 	}
 
 	if out := logBuf.String(); strings.Contains(out, "retention sweep failed") ||

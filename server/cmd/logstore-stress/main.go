@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -180,11 +181,15 @@ func (p emptyProvider) Docker() *docker.MultiHostClient { return p.client }
 
 // --- metrics ----------------------------------------------------------------
 
-// sample is one point-in-time reading of the store under load.
+// sample is one point-in-time reading of the store under load. CommittedLines
+// is cumulative (monotonic) so the derived commit rate is true ingestion, never
+// negative when retention evicts; RetainedLines is the live row count, which
+// falls as the janitor sweeps. RetainedLines is -1 when its query failed.
 type sample struct {
 	TSec              float64 `json:"tSec"`
 	OfferedLines      uint64  `json:"offeredLines"`
 	CommittedLines    int64   `json:"committedLines"`
+	RetainedLines     int64   `json:"retainedLines"`
 	DroppedLines      uint64  `json:"droppedLines"`
 	OfferedRatePerSec float64 `json:"offeredRatePerSec"`
 	CommitRatePerSec  float64 `json:"commitRatePerSec"`
@@ -209,6 +214,8 @@ type report struct {
 	Config           runConfig   `json:"config"`
 	OfferedLines     uint64      `json:"offeredLines"`
 	CommittedLines   int64       `json:"committedLines"`
+	RetainedLines    int64       `json:"retainedLines"`
+	SampleErrors     int         `json:"sampleErrors"`
 	DroppedLines     uint64      `json:"droppedLines"`
 	OfferedRate      float64     `json:"offeredRateLinesPerSec"`
 	CommitRate       float64     `json:"committedRateLinesPerSec"`
@@ -279,11 +286,12 @@ func run(cfg runConfig) error {
 
 	start := time.Now()
 	var (
-		samples   []sample
-		qLatMu    sync.Mutex
-		qLatency  []int64
-		qErrors   atomic.Int64
-		workersWG sync.WaitGroup
+		samples      []sample
+		sampleErrors int
+		qLatMu       sync.Mutex
+		qLatency     []int64
+		qErrors      atomic.Int64
+		workersWG    sync.WaitGroup
 	)
 
 	// Metrics sampler: one reading per second plus a final reading.
@@ -295,7 +303,10 @@ func run(cfg runConfig) error {
 		var last sample
 		haveLast := false
 		record := func() {
-			s := readSample(store, dbPath, start, &offered)
+			s, err := readSample(store, dbPath, start, &offered)
+			if err != nil {
+				sampleErrors++
+			}
 			if haveLast {
 				dt := s.TSec - last.TSec
 				if dt > 0 {
@@ -357,13 +368,14 @@ func run(cfg runConfig) error {
 	storeCancel()
 	store.Wait()
 
-	committed, err := store.CountLines(context.Background())
+	committed := store.Committed()
+	retained, err := store.CountLines(context.Background())
 	if err != nil {
-		return fmt.Errorf("final count: %w", err)
+		return fmt.Errorf("final retained count: %w", err)
 	}
 
-	rep := buildReport(cfg, samples, offered.Load(), committed, store.Drops(),
-		dbSize(dbPath), ingestElapsed, qLatency, int(qErrors.Load()))
+	rep := buildReport(cfg, samples, offered.Load(), committed, retained, sampleErrors,
+		store.Drops(), dbSize(dbPath), ingestElapsed, qLatency, int(qErrors.Load()))
 
 	if err := emitJSON(rep); err != nil {
 		return err
@@ -372,21 +384,27 @@ func run(cfg runConfig) error {
 	return nil
 }
 
-// readSample takes one instantaneous reading of the store and process.
-func readSample(store *logstore.Store, dbPath string, start time.Time, offered *atomic.Uint64) sample {
-	committed, _ := store.CountLines(context.Background())
+// readSample takes one instantaneous reading of the store and process. The
+// error is non-nil when the retained-row query failed, in which case
+// RetainedLines is -1 so a transient failure reads as invalid, not as zero.
+func readSample(store *logstore.Store, dbPath string, start time.Time, offered *atomic.Uint64) (sample, error) {
+	retained, err := store.CountLines(context.Background())
+	if err != nil {
+		retained = -1
+	}
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
 	return sample{
 		TSec:           time.Since(start).Seconds(),
 		OfferedLines:   offered.Load(),
-		CommittedLines: committed,
+		CommittedLines: store.Committed(),
+		RetainedLines:  retained,
 		DroppedLines:   store.Drops(),
 		DBBytes:        dbSize(dbPath),
 		HeapAllocBytes: mem.HeapAlloc,
 		HeapInuseBytes: mem.HeapInuse,
 		Goroutines:     runtime.NumGoroutine(),
-	}
+	}, err
 }
 
 // runGenerators drives synthetic records into the sink at the configured rate,
@@ -417,22 +435,22 @@ func runGenerators(ctx context.Context, cfg runConfig, emit func(logstream.Recor
 		return
 	}
 
-	// Paced mode: emit rate/200 lines every 5ms so the aggregate rate is held
-	// without a per-line sleep.
+	// Paced mode: hold the configured aggregate rate on a 200Hz tick. The count
+	// per tick comes from a cumulative target (rate*tick/tickHz), not rate/tickHz,
+	// so the integer remainder carries across ticks instead of being truncated —
+	// 1001/s stays 1001, and rates below tickHz stay exact rather than snapping up.
 	const tickHz = 200
-	interval := time.Second / tickHz
-	perTick := cfg.RateLinesPerS / tickHz
-	if perTick < 1 {
-		perTick = 1
-	}
-	ticker := time.NewTicker(interval)
+	ticker := time.NewTicker(time.Second / tickHz)
 	defer ticker.Stop()
+	var tick, emitted int64
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			for i := 0; i < perTick; i++ {
+			tick++
+			target := int64(cfg.RateLinesPerS) * tick / tickHz
+			for ; emitted < target; emitted++ {
 				emit(next())
 			}
 		}
@@ -544,13 +562,15 @@ func pickQuery(rng *rand.Rand, containers int) logstore.LogQuery {
 
 // --- reporting --------------------------------------------------------------
 
-func buildReport(cfg runConfig, samples []sample, offered uint64, committed int64,
-	drops uint64, dbFinal int64, elapsed float64, qLatency []int64, qErrors int) report {
+func buildReport(cfg runConfig, samples []sample, offered uint64, committed, retained int64,
+	sampleErrors int, drops uint64, dbFinal int64, elapsed float64, qLatency []int64, qErrors int) report {
 
 	rep := report{
 		Config:         cfg,
 		OfferedLines:   offered,
 		CommittedLines: committed,
+		RetainedLines:  retained,
+		SampleErrors:   sampleErrors,
 		DroppedLines:   drops,
 		DBBytesFinal:   dbFinal,
 		TotalCapBytes:  int64(cfg.TotalMB) * 1024 * 1024,
@@ -606,12 +626,16 @@ func summarizeQueries(latency []int64, errors int) *queryStats {
 	return qs
 }
 
-// percentile returns the p-quantile of a sorted slice (nearest-rank).
+// percentile returns the p-quantile of a sorted slice by the nearest-rank
+// method: rank ceil(p*N) taken 1-based, so the slice index is ceil(p*N)-1.
 func percentile(sorted []int64, p float64) int64 {
 	if len(sorted) == 0 {
 		return 0
 	}
-	idx := int(p * float64(len(sorted)))
+	idx := int(math.Ceil(p*float64(len(sorted)))) - 1
+	if idx < 0 {
+		idx = 0
+	}
 	if idx >= len(sorted) {
 		idx = len(sorted) - 1
 	}
@@ -650,8 +674,11 @@ func writeHumanSummary(rep report) {
 	p("containers=%d rate=%s duration=%.0fs line-bytes=%d caps=%d/%dMB queryWorkers=%d\n",
 		rep.Config.Containers, rateLabel(rep.Config), rep.Config.DurationSec,
 		rep.Config.LineBytes, rep.Config.PerContainerMB, rep.Config.TotalMB, rep.Config.QueryWorkers)
-	p("offered=%d committed=%d dropped=%d (%.2f%% dropped)\n",
-		rep.OfferedLines, rep.CommittedLines, rep.DroppedLines, rep.DropFraction*100)
+	p("offered=%d committed=%d retained=%d dropped=%d (%.2f%% dropped)\n",
+		rep.OfferedLines, rep.CommittedLines, rep.RetainedLines, rep.DroppedLines, rep.DropFraction*100)
+	if rep.SampleErrors > 0 {
+		p("WARNING: %d retained-count sample(s) failed\n", rep.SampleErrors)
+	}
 	p("offered rate=%.0f lines/s   committed rate=%.0f lines/s\n", rep.OfferedRate, rep.CommitRate)
 	p("db size: final=%.1fMB peak=%.1fMB   total cap=%.1fMB\n",
 		mb(rep.DBBytesFinal), mb(rep.DBBytesPeak), mb(rep.TotalCapBytes))
