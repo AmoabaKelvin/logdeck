@@ -22,7 +22,6 @@ export function parseSearch(
 	}
 }
 
-// Find all matching log indices for search navigation
 export function computeSearchMatches(
 	entries: LogEntry[],
 	searchText: string,

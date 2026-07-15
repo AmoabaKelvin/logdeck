@@ -34,7 +34,6 @@ func (c *MultiHostClient) CreateExec(ctx context.Context, host, containerID stri
 	return response.ID, nil
 }
 
-// AttachExec attaches to an existing exec instance and returns the hijacked response
 func (c *MultiHostClient) AttachExec(ctx context.Context, host, execID string) (*types.HijackedResponse, error) {
 	cli, err := c.GetClient(host)
 	if err != nil {
@@ -51,7 +50,6 @@ func (c *MultiHostClient) AttachExec(ctx context.Context, host, execID string) (
 	return &resp, nil
 }
 
-// ResizeExec resizes the tty for an exec instance
 func (c *MultiHostClient) ResizeExec(ctx context.Context, host, execID string, height, width uint) error {
 	cli, err := c.GetClient(host)
 	if err != nil {

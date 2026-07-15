@@ -64,12 +64,12 @@ type Manager struct {
 	mu          sync.RWMutex
 	filePath    string
 	envSnapshot EnvSnapshot
-	envConfig   *Config         // config derived purely from env vars
-	fileConfig  FileConfig      // config from file
-	merged      *Config         // final merged config
-	sources     ConfigSources   // per-category source tracking
-	onChange    []func(*Config) // callbacks when config changes
-	generation  uint64          // incremented on each merge to detect stale callbacks
+	envConfig   *Config // config derived purely from env vars
+	fileConfig  FileConfig
+	merged      *Config
+	sources     ConfigSources
+	onChange    []func(*Config)
+	generation  uint64 // incremented on each merge to detect stale callbacks
 }
 
 // ConfigSources tracks the source of each config category.
@@ -363,7 +363,6 @@ func (m *Manager) merge() (*Config, ConfigSources) {
 		sources.CoolifyHosts = SourceFile
 	}
 
-	// Read-only
 	if m.envSnapshot.ReadOnlySet {
 		cfg.ReadOnly = m.envConfig.ReadOnly
 		sources.ReadOnly = SourceEnv
@@ -401,7 +400,6 @@ func (m *Manager) remerge() {
 	copy(cbs, m.onChange)
 	m.mu.Unlock()
 	for _, fn := range cbs {
-		// Check if a newer update has superseded this one.
 		m.mu.RLock()
 		stale := m.generation != gen
 		m.mu.RUnlock()

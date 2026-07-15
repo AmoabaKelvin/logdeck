@@ -78,11 +78,9 @@ func main() {
 	// unusable; every consumer must treat that as "no stored logs".
 	logStore := logstore.OpenFromConfig(manager)
 
-	// Register hot-reload callback.
 	manager.OnChange(func(newCfg *config.Config) {
 		registry.UpdateConfig(newCfg)
 
-		// Recreate Docker clients.
 		newDocker, err := docker.NewMultiHostClient(newCfg.DockerHosts)
 		if err != nil {
 			log.Printf("Warning: failed to recreate Docker clients after config change: %v", err)
@@ -100,7 +98,6 @@ func main() {
 			logHub.Reconcile()
 		}
 
-		// Recreate Coolify clients.
 		registry.SwapCoolify(coolify.NewMultiClient(newCfg.CoolifyHosts))
 
 		// Recreate auth service from file config (env-based auth is immutable).

@@ -16,7 +16,6 @@ func TestMigrateLegacyWebhookURL(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("CONFIG_PATH", path)
 
-	// Write a legacy config file directly.
 	legacy := FileConfig{Alerts: &AlertsConfig{
 		WebhookURL: "https://example.com/hook",
 		Rules:      []AlertRule{{ID: "r1", Name: "boom", Enabled: true, Type: "log", MinLevel: "ERROR", Threshold: 1, CreatedAt: "2026-07-11T00:00:00Z"}},

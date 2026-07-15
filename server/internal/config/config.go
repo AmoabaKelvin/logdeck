@@ -35,7 +35,6 @@ func NewConfig() *Config {
 
 	coolifyHosts := parseCoolifyHostConfigs()
 
-	// Warn if COOLIFY_CONFIGS references host names not in DOCKER_HOSTS
 	if len(coolifyHosts) > 0 {
 		hostSet := make(map[string]bool, len(dockerHosts))
 		for _, dh := range dockerHosts {

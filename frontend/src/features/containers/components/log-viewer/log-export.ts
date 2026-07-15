@@ -9,8 +9,6 @@ export function formatLogEntryLine(entry: LogEntry): string {
 	return `[${timestamp}] [${level}] ${message}`;
 }
 
-// Serializes the entries and triggers a browser download named after the
-// container and current time.
 export function downloadLogs(
 	entries: LogEntry[],
 	containerName: string | undefined,

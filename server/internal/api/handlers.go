@@ -63,7 +63,6 @@ func (ar *APIRouter) GetContainers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Flatten the map for easier frontend consumption
 	allContainers := []models.ContainerInfo{}
 	for _, containers := range containersMap {
 		allContainers = append(allContainers, containers...)

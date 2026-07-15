@@ -40,7 +40,6 @@ func (c *MultiHostClient) GetHostsInfo(ctx context.Context) []models.HostInfo {
 	return result
 }
 
-// hostInfoFromEngine maps the engine's Info response to the API model.
 func hostInfoFromEngine(hostName string, info system.Info) models.HostInfo {
 	return models.HostInfo{
 		Host:              hostName,

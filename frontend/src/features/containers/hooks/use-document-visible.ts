@@ -5,9 +5,6 @@ function subscribe(onStoreChange: () => void) {
 	return () => document.removeEventListener("visibilitychange", onStoreChange);
 }
 
-/**
- * Tracks whether the document is currently visible (tab in the foreground).
- */
 export function useDocumentVisible(): boolean {
 	return useSyncExternalStore(
 		subscribe,

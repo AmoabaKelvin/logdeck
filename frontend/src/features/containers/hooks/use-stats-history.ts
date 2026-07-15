@@ -36,10 +36,6 @@ export function appendSamples(
 let containerHistory: StatsHistoryMap = {};
 let lastContainerStats: ContainerStats[] | undefined;
 
-/**
- * In-memory ring buffer of recent stats per container, fed from the stats
- * query data.
- */
 export function useContainerStatsHistory(
 	stats: ContainerStats[] | undefined,
 ): StatsHistoryMap {

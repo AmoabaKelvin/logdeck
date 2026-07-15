@@ -20,7 +20,7 @@ func LevelSeverity(level LogLevel) int {
 		return 6
 	case LogLevelPanic:
 		return 7
-	default: // LogLevelUnknown and anything unrecognized
+	default:
 		return 0
 	}
 }

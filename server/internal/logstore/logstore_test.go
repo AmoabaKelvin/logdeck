@@ -329,7 +329,6 @@ func TestQueryLevelAndSearchFilters(t *testing.T) {
 		t.Fatal("an invalid regex must be rejected")
 	}
 
-	// Time bounds.
 	page, err = store.Query(ctx, LogQuery{
 		Container: "web",
 		Since:     baseTime.Add(time.Second),

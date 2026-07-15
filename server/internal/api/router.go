@@ -102,7 +102,6 @@ func (ar *APIRouter) Routes() *chi.Mux {
 		})
 	})
 
-	// Serve embedded frontend static files
 	staticFS, err := static.GetFileSystem()
 	if err != nil {
 		log.Printf("Warning: Could not load embedded frontend files: %v", err)

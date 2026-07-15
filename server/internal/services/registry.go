@@ -18,7 +18,6 @@ type Registry struct {
 	config  *config.Config
 }
 
-// NewRegistry creates a registry with the initial set of services.
 func NewRegistry(
 	dockerClient *docker.MultiHostClient,
 	coolifyClient *coolify.MultiClient,
