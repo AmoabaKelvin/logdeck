@@ -158,17 +158,10 @@ func (ar *APIRouter) RemoveContainer(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// execRunTimeout bounds a single RunCommand invocation.
-const execRunTimeout = 60 * time.Second
-
 type runCommandRequest struct {
 	Command string `json:"command"`
 }
 
-// RunCommand runs one non-interactive command in a container through the shell
-// and returns its separated stdout, stderr, and exit code. This is the
-// programmatic counterpart to the interactive terminal (HandleTerminal): no
-// TTY, so streams stay distinct and the exit code is authoritative.
 func (ar *APIRouter) RunCommand(w http.ResponseWriter, r *http.Request) {
 	host, id, ok := containerParams(w, r)
 	if !ok {
@@ -185,7 +178,7 @@ func (ar *APIRouter) RunCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), execRunTimeout)
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 
 	stdout, stderr, exitCode, err := ar.registry.Docker().RunExec(ctx, host, id, []string{"/bin/sh", "-c", req.Command})
