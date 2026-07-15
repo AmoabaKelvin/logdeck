@@ -601,9 +601,9 @@ func historyLogs(t *testing.T, router http.Handler, path string) historyLogsResp
 }
 
 // TestAlertRoutesDenyReadScope proves the alert routes are closed to read-scoped
-// API tokens. The webhook URL is a secret — a Slack or Discord webhook lets its
-// holder post to the channel — so a token handed to a CI job or an AI agent must
-// not be able to read it back.
+// API tokens. Channel URLs and tokens are secrets — a Slack or Discord webhook,
+// or a bot token, lets its holder post to the channel — so a token handed to a
+// CI job or an AI agent must not be able to read them back.
 func TestAlertRoutesDenyReadScope(t *testing.T) {
 	store, _ := newHistoryStore(t)
 	svc := newTestAuthService(t)
@@ -628,7 +628,7 @@ func TestAlertRoutesDenyReadScope(t *testing.T) {
 	}
 
 	for _, path := range []string{
-		"/api/v1/alerts/webhook",
+		"/api/v1/alerts/channels",
 		"/api/v1/alerts/rules",
 		"/api/v1/alerts/history",
 	} {
@@ -643,10 +643,10 @@ func TestAlertRoutesDenyReadScope(t *testing.T) {
 
 	// An admin session still reaches them.
 	w = httptest.NewRecorder()
-	r = httptest.NewRequest("GET", "/api/v1/alerts/webhook", nil)
+	r = httptest.NewRequest("GET", "/api/v1/alerts/channels", nil)
 	r.Header.Set("Authorization", "Bearer "+jwt)
 	router.ServeHTTP(w, r)
 	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 on the webhook with an admin session, got %d: %s", w.Code, w.Body.String())
+		t.Fatalf("expected 200 on channels with an admin session, got %d: %s", w.Code, w.Body.String())
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -421,7 +422,7 @@ func TestAlertInHistoryWhileDeliveryHangs(t *testing.T) {
 	defer release()
 
 	te := startTestEngine(t, config.AlertRule{ID: "r1", Name: "boom", Enabled: true, Type: "log", Pattern: "boom", Threshold: 1})
-	te.conf.set(config.AlertsConfig{WebhookURL: srv.URL, Rules: te.conf.get().Rules})
+	te.conf.set(config.AlertsConfig{Channels: webhookChannels(srv.URL), Rules: te.conf.get().Rules})
 	waitFor(t, "subscription", func() bool { return te.hub.liveCount() == 1 })
 
 	te.hub.emit(record(models.LogLevelError, "boom"))
@@ -527,7 +528,7 @@ func TestEngineDeliversToWebhook(t *testing.T) {
 	defer srv.Close()
 
 	te := startTestEngine(t, config.AlertRule{ID: "r1", Name: "boom", Enabled: true, Type: "log", Pattern: "boom", Threshold: 1})
-	te.conf.set(config.AlertsConfig{WebhookURL: srv.URL, Rules: te.conf.get().Rules})
+	te.conf.set(config.AlertsConfig{Channels: webhookChannels(srv.URL), Rules: te.conf.get().Rules})
 	waitFor(t, "subscription", func() bool { return te.hub.liveCount() == 1 })
 
 	te.hub.emit(record(models.LogLevelError, "boom"))
@@ -546,24 +547,51 @@ func TestEngineDeliversToWebhook(t *testing.T) {
 	}
 }
 
-func TestTestWebhookNoURLAndDelivery(t *testing.T) {
-	te := startTestEngine(t)
+// webhookChannels returns a one-element enabled webhook channel list for url.
+func webhookChannels(url string) []config.AlertChannel {
+	return []config.AlertChannel{{ID: "c1", Type: "webhook", Enabled: true, URL: url}}
+}
 
-	res := te.e.TestWebhook(context.Background())
-	if res.Status != "failed" || res.Error != "no webhook configured" {
-		t.Fatalf("result = %+v, want failed/no webhook configured", res)
-	}
+func TestTestChannelDelivery(t *testing.T) {
+	te := startTestEngine(t)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	defer srv.Close()
-	te.conf.set(config.AlertsConfig{WebhookURL: srv.URL})
 
-	res = te.e.TestWebhook(context.Background())
+	res := te.e.TestChannel(context.Background(), webhookChannels(srv.URL)[0])
 	if res.Status != "ok" {
 		t.Fatalf("result = %+v, want ok", res)
 	}
 	if h := te.e.History(0); len(h) != 0 {
-		t.Fatalf("test webhook must not be recorded in history, got %+v", h)
+		t.Fatalf("test channel must not be recorded in history, got %+v", h)
+	}
+}
+
+func TestDispatchDisabledChannelSkipped(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+	}))
+	defer srv.Close()
+
+	te := startTestEngine(t, config.AlertRule{ID: "r1", Name: "boom", Enabled: true, Type: "log", Pattern: "boom", Threshold: 1})
+	te.conf.set(config.AlertsConfig{
+		Channels: []config.AlertChannel{{ID: "c1", Type: "webhook", Enabled: false, URL: srv.URL}},
+		Rules:    te.conf.get().Rules,
+	})
+	waitFor(t, "subscription", func() bool { return te.hub.liveCount() == 1 })
+
+	te.hub.emit(record(models.LogLevelError, "boom"))
+
+	// The alert is recorded (history-only) but never delivered to the disabled
+	// channel, so its delivery stays nil.
+	waitFor(t, "alert in history", func() bool { return len(te.e.History(0)) == 1 })
+	time.Sleep(50 * time.Millisecond)
+	if d := te.e.History(0)[0].Delivery; d != nil {
+		t.Fatalf("delivery = %+v, want nil (channel disabled)", d)
+	}
+	if got := hits.Load(); got != 0 {
+		t.Fatalf("disabled channel received %d requests, want 0", got)
 	}
 }
 

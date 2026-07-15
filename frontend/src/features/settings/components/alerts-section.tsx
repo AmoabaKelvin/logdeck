@@ -22,6 +22,13 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
@@ -34,19 +41,30 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 
+import type { AlertChannel } from "../api/get-alert-channels";
 import type { AlertHistoryEntry } from "../api/get-alert-history";
 import type { AlertRule } from "../api/get-alert-rules";
 import {
+	useAlertChannels,
 	useAlertHistory,
 	useAlertRules,
-	useAlertWebhook,
 	useClearAlertHistory,
+	useCreateAlertChannel,
+	useDeleteAlertChannel,
 	useDeleteAlertRule,
-	useTestAlertWebhook,
+	useTestAlertChannel,
+	useUpdateAlertChannel,
 	useUpdateAlertRule,
-	useUpdateAlertWebhook,
 } from "../hooks/use-alerts";
 import { AlertRuleDialog } from "./alert-rule-dialog";
+import {
+	buildChannelPayload,
+	CHANNEL_TYPES,
+	type ChannelDraft,
+	channelDestination,
+	channelTypeLabel,
+	EMPTY_CHANNEL_DRAFT,
+} from "./channel-utils";
 import { showResultToast } from "./mutation-toast";
 
 const HISTORY_LIMIT = 50;
@@ -58,11 +76,12 @@ export function AlertsSection() {
 				<CardTitle>Alerts</CardTitle>
 				<CardDescription>
 					Get notified when containers die, run out of memory, or log errors.
-					Alerts are delivered to a webhook and recorded in the history below.
+					Alerts are delivered to every enabled channel and recorded in the
+					history below.
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-6">
-				<WebhookBlock />
+				<ChannelsBlock />
 				<Separator />
 				<RulesBlock />
 				<Separator />
@@ -72,28 +91,191 @@ export function AlertsSection() {
 	);
 }
 
-function WebhookBlock() {
-	const { data, isLoading, error } = useAlertWebhook();
-	const updateMutation = useUpdateAlertWebhook();
-	const testMutation = useTestAlertWebhook();
+function ChannelDraftFields({
+	draft,
+	set,
+}: {
+	draft: ChannelDraft;
+	set: <K extends keyof ChannelDraft>(key: K, value: ChannelDraft[K]) => void;
+}) {
+	const needsURL = draft.type !== "telegram";
+	const needsToken = draft.type === "gotify" || draft.type === "telegram";
+	const needsTarget = draft.type === "telegram";
 
-	const [draft, setDraft] = useState<string | null>(null);
+	const urlLabel = draft.type === "gotify" ? "Server URL" : "URL";
+	const urlPlaceholder =
+		draft.type === "ntfy"
+			? "https://ntfy.sh/mytopic"
+			: draft.type === "gotify"
+				? "https://gotify.example.com"
+				: "https://example.com/webhook";
+	const tokenLabel = draft.type === "gotify" ? "App token" : "Bot token";
 
-	const savedUrl = data?.url ?? "";
-	const url = draft ?? savedUrl;
+	return (
+		<>
+			{needsURL && (
+				<div className="space-y-1.5">
+					<Label htmlFor="channel-url">{urlLabel}</Label>
+					<Input
+						id="channel-url"
+						value={draft.url}
+						onChange={(e) => set("url", e.target.value)}
+						placeholder={urlPlaceholder}
+						className="h-8"
+					/>
+				</div>
+			)}
+			{needsToken && (
+				<div className="space-y-1.5">
+					<Label htmlFor="channel-token">{tokenLabel}</Label>
+					<Input
+						id="channel-token"
+						value={draft.token}
+						onChange={(e) => set("token", e.target.value)}
+						placeholder={tokenLabel}
+						className="h-8"
+					/>
+				</div>
+			)}
+			{needsTarget && (
+				<div className="space-y-1.5">
+					<Label htmlFor="channel-target">Chat id</Label>
+					<Input
+						id="channel-target"
+						value={draft.target}
+						onChange={(e) => set("target", e.target.value)}
+						placeholder="-1001234567890"
+						className="h-8"
+					/>
+				</div>
+			)}
+		</>
+	);
+}
 
-	function handleSave() {
-		updateMutation.mutate(url.trim(), {
-			onSuccess: (message) => {
-				toast.success(message);
-				setDraft(null);
+function AddChannelForm({ onDone }: { onDone: () => void }) {
+	const createMutation = useCreateAlertChannel();
+	const [draft, setDraft] = useState<ChannelDraft>(EMPTY_CHANNEL_DRAFT);
+
+	function set<K extends keyof ChannelDraft>(key: K, value: ChannelDraft[K]) {
+		setDraft((prev) => ({ ...prev, [key]: value }));
+	}
+
+	function handleAdd() {
+		const result = buildChannelPayload(draft);
+		if ("error" in result) {
+			toast.error(result.error);
+			return;
+		}
+		createMutation.mutate(result.payload, {
+			onSuccess: (created) => {
+				toast.success(`${channelTypeLabel(created.type)} channel added`);
+				onDone();
 			},
 			onError: (err) => toast.error(err.message),
 		});
 	}
 
-	function handleTest() {
-		testMutation.mutate(undefined, {
+	return (
+		<div className="space-y-3 border rounded-md p-3">
+			<div className="flex flex-wrap items-end gap-3">
+				<div className="space-y-1.5">
+					<Label htmlFor="channel-type">Type</Label>
+					<Select
+						value={draft.type}
+						onValueChange={(value) =>
+							setDraft({
+								...EMPTY_CHANNEL_DRAFT,
+								type: value as ChannelDraft["type"],
+								name: draft.name,
+							})
+						}
+					>
+						<SelectTrigger id="channel-type" className="h-8 w-32">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{CHANNEL_TYPES.map((type) => (
+								<SelectItem key={type} value={type}>
+									{channelTypeLabel(type)}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				</div>
+				<div className="space-y-1.5 flex-1 min-w-40">
+					<Label htmlFor="channel-name">
+						Name{" "}
+						<span className="font-normal text-muted-foreground">
+							(optional)
+						</span>
+					</Label>
+					<Input
+						id="channel-name"
+						value={draft.name}
+						onChange={(e) => set("name", e.target.value)}
+						placeholder="Team Slack"
+						className="h-8"
+						maxLength={64}
+					/>
+				</div>
+			</div>
+			<ChannelDraftFields draft={draft} set={set} />
+			<div className="flex gap-1">
+				<Button
+					size="sm"
+					disabled={createMutation.isPending}
+					onClick={handleAdd}
+				>
+					{createMutation.isPending ? (
+						<>
+							<Spinner className="size-3" />
+							Adding...
+						</>
+					) : (
+						"Add"
+					)}
+				</Button>
+				<Button size="sm" variant="ghost" onClick={onDone}>
+					Cancel
+				</Button>
+			</div>
+		</div>
+	);
+}
+
+function ChannelsBlock() {
+	const { data, isLoading, error } = useAlertChannels();
+	const updateMutation = useUpdateAlertChannel();
+	const deleteMutation = useDeleteAlertChannel();
+	const testMutation = useTestAlertChannel();
+
+	const [isAdding, setIsAdding] = useState(false);
+	const [channelToDelete, setChannelToDelete] = useState<AlertChannel | null>(
+		null,
+	);
+
+	const channels = data?.channels ?? [];
+
+	function handleToggle(channel: AlertChannel, enabled: boolean) {
+		const { id, ...rest } = channel;
+		updateMutation.mutate(
+			{ id, channel: { ...rest, enabled } },
+			{
+				onSuccess: (updated) => {
+					toast.success(
+						`${channelTypeLabel(updated.type)} channel ${
+							updated.enabled ? "enabled" : "disabled"
+						}`,
+					);
+				},
+				onError: (err) => toast.error(err.message),
+			},
+		);
+	}
+
+	function handleTest(channel: AlertChannel) {
+		testMutation.mutate(channel.id, {
 			onSuccess: (result) => {
 				if (result.status === "ok") {
 					toast.success("Test alert delivered");
@@ -109,65 +291,135 @@ function WebhookBlock() {
 		});
 	}
 
+	function handleDelete() {
+		if (!channelToDelete) return;
+		deleteMutation.mutate(channelToDelete.id, showResultToast);
+		setChannelToDelete(null);
+	}
+
 	return (
 		<div className="space-y-3">
-			<h3 className="text-sm font-medium">Webhook</h3>
+			<h3 className="text-sm font-medium">Channels</h3>
+
 			{isLoading && <Spinner className="size-4" />}
 			{error && (
 				<p className="text-sm text-destructive">
-					Failed to load webhook: {error.message}
+					Failed to load channels: {error.message}
 				</p>
 			)}
-			{!isLoading && !error && (
-				<>
-					<div className="flex items-end gap-2">
-						<div className="space-y-1.5 flex-1">
-							<Label htmlFor="alert-webhook-url">URL</Label>
-							<Input
-								id="alert-webhook-url"
-								value={url}
-								onChange={(e) => setDraft(e.target.value)}
-								placeholder="https://example.com/webhook"
-								className="h-8"
-							/>
-						</div>
-						<Button
-							size="sm"
-							disabled={updateMutation.isPending || draft === null}
-							onClick={handleSave}
-						>
-							{updateMutation.isPending ? (
-								<>
-									<Spinner className="size-3" />
-									Saving...
-								</>
-							) : (
-								"Save"
-							)}
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							disabled={testMutation.isPending}
-							onClick={handleTest}
-						>
-							{testMutation.isPending ? (
-								<>
-									<Spinner className="size-3" />
-									Sending...
-								</>
-							) : (
-								"Send test"
-							)}
-						</Button>
-					</div>
-					{savedUrl === "" && (
-						<p className="text-xs text-muted-foreground">
-							(no webhook configured — alerts are recorded in history only)
-						</p>
-					)}
-				</>
+
+			{!isLoading && !error && channels.length === 0 && !isAdding && (
+				<p className="text-sm text-muted-foreground">
+					No channels configured — alerts are recorded in history only.
+				</p>
 			)}
+
+			{channels.length > 0 && (
+				<Table>
+					<TableHeader>
+						<TableRow>
+							<TableHead>Type</TableHead>
+							<TableHead>Destination</TableHead>
+							<TableHead>Enabled</TableHead>
+							<TableHead className="text-right">Actions</TableHead>
+						</TableRow>
+					</TableHeader>
+					<TableBody>
+						{channels.map((channel) => {
+							const testing =
+								testMutation.isPending && testMutation.variables === channel.id;
+							return (
+								<TableRow key={channel.id}>
+									<TableCell className="font-medium">
+										{channel.name || channelTypeLabel(channel.type)}
+										{channel.name && (
+											<span className="ml-1.5 text-xs text-muted-foreground">
+												{channelTypeLabel(channel.type)}
+											</span>
+										)}
+									</TableCell>
+									<TableCell className="text-xs text-muted-foreground font-mono break-all">
+										{channelDestination(channel)}
+									</TableCell>
+									<TableCell>
+										<Switch
+											checked={channel.enabled}
+											onCheckedChange={(checked) =>
+												handleToggle(channel, checked)
+											}
+											disabled={updateMutation.isPending}
+											aria-label={`Toggle ${channelTypeLabel(channel.type)} channel`}
+										/>
+									</TableCell>
+									<TableCell className="text-right">
+										<div className="flex items-center justify-end gap-1">
+											<Button
+												variant="ghost"
+												size="sm"
+												disabled={testing}
+												onClick={() => handleTest(channel)}
+											>
+												{testing ? (
+													<>
+														<Spinner className="size-3" />
+														Sending...
+													</>
+												) : (
+													"Test"
+												)}
+											</Button>
+											<Button
+												variant="ghost"
+												size="sm"
+												disabled={deleteMutation.isPending}
+												onClick={() => setChannelToDelete(channel)}
+												className="text-destructive hover:text-destructive"
+											>
+												Delete
+											</Button>
+										</div>
+									</TableCell>
+								</TableRow>
+							);
+						})}
+					</TableBody>
+				</Table>
+			)}
+
+			{isAdding ? (
+				<AddChannelForm onDone={() => setIsAdding(false)} />
+			) : (
+				<Button variant="outline" size="sm" onClick={() => setIsAdding(true)}>
+					Add channel
+				</Button>
+			)}
+
+			<AlertDialog
+				open={channelToDelete !== null}
+				onOpenChange={(open) => {
+					if (!open) setChannelToDelete(null);
+				}}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Delete channel?</AlertDialogTitle>
+						<AlertDialogDescription>
+							Alerts will no longer be delivered to this{" "}
+							{channelToDelete ? channelTypeLabel(channelToDelete.type) : ""}{" "}
+							channel. This cannot be undone.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogAction
+							onClick={handleDelete}
+							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+						>
+							Delete
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</div>
 	);
 }

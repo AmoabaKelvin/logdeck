@@ -209,15 +209,20 @@ logdeck networks
 
 ### alerts
 
-Manage alerting: rules, the webhook destination, and fired-alert history. Rules match container events (`die`, `oom`) or log lines (by minimum level and/or regex pattern), optionally firing only after a threshold of matches within a time window. Alerts are delivered to a single webhook URL.
+Manage alerting: rules, notification channels, and fired-alert history. Rules match container events (`die`, `oom`, `unhealthy`) or log lines (by minimum level and/or regex pattern), optionally firing only after a threshold of matches within a time window. Every fired alert is delivered to each enabled channel. Channel types: `webhook` (a generic JSON POST that also covers Slack and Discord incoming webhooks), `ntfy`, `gotify`, and `telegram`.
 
 ```bash
 logdeck alerts rules                          # list rules
 logdeck alerts rules create --type event --name oom-watch --events oom
 logdeck alerts rules create --type log --name errors --min-level ERROR --threshold 5 --window 60s
 logdeck alerts rules disable <id>             # or enable / delete
-logdeck alerts webhook set https://hooks.example.com/logdeck
-logdeck alerts test                           # send a test delivery; exits 1 on failure
+logdeck alerts channels list                  # list notification channels
+logdeck alerts channels add --type webhook --endpoint https://hooks.example.com/logdeck
+logdeck alerts channels add --type ntfy --endpoint https://ntfy.sh/mytopic
+logdeck alerts channels add --type gotify --endpoint https://gotify.example.com --secret <app-token>
+logdeck alerts channels add --type telegram --secret <bot-token> --target <chat-id>
+logdeck alerts channels test <id>             # send a test delivery; exits 1 on failure
+logdeck alerts channels delete <id>
 logdeck alerts history --limit 20             # recently fired alerts, newest first
 ```
 

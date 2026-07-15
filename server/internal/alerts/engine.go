@@ -1,13 +1,14 @@
 // Package alerts contains the alerting engine: it watches container events
 // and log streams, matches them against the configured rules, and delivers
-// webhook notifications.
+// notifications to the configured channels.
 //
 // Concurrency model: a single run goroutine owns all mutable state (compiled
 // rules, subscription handles, rate/cooldown windows, the event-stream child
 // context). Log-rule sinks run on the hub's delivery goroutines and only push
 // non-blocking match messages onto firedCh. A single dispatcher goroutine
-// consumes fired alerts, appends them to history, delivers webhooks, and
-// records each delivery outcome on the history entry. Helper
+// consumes fired alerts, appends them to history, delivers them to the
+// configured channels, and records each delivery outcome on the history entry.
+// Helper
 // goroutines exist only for single container-inspect exit-code lookups.
 package alerts
 
@@ -250,22 +251,18 @@ func (e *Engine) Reconcile() {
 	}
 }
 
-// TestWebhook sends a test notification to the configured webhook URL and
-// reports the delivery outcome. The test alert is not recorded in history.
-func (e *Engine) TestWebhook(ctx context.Context) models.DeliveryResult {
-	url := e.alertsFn().WebhookURL
-	if url == "" {
-		return models.DeliveryResult{Status: "failed", Error: "no webhook configured"}
-	}
+// TestChannel delivers a synthetic alert to a single channel and reports the
+// delivery outcome. The test alert is not recorded in history.
+func (e *Engine) TestChannel(ctx context.Context, channel config.AlertChannel) models.DeliveryResult {
 	alert := models.Alert{
 		ID:       newAlertID(),
-		RuleName: "Test webhook",
+		RuleName: "Test channel",
 		Type:     "test",
 		Reason:   "test notification from LogDeck",
 		Count:    1,
 		FiredAt:  e.now().UTC().Format(time.RFC3339),
 	}
-	return e.notif.deliver(ctx, url, alert, ctx.Done())
+	return e.notif.deliver(ctx, channel, alert, ctx.Done())
 }
 
 // History returns the most recent fired alerts, newest first, capped at
@@ -673,18 +670,19 @@ func (e *Engine) shutdownRun(st *runState) {
 }
 
 // dispatchLoop consumes fired alerts: each alert is appended to history first
-// (Delivery nil) so a hung webhook can never lose it, then delivered to the
-// webhook (read live from config; empty means history-only) and its history
-// entry updated with the result. It exits when the run loop closes
-// dispatchCh, then stops the history flusher, which performs the final
-// synchronous flush. Once the shutdown drain budget has expired, remaining
-// alerts are recorded as failed ("shutdown") without a delivery attempt.
+// (Delivery nil) so a hung channel can never lose it, then delivered to every
+// enabled channel (read live from config; no enabled channels means
+// history-only) and its history entry updated with the summary result. It exits
+// when the run loop closes dispatchCh, then stops the history flusher, which
+// performs the final synchronous flush. Once the shutdown drain budget has
+// expired, remaining alerts are recorded as failed ("shutdown") without a
+// delivery attempt.
 func (e *Engine) dispatchLoop() {
 	defer close(e.flushStop)
 	for alert := range e.dispatchCh {
 		e.hist.append(alert)
-		url := e.alertsFn().WebhookURL
-		if url == "" {
+		channels := enabledChannels(e.alertsFn().Channels)
+		if len(channels) == 0 {
 			continue
 		}
 		var result models.DeliveryResult
@@ -692,7 +690,7 @@ func (e *Engine) dispatchLoop() {
 			result = models.DeliveryResult{Status: "failed", Error: "shutdown"}
 		} else {
 			ctx, cancel := context.WithTimeout(e.deliverCtx, deliverBudget)
-			result = e.notif.deliver(ctx, url, alert, e.skipRetry)
+			result = e.notif.deliverAll(ctx, channels, alert, e.skipRetry)
 			cancel()
 		}
 		e.hist.setDelivery(alert.ID, result)
