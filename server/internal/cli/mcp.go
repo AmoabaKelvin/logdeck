@@ -519,12 +519,12 @@ func asString(v any) string {
 // clampTail defaults a tail/limit to 100 and caps it at mcpMaxTail.
 func clampTail(v int) int { return clampInt(v, 100, mcpMaxTail) }
 
-func clampInt(v, def, max int) int {
+func clampInt(v, def, maximum int) int {
 	if v <= 0 {
 		return def
 	}
-	if v > max {
-		return max
+	if v > maximum {
+		return maximum
 	}
 	return v
 }
