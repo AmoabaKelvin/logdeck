@@ -1,6 +1,7 @@
 import {
   BellRing,
   BookOpen,
+  Bot,
   Database,
   Layers,
   Rocket,
@@ -46,6 +47,11 @@ export const docsNav = [
         title: "CLI",
         href: "/docs/cli",
         icon: Terminal,
+      },
+      {
+        title: "MCP Server",
+        href: "/docs/mcp",
+        icon: Bot,
       },
       {
         title: "Configuration",
