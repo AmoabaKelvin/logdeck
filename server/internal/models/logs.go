@@ -64,6 +64,16 @@ var timestampFormats = []string{
 	time.RubyDate,
 }
 
+// minTimestampLen and maxTimestampLen bound the rendered length of every layout
+// in timestampFormats (the shortest is "2006/01/02 15:04:05" at 19, the longest
+// is RFC3339Nano with nine fractional digits and a numeric offset at 35). The
+// bounds carry a small margin and are used only to skip time.Parse for
+// candidates that provably cannot match any layout; they never widen what parses.
+const (
+	minTimestampLen = 17
+	maxTimestampLen = 40
+)
+
 var tzOffsetNoColon = regexp.MustCompile(`([+-]\d{2})(\d{2})$`)
 var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 var structuredFieldRegex = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_.-]*)\s*[:=]\s*(.+)$`)
@@ -271,25 +281,17 @@ func ParseTimestamp(logLine string) (time.Time, string) {
 	const maxPrefix = 96
 	searchLimit := min(len(line), maxPrefix)
 
-	var (
-		foundTimestamp time.Time
-		foundMessage   string
-		found          bool
-	)
-
-	for i := 1; i <= searchLimit; i++ {
-		prefix := line[:i]
-		if ts, ok := tryParseTimestampCandidate(prefix); ok {
+	// The timestamp is the longest leading prefix that parses, so scan from the
+	// longest candidate down and stop at the first hit: the result is identical
+	// to keeping the last hit of an ascending scan, but a line whose prefix is a
+	// timestamp (the common case) settles in a handful of iterations instead of
+	// paying a time.Parse attempt at every offset up to the limit.
+	for i := searchLimit; i >= 1; i-- {
+		if ts, ok := tryParseTimestampCandidate(line[:i]); ok {
 			remaining := strings.TrimSpace(line[i:])
 			remaining = strings.TrimLeft(remaining, ")]}> \t")
-			foundTimestamp = ts
-			foundMessage = remaining
-			found = true
+			return ts, remaining
 		}
-	}
-
-	if found {
-		return foundTimestamp, foundMessage
 	}
 
 	return time.Time{}, line
@@ -423,6 +425,15 @@ func tryParseTimestampCandidate(candidate string) (time.Time, bool) {
 
 	sanitized = strings.Trim(sanitized, "[](){}<>")
 	if sanitized == "" {
+		return time.Time{}, false
+	}
+
+	// Every supported layout renders between these lengths (the shortest is a
+	// bare "2006/01/02 15:04:05" at 19; the longest is RFC3339Nano with nine
+	// fractional digits and a numeric offset at 35). A candidate outside that
+	// band cannot match any layout, so skip the time.Parse attempts entirely —
+	// this is what keeps the prefix scan cheap without dropping any real match.
+	if n := len(sanitized); n < minTimestampLen || n > maxTimestampLen {
 		return time.Time{}, false
 	}
 
