@@ -38,8 +38,18 @@ const (
 	// listTimeout bounds one container listing; an unreachable host must not
 	// stall the lifecycle loop.
 	listTimeout = 15 * time.Second
-	// janitorInterval is the retention sweep cadence.
+	// janitorInterval is the retention sweep cadence: the scheduler signals the
+	// writer this often so retention still runs when ingestion is idle.
 	janitorInterval = time.Minute
+	// retainEveryBatches bounds how many committed batches accumulate between
+	// writer-driven retention sweeps. Under a firehose the janitorInterval tick
+	// is far too coarse to keep the file near its cap, so the writer also sweeps
+	// every this many batches; this is what caps the file's high-water mark.
+	retainEveryBatches = 5
+	// maxDBConns bounds the connection pool. WAL mode serves concurrent readers,
+	// so a small warm pool lets queries run in parallel with the writer without
+	// churning connections; the exact ceiling is not load-bearing.
+	maxDBConns = 8
 	// dropLogEvery throttles the "sink fell behind" warning.
 	dropLogEvery = 1000
 )
@@ -73,7 +83,20 @@ type Store struct {
 	limits Limits
 
 	ingestCh chan ingestMsg
+	// retainCh signals the writer to run a retention sweep between batches. It is
+	// coalescing (buffered one, non-blocking send): all writes go through the
+	// single writer goroutine, so eviction and ingestion never hold two competing
+	// write transactions.
+	retainCh chan struct{}
 	drops    atomic.Uint64
+	// evictions counts retention sweeps that actually freed bytes. The writer
+	// checkpoints the WAL only when this advances, so a store that is under its
+	// cap (nothing to evict) never pays for a checkpoint on its hot path.
+	evictions atomic.Uint64
+	// committed counts log lines successfully inserted, cumulatively. Unlike the
+	// live row count it never decreases when retention evicts, so measurement can
+	// report true ingestion throughput. Maintained only for the stress harness.
+	committed atomic.Int64
 
 	// mu guards resume, gaps, and invalidated, all read by goroutines other
 	// than the one that writes them.
@@ -150,6 +173,14 @@ func Open(path string, limits Limits) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open log store: %w", err)
 	}
+	// The default pool keeps only two idle connections, so a burst of concurrent
+	// queries alongside the writer forces connections to be closed and reopened
+	// constantly, and every reopen re-runs the DSN pragmas — pure overhead that
+	// shows up as query-latency tails. WAL mode allows many concurrent readers,
+	// so hold a small warm pool open instead of churning it.
+	db.SetMaxOpenConns(maxDBConns)
+	db.SetMaxIdleConns(maxDBConns)
+	db.SetConnMaxIdleTime(0)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -167,6 +198,7 @@ func Open(path string, limits Limits) (*Store, error) {
 		path:        path,
 		limits:      limits,
 		ingestCh:    make(chan ingestMsg, ingestBuffer),
+		retainCh:    make(chan struct{}, 1),
 		resume:      make(map[genKey]resumePoint),
 		gaps:        make(map[genKey]int64),
 		invalidated: make(map[genKey]struct{}),

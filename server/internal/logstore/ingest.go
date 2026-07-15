@@ -84,6 +84,11 @@ func (s *Store) writeLoop() {
 	ticker := time.NewTicker(batchInterval)
 	defer ticker.Stop()
 
+	// batchesSinceRetain counts committed batches since the last retention sweep.
+	// Retention runs on this goroutine so it never competes with ingestion for
+	// SQLite's single write lock; see janitorLoop.
+	batchesSinceRetain := 0
+
 	flush := func() {
 		if len(batch) == 0 {
 			return
@@ -97,6 +102,23 @@ func (s *Store) writeLoop() {
 			s.markBatchGaps(batch)
 		}
 		batch = batch[:0]
+		batchesSinceRetain++
+	}
+
+	retain := func() {
+		batchesSinceRetain = 0
+		before := s.evictions.Load()
+		if err := s.retain(context.Background()); err != nil {
+			log.Printf("logstore: retention sweep failed: %v", err)
+		}
+		// Fold the WAL only when the sweep actually evicted: retention's deletes
+		// are the bulk of the WAL churn, so truncating right after them keeps the
+		// file near its cap. A store under its cap evicts nothing and must not pay
+		// for a checkpoint here — that is what preserves the flood throughput
+		// ceiling. SQLite's automatic checkpoint keeps the WAL bounded otherwise.
+		if s.evictions.Load() != before {
+			s.checkpoint()
+		}
 	}
 
 	for {
@@ -112,8 +134,30 @@ func (s *Store) writeLoop() {
 			}
 		case <-ticker.C:
 			flush()
+		case <-s.retainCh:
+			flush()
+			retain()
+		}
+		// Cap the file's high-water mark under sustained load: the janitorInterval
+		// signal alone is far too coarse when batches flush many times a second.
+		if batchesSinceRetain >= retainEveryBatches {
+			retain()
 		}
 	}
+}
+
+// checkpoint folds the write-ahead log back into the main database and truncates
+// the WAL file. It runs on the writer goroutine right after an eviction, so it
+// never races the store's own writes. TRUNCATE (rather than PASSIVE) is what
+// actually shrinks the file on disk; it briefly blocks new readers while it
+// truncates, but queries are short enough that the pause is not observable, and
+// bounding the file is worth it. A checkpoint that cannot complete because a
+// reader is mid-query simply truncates less this pass and catches up on the
+// next, so its error is not worth logging.
+func (s *Store) checkpoint() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, _ = s.db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)")
 }
 
 // markBatchGaps records a dropped-line gap for every generation in a batch the
@@ -162,6 +206,7 @@ func (s *Store) commit(batch []ingestMsg, refs map[genKey]int64) error {
 	aggs := make(map[int64]*agg)
 	fresh := make(map[genKey]int64) // ids this transaction discovered
 	nowMS := time.Now().UnixMilli()
+	insertedCount := int64(0)
 
 	for _, msg := range batch {
 		ref, ok := refs[msg.key]
@@ -193,6 +238,7 @@ func (s *Store) commit(batch []ingestMsg, refs map[genKey]int64) error {
 		if !inserted {
 			continue
 		}
+		insertedCount++
 
 		a := aggs[ref]
 		if a == nil {
@@ -224,6 +270,7 @@ func (s *Store) commit(batch []ingestMsg, refs map[genKey]int64) error {
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+	s.committed.Add(insertedCount)
 
 	// The ids are real only now.
 	for key, ref := range fresh {
