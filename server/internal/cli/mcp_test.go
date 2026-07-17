@@ -57,6 +57,41 @@ func TestMCPToolGating(t *testing.T) {
 	}
 }
 
+func TestClampInt(t *testing.T) {
+	tests := []struct {
+		v, def, maximum, want int
+	}{
+		{0, 100, 500, 100},   // zero -> default
+		{-5, 100, 500, 100},  // negative -> default
+		{50, 100, 500, 50},   // in range passes through
+		{500, 100, 500, 500}, // at max passes through
+		{999, 100, 500, 500}, // over max -> clamped
+	}
+	for _, tt := range tests {
+		if got := clampInt(tt.v, tt.def, tt.maximum); got != tt.want {
+			t.Errorf("clampInt(%d, %d, %d) = %d, want %d", tt.v, tt.def, tt.maximum, got, tt.want)
+		}
+	}
+}
+
+func TestClampTail(t *testing.T) {
+	// clampTail defaults to 100 and caps at mcpMaxTail (500).
+	tests := []struct {
+		in, want int
+	}{
+		{0, 100},
+		{-1, 100},
+		{250, 250},
+		{500, 500},
+		{5000, 500},
+	}
+	for _, tt := range tests {
+		if got := clampTail(tt.in); got != tt.want {
+			t.Errorf("clampTail(%d) = %d, want %d", tt.in, got, tt.want)
+		}
+	}
+}
+
 // TestMCPActionToolsGatedOff confirms the sensitive tools are absent unless
 // their flag is set — the registration surface is the advertised surface.
 func TestMCPActionToolsGatedOff(t *testing.T) {
