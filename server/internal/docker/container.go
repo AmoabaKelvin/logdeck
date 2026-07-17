@@ -207,10 +207,24 @@ func recreateContainerWithEnv(ctx context.Context, apiClient containerRecreateAP
 		}
 	}
 
+	// Podman reports a CPU limit as both NanoCpus and CpuQuota/CpuPeriod, but
+	// rejects a create that carries both ("NanoCpus conflicts with CpuPeriod and
+	// CpuQuota"). They express the same limit, and the quota/period pair is what
+	// the resource-update path writes on Podman, so NanoCpus is the one to drop.
+	// Copy the host config rather than mutate the shared InspectResponse.
+	hostConfig := inspect.HostConfig
+	if hostConfig != nil {
+		clone := *hostConfig
+		if clone.NanoCPUs > 0 && clone.CPUQuota > 0 {
+			clone.NanoCPUs = 0
+		}
+		hostConfig = &clone
+	}
+
 	resp, err := apiClient.ContainerCreate(
 		ctx,
 		&newConfig,
-		inspect.HostConfig,
+		hostConfig,
 		networking,
 		nil,
 		containerName,

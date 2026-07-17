@@ -13,12 +13,13 @@ import (
 )
 
 type fakeRecreateAPI struct {
-	calls         []string
-	stopErr       error
-	renameErr     error
-	createErr     error
-	startErrOn    string   // container ID whose start should fail
-	lastCreateEnv []string // env passed to the last ContainerCreate call
+	calls                []string
+	stopErr              error
+	renameErr            error
+	createErr            error
+	startErrOn           string                // container ID whose start should fail
+	lastCreateEnv        []string              // env passed to the last ContainerCreate call
+	lastCreateHostConfig *container.HostConfig // host config passed to the last ContainerCreate call
 }
 
 func (f *fakeRecreateAPI) ContainerStop(ctx context.Context, containerID string, options container.StopOptions) error {
@@ -34,6 +35,7 @@ func (f *fakeRecreateAPI) ContainerRename(ctx context.Context, containerID, newC
 func (f *fakeRecreateAPI) ContainerCreate(ctx context.Context, config *container.Config, hostConfig *container.HostConfig, networkingConfig *network.NetworkingConfig, platform *ocispec.Platform, containerName string) (container.CreateResponse, error) {
 	f.calls = append(f.calls, "create "+containerName)
 	f.lastCreateEnv = config.Env
+	f.lastCreateHostConfig = hostConfig
 	if f.createErr != nil {
 		return container.CreateResponse{}, f.createErr
 	}
@@ -179,5 +181,61 @@ func TestRecreateContainerWithEnv(t *testing.T) {
 				t.Fatalf("expected replacement created with env [A=2], got %v", tt.api.lastCreateEnv)
 			}
 		})
+	}
+}
+
+// Podman reports a CPU limit as both NanoCpus and CpuQuota/CpuPeriod, but its
+// create rejects a host config carrying both ("NanoCpus conflicts with
+// CpuPeriod and CpuQuota"), which broke every env edit on a container whose CPU
+// limit had been set. The replacement must carry the quota/period pair alone.
+func TestRecreateContainerWithEnvDropsConflictingNanoCpus(t *testing.T) {
+	inspect := testInspectResponse(true)
+	inspect.HostConfig = &container.HostConfig{
+		Resources: container.Resources{
+			NanoCPUs:  500000000, // 0.5 CPU, the same limit the pair below expresses
+			CPUQuota:  50000,
+			CPUPeriod: 100000,
+			Memory:    256 * 1024 * 1024,
+		},
+	}
+
+	api := &fakeRecreateAPI{}
+	if _, err := recreateContainerWithEnv(context.Background(), api, inspect, []string{"A=2"}); err != nil {
+		t.Fatalf("recreateContainerWithEnv() error = %v", err)
+	}
+
+	got := api.lastCreateHostConfig
+	if got == nil {
+		t.Fatal("no host config passed to ContainerCreate")
+	}
+	if got.NanoCPUs != 0 {
+		t.Errorf("NanoCpus = %d, want 0 (it conflicts with the quota/period pair)", got.NanoCPUs)
+	}
+	if got.CPUQuota != 50000 || got.CPUPeriod != 100000 {
+		t.Errorf("quota/period = %d/%d, want 50000/100000 (the limit must survive)", got.CPUQuota, got.CPUPeriod)
+	}
+	if got.Memory != 256*1024*1024 {
+		t.Errorf("Memory = %d, want it carried over unchanged", got.Memory)
+	}
+	// The caller's inspect must not be mutated.
+	if inspect.HostConfig.NanoCPUs != 500000000 {
+		t.Error("recreate mutated the caller's HostConfig")
+	}
+}
+
+// A Docker container sets only NanoCpus, with no quota/period; that limit must
+// be left alone.
+func TestRecreateContainerWithEnvKeepsNanoCpusWhenUnambiguous(t *testing.T) {
+	inspect := testInspectResponse(true)
+	inspect.HostConfig = &container.HostConfig{
+		Resources: container.Resources{NanoCPUs: 1000000000},
+	}
+
+	api := &fakeRecreateAPI{}
+	if _, err := recreateContainerWithEnv(context.Background(), api, inspect, []string{"A=2"}); err != nil {
+		t.Fatalf("recreateContainerWithEnv() error = %v", err)
+	}
+	if api.lastCreateHostConfig.NanoCPUs != 1000000000 {
+		t.Errorf("NanoCpus = %d, want 1000000000 preserved", api.lastCreateHostConfig.NanoCPUs)
 	}
 }

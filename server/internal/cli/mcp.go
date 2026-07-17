@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"regexp"
@@ -28,6 +29,8 @@ const mcpMaxTail = 500
 type mcpOptions struct {
 	destructive bool // remove_container
 	exec        bool // run_command
+	env         bool // get_env, set_env
+	settings    bool // settings reads and writes
 }
 
 const mcpLong = `Run a Model Context Protocol server over stdio so an AI assistant can
@@ -37,17 +40,18 @@ Read and lifecycle (start/stop/restart) tools are always registered. Sensitive
 tools are opt-in:
   --allow-destructive   register remove_container
   --allow-exec          register run_command (one-shot exec in a container)
+  --allow-env           register get_env / set_env (env vars hold secrets, and
+                        writing them recreates the container)
+  --allow-settings      register settings reads and writes, including hosts,
+                        authentication, and API tokens
   --allow-all           register all of the above
 
 The token scope is the hard boundary and is enforced by the server: a read-only
-API token is rejected on every mutation regardless of these flags, which only
-control which tools are advertised.
-
-Environment-variable and settings writes are intentionally not exposed in this
-version.`
+API token is rejected on every mutation, and on env and settings entirely,
+regardless of these flags. The flags only control which tools are advertised.`
 
 func newMCPCmd(a *app) *cobra.Command {
-	var allowDestructive, allowExec, allowAll bool
+	var allowDestructive, allowExec, allowEnv, allowSettings, allowAll bool
 
 	cmd := &cobra.Command{
 		Use:   "mcp",
@@ -58,6 +62,8 @@ func newMCPCmd(a *app) *cobra.Command {
 			opts := mcpOptions{
 				destructive: allowDestructive || allowAll,
 				exec:        allowExec || allowAll,
+				env:         allowEnv || allowAll,
+				settings:    allowSettings || allowAll,
 			}
 
 			if a.conn.token != "" && !strings.HasPrefix(a.conn.token, mcpAPITokenPrefix) {
@@ -74,6 +80,12 @@ func newMCPCmd(a *app) *cobra.Command {
 			if opts.exec {
 				tiers = append(tiers, "exec")
 			}
+			if opts.env {
+				tiers = append(tiers, "env")
+			}
+			if opts.settings {
+				tiers = append(tiers, "settings")
+			}
 			fmt.Fprintf(os.Stderr, "MCP: %s enabled - server %s\n", strings.Join(tiers, " + "), a.conn.url)
 
 			return server.Run(cmd.Context(), &mcp.StdioTransport{})
@@ -82,7 +94,9 @@ func newMCPCmd(a *app) *cobra.Command {
 
 	cmd.Flags().BoolVar(&allowDestructive, "allow-destructive", false, "register remove_container")
 	cmd.Flags().BoolVar(&allowExec, "allow-exec", false, "register run_command (one-shot exec)")
-	cmd.Flags().BoolVar(&allowAll, "allow-all", false, "register all action tools (destructive + exec)")
+	cmd.Flags().BoolVar(&allowEnv, "allow-env", false, "register get_env and set_env")
+	cmd.Flags().BoolVar(&allowSettings, "allow-settings", false, "register settings reads and writes, including auth and API tokens")
+	cmd.Flags().BoolVar(&allowAll, "allow-all", false, "register all action tools (destructive + exec + env + settings)")
 	return cmd
 }
 
@@ -398,7 +412,204 @@ func registerMCPTools(s *mcp.Server, a *app, opts mcpOptions) []string {
 		registerRunCommand(s, a, register)
 	}
 
+	if opts.env {
+		registerEnvTools(s, a, register)
+	}
+
+	if opts.settings {
+		registerSettingsTools(s, a, register)
+	}
+
 	return names
+}
+
+// registerEnvTools registers container environment-variable access. The server
+// denies /env to read-scoped tokens because the values are secrets, and a write
+// recreates the container, so set_env is marked destructive.
+func registerEnvTools(s *mcp.Server, a *app, register func(*mcp.Tool)) {
+	tool := &mcp.Tool{Name: "get_env", Description: "Read a container's environment variables. These commonly hold secrets.", Annotations: readOnlyAnnot()}
+	mcp.AddTool(s, tool, func(ctx context.Context, _ *mcp.CallToolRequest, in containerRef) (*mcp.CallToolResult, any, error) {
+		container, err := a.resolve(ctx, in.Container, in.Host)
+		if err != nil {
+			return nil, nil, err
+		}
+		var resp struct {
+			Env map[string]string `json:"env"`
+		}
+		if err := a.client.get(ctx, "/containers/"+container.ID+"/env", url.Values{"host": {container.Host}}, &resp); err != nil {
+			return nil, nil, err
+		}
+		return mcpJSON(resp)
+	})
+	register(tool)
+
+	type setEnvInput struct {
+		Container string            `json:"container" jsonschema:"container name or ID"`
+		Host      string            `json:"host,omitempty" jsonschema:"host name (disambiguates duplicate names)"`
+		Env       map[string]string `json:"env" jsonschema:"the complete variable map to apply; it replaces the container's existing environment, so read it with get_env first"`
+	}
+	tool = &mcp.Tool{Name: "set_env", Description: "Replace a container's environment variables. The container is recreated to apply them, so it restarts and gets a new ID.", Annotations: destructiveAnnot()}
+	mcp.AddTool(s, tool, func(ctx context.Context, _ *mcp.CallToolRequest, in setEnvInput) (*mcp.CallToolResult, any, error) {
+		if len(in.Env) == 0 {
+			return nil, nil, fmt.Errorf("env is required and must be the complete variable map")
+		}
+		container, err := a.resolve(ctx, in.Container, in.Host)
+		if err != nil {
+			return nil, nil, err
+		}
+		var resp map[string]any
+		if err := a.client.put(ctx, "/containers/"+container.ID+"/env", url.Values{"host": {container.Host}}, map[string]any{"env": in.Env}, &resp); err != nil {
+			return nil, nil, err
+		}
+		return mcpJSON(resp)
+	})
+	register(tool)
+}
+
+// registerSettingsTools registers the LogDeck settings surface. The server
+// denies the whole /settings group to read-scoped tokens: it exposes host
+// topology, the token inventory, and the auth configuration.
+func registerSettingsTools(s *mcp.Server, a *app, register func(*mcp.Tool)) {
+	tool := &mcp.Tool{Name: "get_settings", Description: "Read LogDeck settings: Docker and Coolify hosts, auth state, read-only mode, and log-storage retention, each with the source it came from.", Annotations: readOnlyAnnot()}
+	mcp.AddTool(s, tool, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+		return getJSON(ctx, a, "/settings", nil)
+	})
+	register(tool)
+
+	type readOnlyInput struct {
+		Value bool `json:"value" jsonschema:"true blocks every mutating request server-wide"`
+	}
+	tool = &mcp.Tool{Name: "set_read_only", Description: "Turn LogDeck's server-wide read-only mode on or off.", Annotations: destructiveAnnot()}
+	mcp.AddTool(s, tool, func(ctx context.Context, _ *mcp.CallToolRequest, in readOnlyInput) (*mcp.CallToolResult, any, error) {
+		return putJSON(ctx, a, "/settings/read-only", map[string]any{"value": in.Value})
+	})
+	register(tool)
+
+	type logStorageInput struct {
+		Enabled        *bool `json:"enabled,omitempty" jsonschema:"turn log persistence on or off"`
+		PerContainerMB *int  `json:"perContainerMB,omitempty" jsonschema:"per-container retention cap in MB"`
+		TotalMB        *int  `json:"totalMB,omitempty" jsonschema:"total retention cap in MB across all containers"`
+	}
+	tool = &mcp.Tool{Name: "set_log_storage", Description: "Update log persistence: enable or disable it, or change the retention caps. Omitted fields are left unchanged. Lowering a cap makes the next sweep evict stored logs.", Annotations: destructiveAnnot()}
+	mcp.AddTool(s, tool, func(ctx context.Context, _ *mcp.CallToolRequest, in logStorageInput) (*mcp.CallToolResult, any, error) {
+		body := map[string]any{}
+		if in.Enabled != nil {
+			body["enabled"] = *in.Enabled
+		}
+		if in.PerContainerMB != nil {
+			body["perContainerMB"] = *in.PerContainerMB
+		}
+		if in.TotalMB != nil {
+			body["totalMB"] = *in.TotalMB
+		}
+		if len(body) == 0 {
+			return nil, nil, fmt.Errorf("set at least one of enabled, perContainerMB, or totalMB")
+		}
+		return putJSON(ctx, a, "/settings/log-storage", body)
+	})
+	register(tool)
+
+	type dockerHost struct {
+		Name string `json:"name" jsonschema:"host label shown in the UI"`
+		Host string `json:"host" jsonschema:"engine address, e.g. unix:///var/run/docker.sock or ssh://user@box"`
+	}
+	type dockerHostsInput struct {
+		Hosts []dockerHost `json:"hosts" jsonschema:"the complete host list; it replaces the configured hosts, so read get_settings first. Hosts pinned by environment variables are rejected"`
+	}
+	tool = &mcp.Tool{Name: "set_docker_hosts", Description: "Replace the configured Docker/Podman hosts. This is the whole list, not a merge.", Annotations: destructiveAnnot()}
+	mcp.AddTool(s, tool, func(ctx context.Context, _ *mcp.CallToolRequest, in dockerHostsInput) (*mcp.CallToolResult, any, error) {
+		return putJSON(ctx, a, "/settings/docker-hosts", map[string]any{"hosts": in.Hosts})
+	})
+	register(tool)
+
+	type coolifyHost struct {
+		HostName string `json:"hostName" jsonschema:"the Docker host name this Coolify config belongs to"`
+		APIURL   string `json:"apiURL" jsonschema:"Coolify API base URL"`
+		APIToken string `json:"apiToken" jsonschema:"Coolify API token"`
+	}
+	type coolifyHostsInput struct {
+		Hosts []coolifyHost `json:"hosts" jsonschema:"the complete Coolify host list; it replaces the configured entries"`
+	}
+	tool = &mcp.Tool{Name: "set_coolify_hosts", Description: "Replace the Coolify host configuration. This is the whole list, not a merge.", Annotations: destructiveAnnot()}
+	mcp.AddTool(s, tool, func(ctx context.Context, _ *mcp.CallToolRequest, in coolifyHostsInput) (*mcp.CallToolResult, any, error) {
+		return putJSON(ctx, a, "/settings/coolify-hosts", map[string]any{"hosts": in.Hosts})
+	})
+	register(tool)
+
+	type authInput struct {
+		Enabled       bool   `json:"enabled" jsonschema:"false disables login for the whole server"`
+		AdminUsername string `json:"adminUsername" jsonschema:"admin username"`
+		NewPassword   string `json:"newPassword,omitempty" jsonschema:"set a new admin password; omit to keep the current one"`
+	}
+	tool = &mcp.Tool{Name: "set_auth", Description: "Change LogDeck's authentication: enable or disable login, set the admin username, or set a new password. Disabling it leaves the server open to anyone who can reach it.", Annotations: destructiveAnnot()}
+	mcp.AddTool(s, tool, func(ctx context.Context, _ *mcp.CallToolRequest, in authInput) (*mcp.CallToolResult, any, error) {
+		body := map[string]any{"enabled": in.Enabled, "adminUsername": in.AdminUsername}
+		if in.NewPassword != "" {
+			body["newPassword"] = in.NewPassword
+		}
+		return putJSON(ctx, a, "/settings/auth", body)
+	})
+	register(tool)
+
+	tool = &mcp.Tool{Name: "list_api_tokens", Description: "List API tokens with their name, scope, and prefix. The secrets themselves are never stored and cannot be read back.", Annotations: readOnlyAnnot()}
+	mcp.AddTool(s, tool, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+		return getJSON(ctx, a, "/settings/api-tokens", nil)
+	})
+	register(tool)
+
+	type createTokenInput struct {
+		Name  string `json:"name" jsonschema:"a label for the token"`
+		Scope string `json:"scope,omitempty" jsonschema:"admin (full access) or read (read-only); defaults to admin"`
+	}
+	tool = &mcp.Tool{Name: "create_api_token", Description: "Create an API token. The secret is returned once and cannot be retrieved again.", Annotations: destructiveAnnot()}
+	mcp.AddTool(s, tool, func(ctx context.Context, _ *mcp.CallToolRequest, in createTokenInput) (*mcp.CallToolResult, any, error) {
+		if strings.TrimSpace(in.Name) == "" {
+			return nil, nil, fmt.Errorf("name is required")
+		}
+		body := map[string]any{"name": in.Name}
+		if in.Scope != "" {
+			body["scope"] = in.Scope
+		}
+		var resp map[string]any
+		if err := a.client.post(ctx, "/settings/api-tokens", nil, body, &resp); err != nil {
+			return nil, nil, err
+		}
+		return mcpJSON(resp)
+	})
+	register(tool)
+
+	type deleteTokenInput struct {
+		Prefix string `json:"prefix" jsonschema:"the token's prefix, as shown by list_api_tokens"`
+	}
+	tool = &mcp.Tool{Name: "delete_api_token", Description: "Revoke an API token by its prefix. Revocation takes effect immediately.", Annotations: destructiveAnnot()}
+	mcp.AddTool(s, tool, func(ctx context.Context, _ *mcp.CallToolRequest, in deleteTokenInput) (*mcp.CallToolResult, any, error) {
+		if strings.TrimSpace(in.Prefix) == "" {
+			return nil, nil, fmt.Errorf("prefix is required")
+		}
+		if err := a.client.do(ctx, http.MethodDelete, "/settings/api-tokens/"+url.PathEscape(in.Prefix), nil, nil, nil); err != nil {
+			return nil, nil, err
+		}
+		return mcpJSON(map[string]string{"message": "token revoked", "prefix": in.Prefix})
+	})
+	register(tool)
+}
+
+// getJSON and putJSON decode an endpoint's JSON body straight into a tool
+// result, for the settings tools whose shapes the CLI does not model.
+func getJSON(ctx context.Context, a *app, path string, query url.Values) (*mcp.CallToolResult, any, error) {
+	var resp map[string]any
+	if err := a.client.get(ctx, path, query, &resp); err != nil {
+		return nil, nil, err
+	}
+	return mcpJSON(resp)
+}
+
+func putJSON(ctx context.Context, a *app, path string, body any) (*mcp.CallToolResult, any, error) {
+	var resp map[string]any
+	if err := a.client.put(ctx, path, nil, body, &resp); err != nil {
+		return nil, nil, err
+	}
+	return mcpJSON(resp)
 }
 
 // containerRef is the shared input for tools that target one container.
