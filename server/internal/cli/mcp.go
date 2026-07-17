@@ -24,89 +24,47 @@ const mcpAPITokenPrefix = "ldk_"
 // allows 10000, which is too large for a model's context window.
 const mcpMaxTail = 500
 
-// mcpOptions selects which action tiers are advertised. The read and lifecycle
-// tiers are always registered; these gate the sensitive ones.
-type mcpOptions struct {
-	destructive bool // remove_container
-	exec        bool // run_command
-	env         bool // get_env, set_env
-	settings    bool // settings reads and writes
-}
-
 const mcpLong = `Run a Model Context Protocol server over stdio so an AI assistant can
 query and manage LogDeck through the same HTTP API the CLI uses.
 
-Read and lifecycle (start/stop/restart) tools are always registered. Sensitive
-tools are opt-in:
-  --allow-destructive   register remove_container
-  --allow-exec          register run_command (one-shot exec in a container)
-  --allow-env           register get_env / set_env (env vars hold secrets, and
-                        writing them recreates the container)
-  --allow-settings      register settings reads and writes, including hosts,
-                        authentication, and API tokens
-  --allow-all           register all of the above
+Every tool is registered, and your API token decides what actually works — the
+same way it does for the CLI and the web UI. A read-scoped token can read logs,
+stats, events, and container details, and the server rejects it on every
+mutation and on environment variables and settings outright. An admin token can
+do everything an admin can do, including exec and removing containers.
 
-The token scope is the hard boundary and is enforced by the server: a read-only
-API token is rejected on every mutation, and on env and settings entirely,
-regardless of these flags. The flags only control which tools are advertised.`
+Hand an assistant a read-scoped token from LogDeck Settings if you want it to
+look but not touch.`
 
 func newMCPCmd(a *app) *cobra.Command {
-	var allowDestructive, allowExec, allowEnv, allowSettings, allowAll bool
-
-	cmd := &cobra.Command{
+	return &cobra.Command{
 		Use:   "mcp",
 		Short: "Run a Model Context Protocol server over stdio",
 		Long:  mcpLong,
 		Args:  cobra.NoArgs,
 		RunE: a.run(func(cmd *cobra.Command, args []string) error {
-			opts := mcpOptions{
-				destructive: allowDestructive || allowAll,
-				exec:        allowExec || allowAll,
-				env:         allowEnv || allowAll,
-				settings:    allowSettings || allowAll,
-			}
-
 			if a.conn.token != "" && !strings.HasPrefix(a.conn.token, mcpAPITokenPrefix) {
 				fmt.Fprintln(os.Stderr, "MCP: warning: token is not an ldk_ API token; it looks like an admin session token. Prefer a scoped API token from LogDeck Settings.")
 			}
 
 			server := mcp.NewServer(&mcp.Implementation{Name: "logdeck", Version: cmd.Root().Version}, nil)
-			registerMCPTools(server, a, opts)
+			registerMCPTools(server, a)
 
-			tiers := []string{"read", "lifecycle"}
-			if opts.destructive {
-				tiers = append(tiers, "destructive")
-			}
-			if opts.exec {
-				tiers = append(tiers, "exec")
-			}
-			if opts.env {
-				tiers = append(tiers, "env")
-			}
-			if opts.settings {
-				tiers = append(tiers, "settings")
-			}
-			fmt.Fprintf(os.Stderr, "MCP: %s enabled - server %s\n", strings.Join(tiers, " + "), a.conn.url)
+			fmt.Fprintf(os.Stderr, "MCP: serving %s - your API token's scope decides what works\n", a.conn.url)
 
 			return server.Run(cmd.Context(), &mcp.StdioTransport{})
 		}),
 	}
-
-	cmd.Flags().BoolVar(&allowDestructive, "allow-destructive", false, "register remove_container")
-	cmd.Flags().BoolVar(&allowExec, "allow-exec", false, "register run_command (one-shot exec)")
-	cmd.Flags().BoolVar(&allowEnv, "allow-env", false, "register get_env and set_env")
-	cmd.Flags().BoolVar(&allowSettings, "allow-settings", false, "register settings reads and writes, including auth and API tokens")
-	cmd.Flags().BoolVar(&allowAll, "allow-all", false, "register all action tools (destructive + exec + env + settings)")
-	return cmd
 }
 
-// registerMCPTools registers the tool set for the given tiers and returns the
-// names it registered, so flag gating can be unit-tested without a live server.
-func registerMCPTools(s *mcp.Server, a *app, opts mcpOptions) []string {
+// registerMCPTools registers every tool and returns the names it registered, so
+// the set can be unit-tested without a live server. Nothing is gated here: the
+// server enforces what the caller's token scope allows.
+func registerMCPTools(s *mcp.Server, a *app) []string {
 	var names []string
 	register := func(t *mcp.Tool) { names = append(names, t.Name) }
 
-	// --- Read tier (always registered) ---
+	// --- Reads ---
 
 	type listContainersInput struct {
 		State string `json:"state,omitempty" jsonschema:"filter by state: running, exited, paused, restarting, dead"`
@@ -394,31 +352,15 @@ func registerMCPTools(s *mcp.Server, a *app, opts mcpOptions) []string {
 	})
 	register(tool)
 
-	// --- Lifecycle tier (always registered) ---
+	// --- Actions ---
 
 	registerAction(s, a, register, "start_container", "start", "started", "Start a stopped container.", lifecycleAnnot())
 	registerAction(s, a, register, "stop_container", "stop", "stopped", "Stop a running container.", lifecycleAnnot())
 	registerAction(s, a, register, "restart_container", "restart", "restarted", "Restart a container.", lifecycleAnnot())
-
-	// --- Destructive tier ---
-
-	if opts.destructive {
-		registerAction(s, a, register, "remove_container", "remove", "removed", "Remove a container. This is irreversible.", destructiveAnnot())
-	}
-
-	// --- Exec tier ---
-
-	if opts.exec {
-		registerRunCommand(s, a, register)
-	}
-
-	if opts.env {
-		registerEnvTools(s, a, register)
-	}
-
-	if opts.settings {
-		registerSettingsTools(s, a, register)
-	}
+	registerAction(s, a, register, "remove_container", "remove", "removed", "Remove a container. This is irreversible.", destructiveAnnot())
+	registerRunCommand(s, a, register)
+	registerEnvTools(s, a, register)
+	registerSettingsTools(s, a, register)
 
 	return names
 }
