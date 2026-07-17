@@ -18,6 +18,17 @@ var readAndLifecycleTools = []string{
 	"start_container", "stop_container", "restart_container",
 }
 
+// envTools and settingsTools are advertised only behind --allow-env and
+// --allow-settings. The server denies both surfaces to read-scoped tokens
+// regardless; the flags decide what is offered to an admin-token client.
+var envTools = []string{"get_env", "set_env"}
+
+var settingsTools = []string{
+	"get_settings", "set_read_only", "set_log_storage",
+	"set_docker_hosts", "set_coolify_hosts", "set_auth",
+	"list_api_tokens", "create_api_token", "delete_api_token",
+}
+
 func registeredTools(t *testing.T, opts mcpOptions) []string {
 	t.Helper()
 	s := mcp.NewServer(&mcp.Implementation{Name: "logdeck", Version: "test"}, nil)
@@ -35,7 +46,14 @@ func TestMCPToolGating(t *testing.T) {
 		{name: "default", opts: mcpOptions{}},
 		{name: "destructive", opts: mcpOptions{destructive: true}, extra: []string{"remove_container"}},
 		{name: "exec", opts: mcpOptions{exec: true}, extra: []string{"run_command"}},
-		{name: "all", opts: mcpOptions{destructive: true, exec: true}, extra: []string{"remove_container", "run_command"}},
+		{name: "env", opts: mcpOptions{env: true}, extra: envTools},
+		{name: "settings", opts: mcpOptions{settings: true}, extra: settingsTools},
+		{
+			name: "all",
+			opts: mcpOptions{destructive: true, exec: true, env: true, settings: true},
+			extra: append(append([]string{"remove_container", "run_command"},
+				envTools...), settingsTools...),
+		},
 	}
 
 	for _, tc := range tests {

@@ -65,6 +65,30 @@ const actionTools = [
     summary:
       "Run one non-interactive command in a container and return separate stdout, stderr, and the exit code.",
   },
+  {
+    name: "get_env / set_env",
+    gate: "--allow-env",
+    summary:
+      "Read and replace a container's environment variables. Values commonly hold secrets, and a write recreates the container, so it restarts with a new ID.",
+  },
+  {
+    name: "get_settings / set_read_only / set_log_storage",
+    gate: "--allow-settings",
+    summary:
+      "Read settings, toggle server-wide read-only mode, and change log persistence and its retention caps.",
+  },
+  {
+    name: "set_docker_hosts / set_coolify_hosts",
+    gate: "--allow-settings",
+    summary:
+      "Replace the configured hosts. Each takes the complete list rather than merging, so read get_settings first.",
+  },
+  {
+    name: "set_auth / list_api_tokens / create_api_token / delete_api_token",
+    gate: "--allow-settings",
+    summary:
+      "Change authentication and manage API tokens. Disabling auth leaves the server open to anyone who can reach it, so enable this tier deliberately.",
+  },
 ];
 
 export default function McpPage() {
@@ -210,9 +234,10 @@ export default function McpPage() {
 
       <div className="prose prose-neutral dark:prose-invert max-w-none">
         <p className="my-4 text-base">
-          Environment-variable and settings writes are intentionally not exposed
-          as tools. Client confirmation prompts are a convenience, not a
-          security boundary — the token scope and these flags are.
+          Client confirmation prompts are a convenience, not a security boundary
+          — the token scope and these flags are. A read-scoped token cannot use
+          any action tool no matter which flags are set: the server rejects
+          every mutation, and denies the env and settings surfaces outright.
         </p>
 
         <h2 className="mb-4 mt-10 text-3xl font-bold tracking-tight">Notes</h2>
