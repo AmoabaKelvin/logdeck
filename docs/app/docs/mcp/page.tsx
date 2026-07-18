@@ -51,43 +51,37 @@ const readTools = [
 const actionTools = [
   {
     name: "start_container / stop_container / restart_container",
-    gate: "always registered (needs an admin token to run)",
     summary: "Reversible lifecycle actions.",
   },
   {
     name: "remove_container",
-    gate: "--allow-destructive",
-    summary: "Remove a container. Marked destructive so clients prompt harder.",
+    summary:
+      "Remove a container. Irreversible, and marked destructive so clients prompt harder.",
   },
   {
     name: "run_command",
-    gate: "--allow-exec",
     summary:
       "Run one non-interactive command in a container and return separate stdout, stderr, and the exit code.",
   },
   {
     name: "get_env / set_env",
-    gate: "--allow-env",
     summary:
       "Read and replace a container's environment variables. Values commonly hold secrets, and a write recreates the container, so it restarts with a new ID.",
   },
   {
     name: "get_settings / set_read_only / set_log_storage",
-    gate: "--allow-settings",
     summary:
       "Read settings, toggle server-wide read-only mode, and change log persistence and its retention caps.",
   },
   {
     name: "set_docker_hosts / set_coolify_hosts",
-    gate: "--allow-settings",
     summary:
       "Replace the configured hosts. Each takes the complete list rather than merging, so read get_settings first.",
   },
   {
     name: "set_auth / list_api_tokens / create_api_token / delete_api_token",
-    gate: "--allow-settings",
     summary:
-      "Change authentication and manage API tokens. Disabling auth leaves the server open to anyone who can reach it, so enable this tier deliberately.",
+      "Change authentication and manage API tokens. Disabling auth leaves the server open to anyone who can reach it.",
   },
 ];
 
@@ -152,8 +146,7 @@ export default function McpPage() {
         <p className="my-4 text-base">
           The server reads its connection from <code>LOGDECK_URL</code> and{" "}
           <code>LOGDECK_TOKEN</code> (or a saved CLI context). On startup it
-          prints, to stderr, which tool tiers are live — for example{" "}
-          <code>MCP: read + lifecycle enabled</code> — and warns if the token is
+          prints the server it is serving to stderr, and warns if the token is
           not a scoped <code>ldk_</code> API token.
         </p>
 
@@ -174,9 +167,10 @@ export default function McpPage() {
             <a href="/docs/configuration">scoped API tokens</a>.
           </li>
           <li>
-            An <strong>admin token</strong> can additionally run the action
-            tools you have enabled. You opt into that by choosing which token to
-            configure.
+            An <strong>admin token</strong> can do everything an admin can do,
+            including exec, environment variables, and settings — the same reach
+            it has in the CLI and the web UI. You opt into that simply by
+            choosing which token to configure.
           </li>
         </ul>
 
@@ -199,13 +193,12 @@ export default function McpPage() {
 
       <div className="prose prose-neutral dark:prose-invert max-w-none">
         <h2 className="mb-4 mt-10 text-3xl font-bold tracking-tight">
-          Actions are opt-in
+          Action tools
         </h2>
         <p className="mb-4 text-base">
-          Action tools are off by default and enabled with flags on the{" "}
-          <code>logdeck mcp</code> command. Even with a flag set, a read token
-          still cannot run them — the flag only decides which tools are
-          advertised.
+          These need an admin token. There are no flags to set: hand the
+          assistant the token you want it to have, exactly as you would for the
+          CLI.
         </p>
       </div>
 
@@ -213,9 +206,6 @@ export default function McpPage() {
         {actionTools.map((tool) => (
           <div key={tool.name} className="space-y-1">
             <h3 className="font-mono text-base font-semibold">{tool.name}</h3>
-            <p className="text-xs font-medium text-muted-foreground">
-              {tool.gate}
-            </p>
             <p className="text-sm text-muted-foreground">{tool.summary}</p>
           </div>
         ))}
@@ -223,21 +213,12 @@ export default function McpPage() {
 
       <div className="prose prose-neutral dark:prose-invert max-w-none">
         <p className="my-4 text-base">
-          Pass <code>--allow-all</code> to enable every action tier at once:
-        </p>
-      </div>
-
-      <CodeBlock
-        language="json"
-        code={`"args": ["mcp", "--allow-destructive", "--allow-exec"]`}
-      />
-
-      <div className="prose prose-neutral dark:prose-invert max-w-none">
-        <p className="my-4 text-base">
           Client confirmation prompts are a convenience, not a security boundary
-          — the token scope and these flags are. A read-scoped token cannot use
-          any action tool no matter which flags are set: the server rejects
-          every mutation, and denies the env and settings surfaces outright.
+          — the token scope is. A read-scoped token cannot use any action tool:
+          the server rejects every mutation, and denies the env and settings
+          surfaces outright. Destructive tools carry the protocol&apos;s
+          destructive hint, so a well-behaved client prompts harder before
+          running them.
         </p>
 
         <h2 className="mb-4 mt-10 text-3xl font-bold tracking-tight">Notes</h2>

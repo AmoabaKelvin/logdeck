@@ -7,71 +7,58 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// readAndLifecycleTools are registered regardless of the action flags. A read
-// token still cannot mutate — the server enforces that — but the lifecycle
-// tools are always advertised.
-var readAndLifecycleTools = []string{
+// allTools is the complete surface. Nothing is gated client-side: the caller's
+// token scope is what decides, and the server enforces it.
+var allTools = []string{
+	// reads
 	"list_containers", "get_logs", "search_logs", "inspect_container",
 	"list_events", "container_stats", "host_stats",
 	"list_images", "list_volumes", "list_networks",
 	"history_search", "history_status", "history_containers",
+	// container actions
 	"start_container", "stop_container", "restart_container",
-}
-
-// envTools and settingsTools are advertised only behind --allow-env and
-// --allow-settings. The server denies both surfaces to read-scoped tokens
-// regardless; the flags decide what is offered to an admin-token client.
-var envTools = []string{"get_env", "set_env"}
-
-var settingsTools = []string{
+	"remove_container", "run_command",
+	// env
+	"get_env", "set_env",
+	// settings
 	"get_settings", "set_read_only", "set_log_storage",
 	"set_docker_hosts", "set_coolify_hosts", "set_auth",
 	"list_api_tokens", "create_api_token", "delete_api_token",
 }
 
-func registeredTools(t *testing.T, opts mcpOptions) []string {
+func registeredTools(t *testing.T) []string {
 	t.Helper()
 	s := mcp.NewServer(&mcp.Implementation{Name: "logdeck", Version: "test"}, nil)
-	names := registerMCPTools(s, &app{}, opts)
+	names := registerMCPTools(s, &app{})
 	sort.Strings(names)
 	return names
 }
 
-func TestMCPToolGating(t *testing.T) {
-	tests := []struct {
-		name  string
-		opts  mcpOptions
-		extra []string
-	}{
-		{name: "default", opts: mcpOptions{}},
-		{name: "destructive", opts: mcpOptions{destructive: true}, extra: []string{"remove_container"}},
-		{name: "exec", opts: mcpOptions{exec: true}, extra: []string{"run_command"}},
-		{name: "env", opts: mcpOptions{env: true}, extra: envTools},
-		{name: "settings", opts: mcpOptions{settings: true}, extra: settingsTools},
-		{
-			name: "all",
-			opts: mcpOptions{destructive: true, exec: true, env: true, settings: true},
-			extra: append(append([]string{"remove_container", "run_command"},
-				envTools...), settingsTools...),
-		},
+func TestMCPRegistersEveryTool(t *testing.T) {
+	want := append([]string{}, allTools...)
+	sort.Strings(want)
+
+	got := registeredTools(t)
+
+	if len(got) != len(want) {
+		t.Fatalf("registered %d tools, want %d\n got:  %v\n want: %v", len(got), len(want), got, want)
 	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("tool set mismatch\n got:  %v\n want: %v", got, want)
+		}
+	}
+}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			want := append(append([]string{}, readAndLifecycleTools...), tc.extra...)
-			sort.Strings(want)
-
-			got := registeredTools(t, tc.opts)
-
-			if len(got) != len(want) {
-				t.Fatalf("registered %d tools, want %d\n got:  %v\n want: %v", len(got), len(want), got, want)
-			}
-			for i := range want {
-				if got[i] != want[i] {
-					t.Fatalf("tool set mismatch\n got:  %v\n want: %v", got, want)
-				}
-			}
-		})
+// Tool names are a client-facing contract: a rename silently breaks anyone's
+// saved prompts, so a change here should be deliberate.
+func TestMCPToolNamesAreUnique(t *testing.T) {
+	seen := map[string]bool{}
+	for _, name := range registeredTools(t) {
+		if seen[name] {
+			t.Errorf("duplicate tool name registered: %s", name)
+		}
+		seen[name] = true
 	}
 }
 
@@ -110,15 +97,16 @@ func TestClampTail(t *testing.T) {
 	}
 }
 
-// TestMCPActionToolsGatedOff confirms the sensitive tools are absent unless
-// their flag is set — the registration surface is the advertised surface.
-func TestMCPActionToolsGatedOff(t *testing.T) {
-	got := registeredTools(t, mcpOptions{})
-	for _, name := range []string{"remove_container", "run_command"} {
-		for _, have := range got {
-			if have == name {
-				t.Errorf("%s must not be registered without its flag", name)
-			}
+// The mcp command takes no flags: capability comes from the token, not from
+// how the server was launched.
+func TestMCPCommandHasNoCapabilityFlags(t *testing.T) {
+	cmd := newMCPCmd(&app{})
+	if f := cmd.Flags().Lookup("allow-all"); f != nil {
+		t.Error("allow-all flag is back; the token scope is the boundary")
+	}
+	for _, name := range []string{"allow-destructive", "allow-exec", "allow-env", "allow-settings"} {
+		if f := cmd.Flags().Lookup(name); f != nil {
+			t.Errorf("%s flag is back; the token scope is the boundary", name)
 		}
 	}
 }

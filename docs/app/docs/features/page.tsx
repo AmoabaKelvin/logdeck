@@ -197,8 +197,8 @@ const features: Feature[] = [
     items: [
       "Stdio MCP server (logdeck mcp) for Claude Desktop, Cursor, Claude Code, and other clients",
       "Read tools for containers, logs, cross-container search, events, stats, and stored history",
-      "Capability follows the API token: a read-scoped token cannot mutate anything",
-      "Actions are opt-in: start/stop/restart, plus --allow-destructive (remove) and --allow-exec (run_command)",
+      "Action tools for lifecycle, removal, one-shot exec, environment variables, and settings",
+      "Capability follows the API token, with no flags to configure: a read-scoped token cannot mutate anything, an admin token has the same reach it does in the UI",
       "Reuses the same HTTP API as the web UI and CLI — no new server, no new auth",
     ],
     href: "/docs/mcp",
