@@ -85,6 +85,41 @@ body.logdeck-demo-page {
   animation: log-stream-row-enter 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+@keyframes sparkline-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes sparkline-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 0.08;
+  }
+}
+
+.logdeck-demo-root .sparkline-line {
+  stroke-dasharray: 1;
+  animation: sparkline-draw 600ms ease-out;
+}
+
+.logdeck-demo-root .sparkline-fill {
+  opacity: 0.08;
+  animation: sparkline-fade 600ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logdeck-demo-root .sparkline-line,
+  .logdeck-demo-root .sparkline-fill {
+    animation: none;
+  }
+}
+
 body.logdeck-demo-page .font-mono {
   font-family:
     "Google Sans Code",
