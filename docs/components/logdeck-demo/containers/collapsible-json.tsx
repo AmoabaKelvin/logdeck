@@ -27,32 +27,40 @@ function colorizeJson(jsonStr: string): React.ReactNode {
 		for (const match of remaining.matchAll(tokenRegex)) {
 			if (match.index > lastIndex) {
 				parts.push(
-		<span key={partIdx++}>{remaining.slice(lastIndex, match.index)}</span>,
+					<span key={partIdx++}>
+						{remaining.slice(lastIndex, match.index)}
+					</span>,
 				);
 			}
 
 			if (match[1]) {
 				parts.push(
-		<span key={partIdx++} className="text-blue-600 dark:text-blue-400">
+					<span key={partIdx++} className="text-blue-600 dark:text-blue-400">
 						{match[1]}
 					</span>,
 				);
-parts.push(<span key={partIdx++}>:</span>);
+				parts.push(<span key={partIdx++}>:</span>);
 			} else if (match[2]) {
 				parts.push(
-		<span key={partIdx++} className="text-green-600 dark:text-green-400">
+					<span key={partIdx++} className="text-green-600 dark:text-green-400">
 						{match[2]}
 					</span>,
 				);
 			} else if (match[3]) {
 				parts.push(
-		<span key={partIdx++} className="text-orange-600 dark:text-orange-400">
+					<span
+						key={partIdx++}
+						className="text-orange-600 dark:text-orange-400"
+					>
 						{match[3]}
 					</span>,
 				);
 			} else if (match[4]) {
 				parts.push(
-		<span key={partIdx++} className="text-purple-600 dark:text-purple-400">
+					<span
+						key={partIdx++}
+						className="text-purple-600 dark:text-purple-400"
+					>
 						{match[4]}
 					</span>,
 				);
@@ -99,9 +107,7 @@ export function CollapsibleJson({
 				>
 					<ChevronRightIcon className="size-3" />
 				</button>
-				{highlightSearchText
-					? highlightSearchText(text, isCurrentMatch)
-					: text}
+				{highlightSearchText ? highlightSearchText(text, isCurrentMatch) : text}
 			</span>
 		);
 	}

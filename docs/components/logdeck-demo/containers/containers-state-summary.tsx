@@ -1,49 +1,56 @@
 import type { StateCounts } from "./container-utils";
+import { REMOVED_STATE } from "./container-utils";
 
 interface ContainersStateSummaryProps {
-  stateCounts: StateCounts;
+	stateCounts: StateCounts;
+	stateFilter: string;
+	onStateFilterChange: (value: string) => void;
 }
 
+const CHIPS: { state: string; label: string; dotClass: string }[] = [
+	{ state: "running", label: "Running", dotClass: "bg-emerald-500" },
+	{ state: "exited", label: "Exited", dotClass: "bg-muted" },
+	{ state: "paused", label: "Paused", dotClass: "bg-amber-500" },
+	{ state: "restarting", label: "Restarting", dotClass: "bg-blue-500" },
+	{ state: "dead", label: "Dead", dotClass: "bg-rose-500" },
+	{
+		state: REMOVED_STATE,
+		label: "Removed",
+		dotClass: "bg-muted-foreground/50",
+	},
+];
+
 export function ContainersStateSummary({
-  stateCounts,
+	stateCounts,
+	stateFilter,
+	onStateFilterChange,
 }: ContainersStateSummaryProps) {
-  return (
-    <div className="flex flex-wrap items-center gap-3 text-sm">
-      {stateCounts.running > 0 && (
-        <div className="flex items-center gap-2 rounded-md border bg-card px-3 py-2">
-          <div className="size-2 rounded-full bg-emerald-500" />
-          <span className="text-muted-foreground">Running</span>
-          <span className="font-semibold">{stateCounts.running}</span>
-        </div>
-      )}
-      {stateCounts.exited > 0 && (
-        <div className="flex items-center gap-2 rounded-md border bg-card px-3 py-2">
-          <div className="size-2 rounded-full bg-muted" />
-          <span className="text-muted-foreground">Exited</span>
-          <span className="font-semibold">{stateCounts.exited}</span>
-        </div>
-      )}
-      {stateCounts.paused > 0 && (
-        <div className="flex items-center gap-2 rounded-md border bg-card px-3 py-2">
-          <div className="size-2 rounded-full bg-amber-500" />
-          <span className="text-muted-foreground">Paused</span>
-          <span className="font-semibold">{stateCounts.paused}</span>
-        </div>
-      )}
-      {stateCounts.restarting > 0 && (
-        <div className="flex items-center gap-2 rounded-md border bg-card px-3 py-2">
-          <div className="size-2 rounded-full bg-blue-500" />
-          <span className="text-muted-foreground">Restarting</span>
-          <span className="font-semibold">{stateCounts.restarting}</span>
-        </div>
-      )}
-      {stateCounts.dead > 0 && (
-        <div className="flex items-center gap-2 rounded-md border bg-card px-3 py-2">
-          <div className="size-2 rounded-full bg-rose-500" />
-          <span className="text-muted-foreground">Dead</span>
-          <span className="font-semibold">{stateCounts.dead}</span>
-        </div>
-      )}
-    </div>
-  );
+	return (
+		<div className="flex flex-wrap items-center gap-3 text-sm">
+			{CHIPS.map((chip) => {
+				const count = stateCounts[chip.state as keyof StateCounts];
+				if (count === 0) {
+					return null;
+				}
+
+				const isActive = stateFilter === chip.state;
+
+				return (
+					<button
+						key={chip.state}
+						type="button"
+						aria-pressed={isActive}
+						onClick={() => onStateFilterChange(isActive ? "all" : chip.state)}
+						className={`flex min-h-10 items-center gap-2 rounded-md border px-3 py-2 transition-colors hover:bg-muted/50 ${
+							isActive ? "border-primary bg-muted/50" : "bg-card"
+						}`}
+					>
+						<div className={`size-2 rounded-full ${chip.dotClass}`} />
+						<span className="text-muted-foreground">{chip.label}</span>
+						<span className="font-semibold">{count}</span>
+					</button>
+				);
+			})}
+		</div>
+	);
 }
