@@ -91,7 +91,7 @@ const createTerminal = (theme: ITheme) => {
 		fastScrollSensitivity: 5,
 		theme,
 		fontFamily:
-			'"Google Sans Code", "PT Mono", Menlo, Monaco, "Courier New", monospace',
+			'"Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, "Courier New", monospace',
 		fontSize: 14,
 		lineHeight: 1.5,
 		letterSpacing: 0.5,

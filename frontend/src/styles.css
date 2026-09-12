@@ -1,5 +1,5 @@
 @import url("https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300..800&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=Google+Sans+Code:wght@300..700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400..700&display=swap");
 @import "tailwindcss";
 
 @import "tw-animate-css";
@@ -99,7 +99,7 @@ body {
 
 @theme inline {
   --font-mono:
-    "Google Sans Code", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
