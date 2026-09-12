@@ -1,151 +1,110 @@
-import { Github } from "lucide-react";
-import Link from "next/link";
+"use client";
 
-import { Separator } from "@/components/ui/separator";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+import { cn } from "@/lib/utils";
+
+const footerLinks = [
+  {
+    heading: "Documentation",
+    links: [
+      { label: "Getting started", href: "/docs/getting-started" },
+      { label: "Installation", href: "/docs/installation" },
+      { label: "Features", href: "/docs/features" },
+      { label: "Log history", href: "/docs/log-history" },
+      { label: "Alerting", href: "/docs/alerting" },
+      { label: "CLI", href: "/docs/cli" },
+      { label: "MCP server", href: "/docs/mcp" },
+      { label: "Configuration", href: "/docs/configuration" },
+    ],
+  },
+  {
+    heading: "Project",
+    links: [
+      { label: "GitHub", href: "https://github.com/AmoabaKelvin/logdeck" },
+      {
+        label: "Docker Hub",
+        href: "https://hub.docker.com/r/amoabakelvin/logdeck",
+      },
+      {
+        label: "Releases",
+        href: "https://github.com/AmoabaKelvin/logdeck/releases",
+      },
+      {
+        label: "Report an issue",
+        href: "https://github.com/AmoabaKelvin/logdeck/issues",
+      },
+      {
+        label: "License (GPL-3.0)",
+        href: "https://github.com/AmoabaKelvin/logdeck/blob/main/LICENSE",
+      },
+    ],
+  },
+  {
+    heading: "Try it",
+    links: [
+      { label: "Live demo", href: "/demo" },
+      { label: "Compare with Dozzle", href: "/#compare" },
+    ],
+  },
+];
 
 export function Footer() {
+  const isLanding = usePathname() === "/";
+
   return (
-    <footer className="border-t bg-background">
-      <div className="container py-12 md:py-16">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-          {/* Brand */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-lg">LogDeck</span>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Open-source dashboard and CLI for Docker and Podman.
+    <footer className="border-t border-dashed border-base-200 bg-background">
+      <div
+        className={cn(
+          "py-12",
+          isLanding && "font-display",
+          isLanding
+            ? "mx-auto w-full max-w-5xl border-x border-dashed border-base-200 px-4 2xl:max-w-6xl 2xl:px-12"
+            : "container",
+        )}
+      >
+        <div className="xl:grid xl:grid-cols-3 xl:gap-8">
+          <div>
+            <Link href="/" className="font-display text-lg font-medium">
+              LogDeck
+            </Link>
+            <p className="mt-1 max-w-xs text-pretty text-sm text-muted-foreground">
+              Self-hosted logs, alerts, and control for Docker and Podman. Built
+              by{" "}
+              <a
+                href="https://github.com/AmoabaKelvin"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-foreground hover:text-accent-500"
+              >
+                Amoaba Kelvin
+              </a>
+              .
             </p>
           </div>
-
-          {/* Documentation */}
-          <div className="space-y-3">
-            <h3 className="font-semibold text-sm">Documentation</h3>
-            <ul className="space-y-2 text-sm text-muted-foreground">
-              <li>
-                <Link
-                  href="/docs/getting-started"
-                  className="hover:text-foreground transition-colors"
-                >
-                  Getting Started
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/docs/installation"
-                  className="hover:text-foreground transition-colors"
-                >
-                  Installation
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/docs/features"
-                  className="hover:text-foreground transition-colors"
-                >
-                  Features
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/docs/cli"
-                  className="hover:text-foreground transition-colors"
-                >
-                  CLI
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/docs/configuration"
-                  className="hover:text-foreground transition-colors"
-                >
-                  Configuration
-                </Link>
-              </li>
-            </ul>
+          <div className="md:grid md:grid-cols-3 md:gap-8 xl:col-span-2">
+            {footerLinks.map((section) => (
+              <div key={section.heading} className="mt-12 md:mt-0">
+                <h3 className="text-sm font-medium">{section.heading}</h3>
+                <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
+                  {section.links.map((link) => (
+                    <li key={link.href}>
+                      <a
+                        href={link.href}
+                        className="hover:text-foreground"
+                        {...(link.href.startsWith("http")
+                          ? { target: "_blank", rel: "noopener noreferrer" }
+                          : {})}
+                      >
+                        {link.label}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </div>
-
-          {/* Resources */}
-          <div className="space-y-3">
-            <h3 className="font-semibold text-sm">Resources</h3>
-            <ul className="space-y-2 text-sm text-muted-foreground">
-              <li>
-                <a
-                  href="https://github.com/AmoabaKelvin/logdeck"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-foreground transition-colors flex items-center gap-1"
-                >
-                  <Github className="h-3 w-3" />
-                  GitHub Repository
-                </a>
-              </li>
-              <li>
-                <a
-                  href="https://hub.docker.com/r/amoabakelvin/logdeck"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-foreground transition-colors"
-                >
-                  Docker Hub
-                </a>
-              </li>
-              <li>
-                <a
-                  href="https://github.com/AmoabaKelvin/logdeck/issues"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-foreground transition-colors"
-                >
-                  Report an Issue
-                </a>
-              </li>
-            </ul>
-          </div>
-
-          {/* Legal */}
-          <div className="space-y-3">
-            <h3 className="font-semibold text-sm">Project</h3>
-            <ul className="space-y-2 text-sm text-muted-foreground">
-              <li>
-                <a
-                  href="https://github.com/AmoabaKelvin/logdeck/blob/main/LICENSE"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-foreground transition-colors"
-                >
-                  License (GPL-3.0)
-                </a>
-              </li>
-              <li>
-                <a
-                  href="https://github.com/AmoabaKelvin/logdeck/releases"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-foreground transition-colors"
-                >
-                  Releases
-                </a>
-              </li>
-            </ul>
-          </div>
-        </div>
-
-        <Separator className="my-8" />
-
-        <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-muted-foreground">
-          <p>
-            Built by{" "}
-            <a
-              href="https://github.com/AmoabaKelvin"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-medium hover:text-foreground transition-colors"
-            >
-              Amoaba Kelvin
-            </a>
-          </p>
-          <p>Open source software licensed under GPL-3.0</p>
         </div>
       </div>
     </footer>

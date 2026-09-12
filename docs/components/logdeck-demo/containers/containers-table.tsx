@@ -1,497 +1,278 @@
-import type { LucideIcon } from "lucide-react";
-import {
-	FileTextIcon,
-	PlayIcon,
-	RotateCwIcon,
-	SquareIcon,
-	Trash2Icon,
-} from "lucide-react";
 import { Fragment } from "react";
-
-import { Badge } from "@/components/logdeck-demo/ui/badge";
 import { Button } from "@/components/logdeck-demo/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/logdeck-demo/ui/dropdown-menu";
+import {
+  ArrowUpIcon,
+  EllipsisVerticalIcon,
+  FileTextIcon,
+  PlayIcon,
+  RotateCwIcon,
+  SquareIcon,
+} from "@/components/logdeck-demo/ui/icons";
 import { Spinner } from "@/components/logdeck-demo/ui/spinner";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/logdeck-demo/ui/table";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "@/components/logdeck-demo/ui/tooltip";
 import type { ComposeAction } from "../api/compose-actions";
 import type { StatsHistoryMap } from "../hooks/use-stats-history";
 import type { ContainerInfo, ContainerStatsMap } from "../types";
 import type {
-	ContainerActionType,
-	GroupByOption,
-	GroupedContainers,
-	RemovedContainerInfo,
+  ContainerActionType,
+  GroupByOption,
+  GroupedContainers,
+  SortDirection,
 } from "./container-utils";
-import {
-	formatBytes,
-	formatContainerName,
-	formatCPUPercent,
-	formatCreatedDate,
-	formatImageName,
-	formatMemoryStats,
-	getComposeProject,
-	getHealthBadgeClass,
-	getStateBadgeClass,
-	isCoolifyManaged,
-	isRemovedContainer,
-	toTitleCase,
-} from "./container-utils";
-import { Sparkline } from "./sparkline";
+import { getComposeProject, isRemovedContainer } from "./container-utils";
+import { headClass } from "./containers-table-cells";
+import type { ContainerRowCallbacks } from "./containers-table-row";
+import { ContainerRow } from "./containers-table-row";
 
-interface ActionButtonProps {
-	icon: LucideIcon;
-	action: ContainerActionType;
-	containerId: string;
-	onClick: () => void;
-	isPending: (action: ContainerActionType, id: string) => boolean;
-	busy: boolean;
-	isReadOnly: boolean;
-	variant?: "destructive";
-}
+const COLUMN_COUNT = 7;
 
-function ActionButton({
-	icon: Icon,
-	action,
-	containerId,
-	onClick,
-	isPending,
-	busy,
-	isReadOnly,
-	variant,
-}: ActionButtonProps) {
-	const pending = isPending(action, containerId);
-	const label = action.charAt(0).toUpperCase() + action.slice(1);
-	const tooltip = isReadOnly ? `${label} (Read-only mode)` : label;
-
-	return (
-		<Tooltip>
-			<TooltipTrigger asChild>
-				<span className="inline-block">
-					<Button
-						variant="outline"
-						size="icon"
-						className={`h-8 w-8 ${variant === "destructive" ? "text-destructive hover:bg-destructive hover:text-white" : ""}`}
-						onClick={onClick}
-						disabled={busy || isReadOnly}
-					>
-						{pending ? (
-							<Spinner className="size-4" />
-						) : (
-							<Icon className="size-4" />
-						)}
-					</Button>
-				</span>
-			</TooltipTrigger>
-			<TooltipContent>{tooltip}</TooltipContent>
-		</Tooltip>
-	);
-}
-
-interface ContainersTableProps {
-	isLoading: boolean;
-	isError: boolean;
-	error: unknown;
-	groupBy: GroupByOption;
-	emptyMessage: string;
-	filteredContainers: ContainerInfo[];
-	groupedItems: GroupedContainers[] | null;
-	pageItems: ContainerInfo[];
-	pendingActions: ReadonlyMap<string, ContainerActionType>;
-	pendingComposeActions: ReadonlyMap<string, ComposeAction>;
-	isReadOnly: boolean;
-	statsMap: ContainerStatsMap;
-	statsHistory: StatsHistoryMap;
-	onStart: (container: ContainerInfo) => void;
-	onStop: (container: ContainerInfo) => void;
-	onRestart: (container: ContainerInfo) => void;
-	onDelete: (container: ContainerInfo) => void;
-	onComposeAction: (action: ComposeAction, group: GroupedContainers) => void;
-	onViewLogs: (container: ContainerInfo) => void;
-	onPurgeHistory: (container: RemovedContainerInfo) => void;
-	onRetry: () => void;
+interface ContainersTableProps extends ContainerRowCallbacks {
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+  groupBy: GroupByOption;
+  sortDirection: SortDirection;
+  onSortDirectionChange: (direction: SortDirection) => void;
+  emptyMessage: string;
+  hasActiveFilters: boolean;
+  onClearFilters: () => void;
+  filteredContainers: ContainerInfo[];
+  groupedItems: GroupedContainers[] | null;
+  pageItems: ContainerInfo[];
+  pendingActions: ReadonlyMap<string, ContainerActionType>;
+  pendingComposeActions: ReadonlyMap<string, ComposeAction>;
+  isReadOnly: boolean;
+  statsMap: ContainerStatsMap;
+  statsHistory: StatsHistoryMap;
+  onComposeAction: (action: ComposeAction, group: GroupedContainers) => void;
+  onRetry: () => void;
 }
 
 export function ContainersTable({
-	isLoading,
-	isError,
-	error,
-	groupBy,
-	emptyMessage,
-	filteredContainers,
-	groupedItems,
-	pageItems,
-	pendingActions,
-	pendingComposeActions,
-	isReadOnly,
-	statsMap,
-	statsHistory,
-	onStart,
-	onStop,
-	onRestart,
-	onDelete,
-	onComposeAction,
-	onViewLogs,
-	onPurgeHistory,
-	onRetry,
+  isLoading,
+  isError,
+  error,
+  groupBy,
+  sortDirection,
+  onSortDirectionChange,
+  emptyMessage,
+  hasActiveFilters,
+  onClearFilters,
+  filteredContainers,
+  groupedItems,
+  pageItems,
+  pendingActions,
+  pendingComposeActions,
+  isReadOnly,
+  statsMap,
+  statsHistory,
+  onComposeAction,
+  onRetry,
+  ...rowCallbacks
 }: ContainersTableProps) {
-	const isPending = (action: ContainerActionType, id: string) =>
-		pendingActions.get(id) === action;
+  // Only real compose groups get stack actions; the "Standalone" fallback
+  // group has no compose project label to act on, and removed containers have
+  // nothing left to start or stop.
+  const isComposeGroup = (group: GroupedContainers) =>
+    group.items.some(
+      (container) =>
+        !isRemovedContainer(container) &&
+        getComposeProject(container.labels) === group.project,
+    );
 
-	const isBusy = (id: string) => pendingActions.has(id);
+  const renderRow = (container: ContainerInfo) => (
+    <ContainerRow
+      key={container.id}
+      container={container}
+      stats={statsMap[container.id]}
+      history={statsHistory[container.id] ?? []}
+      busy={pendingActions.has(container.id)}
+      isReadOnly={isReadOnly}
+      {...rowCallbacks}
+    />
+  );
 
-	const isComposePending = (action: ContainerActionType, project: string) =>
-		pendingComposeActions.get(project) === action;
+  const renderMessageRow = (children: React.ReactNode) => (
+    <tr>
+      <td colSpan={COLUMN_COUNT} className="h-40 px-0">
+        {children}
+      </td>
+    </tr>
+  );
 
-	const isComposeBusy = (project: string) => pendingComposeActions.has(project);
+  const renderBodyRows = () => {
+    if (isLoading) {
+      return renderMessageRow(
+        <div className="flex items-center justify-center gap-2 text-base text-muted-foreground sm:text-sm">
+          <Spinner />
+          Loading containers…
+        </div>,
+      );
+    }
 
-	// Only real compose groups get stack actions; the "Standalone" fallback
-	// group has no compose project label to act on, and removed containers have
-	// nothing left to start or stop.
-	const isComposeGroup = (group: GroupedContainers) =>
-		group.items.some(
-			(container) =>
-				!isRemovedContainer(container) &&
-				getComposeProject(container.labels) === group.project,
-		);
+    if (isError) {
+      return renderMessageRow(
+        <div className="flex flex-col items-center gap-3 text-center">
+          <p className="text-base text-muted-foreground sm:text-sm">
+            {(error instanceof Error && error.message) ||
+              "Unable to load containers."}
+          </p>
+          <Button size="sm" variant="outline" onClick={onRetry}>
+            Try again
+          </Button>
+        </div>,
+      );
+    }
 
-	const renderContainerRow = (container: ContainerInfo) => {
-		const state = container.state.toLowerCase();
-		const busy = isBusy(container.id);
-		const removed = isRemovedContainer(container);
+    if (filteredContainers.length === 0) {
+      return renderMessageRow(
+        <div className="flex flex-col items-center gap-3 text-center">
+          <p className="text-base text-muted-foreground sm:text-sm">
+            {hasActiveFilters
+              ? "No containers match these filters."
+              : emptyMessage}
+          </p>
+          {hasActiveFilters && (
+            <Button size="sm" variant="outline" onClick={onClearFilters}>
+              Clear filters
+            </Button>
+          )}
+        </div>,
+      );
+    }
 
-		return (
-			<TableRow key={container.id} className="hover:bg-muted/50">
-				<TableCell
-					className={`h-16 px-4 font-medium ${removed ? "text-muted-foreground" : ""}`}
-				>
-					<div className="flex items-center gap-2">
-						{formatContainerName(container.names)}
-						{isCoolifyManaged(container.labels) && (
-							<Badge className="bg-purple-500/10 text-purple-700 dark:text-purple-400 border-0 text-[10px] px-1.5 h-4">
-								Coolify
-							</Badge>
-						)}
-					</div>
-				</TableCell>
-				<TableCell className="h-16 px-4 text-sm text-muted-foreground">
-					<TooltipProvider>
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<span className="block cursor-help truncate max-w-[240px]">
-									{formatImageName(container.image)}
-								</span>
-							</TooltipTrigger>
-							<TooltipContent>{container.image}</TooltipContent>
-						</Tooltip>
-					</TooltipProvider>
-				</TableCell>
-				<TableCell className="h-16 px-4">
-					<div className="flex items-center gap-1.5">
-						<Badge
-							className={`${getStateBadgeClass(container.state)} border-0`}
-						>
-							{toTitleCase(container.state)}
-						</Badge>
-						{container.health && (
-							<Badge
-								className={`${getHealthBadgeClass(container.health)} border-0`}
-							>
-								{toTitleCase(container.health)}
-							</Badge>
-						)}
-					</div>
-				</TableCell>
-				<TableCell className="h-16 px-4 text-sm">
-					{removed ? (
-						<span className="font-mono text-xs text-muted-foreground">
-							{container.storedBytes > 0
-								? `${formatBytes(container.storedBytes)} stored`
-								: "—"}
-						</span>
-					) : state !== "running" ? (
-						<span className="text-muted-foreground">—</span>
-					) : (
-						<div className="space-y-0.5 font-mono text-xs">
-							<div className="flex items-center gap-2">
-								<span>
-									<span className="text-muted-foreground">CPU: </span>
-									{formatCPUPercent(statsMap[container.id]?.cpu_percent)}
-								</span>
-								<Sparkline
-									values={(statsHistory[container.id] ?? []).map((s) => s.cpu)}
-								/>
-							</div>
-							<div className="flex items-center gap-2">
-								<span>
-									<span className="text-muted-foreground">Mem: </span>
-									{formatMemoryStats(statsMap[container.id])}
-								</span>
-								<Sparkline
-									values={(statsHistory[container.id] ?? []).map(
-										(s) => s.memoryPercent,
-									)}
-								/>
-							</div>
-						</div>
-					)}
-				</TableCell>
-				<TableCell className="h-16 px-4 text-sm text-muted-foreground">
-					{container.status || "—"}
-				</TableCell>
-				<TableCell className="h-16 px-4 text-sm text-muted-foreground">
-					{formatCreatedDate(container.created)}
-				</TableCell>
-				<TableCell className="h-16 px-4">
-					<TooltipProvider>
-						<div className="flex items-center gap-1">
-							{removed && (
-								<>
-									<Tooltip>
-										<TooltipTrigger asChild>
-											<Button
-												variant="outline"
-												size="icon"
-												className="h-8 w-8"
-												onClick={() => onViewLogs(container)}
-												aria-label="View stored logs"
-											>
-												<FileTextIcon className="size-4" />
-											</Button>
-										</TooltipTrigger>
-										<TooltipContent>View stored logs</TooltipContent>
-									</Tooltip>
-									<Tooltip>
-										<TooltipTrigger asChild>
-											<span className="inline-block">
-												<Button
-													variant="outline"
-													size="icon"
-													className="h-8 w-8 text-destructive hover:bg-destructive hover:text-white"
-													onClick={() => onPurgeHistory(container)}
-													disabled={isReadOnly}
-													aria-label="Delete stored logs"
-												>
-													<Trash2Icon className="size-4" />
-												</Button>
-											</span>
-										</TooltipTrigger>
-										<TooltipContent>
-											{isReadOnly
-												? "Delete stored logs (Read-only mode)"
-												: "Delete stored logs"}
-										</TooltipContent>
-									</Tooltip>
-								</>
-							)}
-							{!removed && (
-								<>
-									{state === "exited" && (
-										<ActionButton
-											icon={PlayIcon}
-											action="start"
-											containerId={container.id}
-											onClick={() => onStart(container)}
-											isPending={isPending}
-											busy={busy}
-											isReadOnly={isReadOnly}
-										/>
-									)}
-									{state === "running" && (
-										<ActionButton
-											icon={SquareIcon}
-											action="stop"
-											containerId={container.id}
-											onClick={() => onStop(container)}
-											isPending={isPending}
-											busy={busy}
-											isReadOnly={isReadOnly}
-										/>
-									)}
-									<ActionButton
-										icon={RotateCwIcon}
-										action="restart"
-										containerId={container.id}
-										onClick={() => onRestart(container)}
-										isPending={isPending}
-										busy={busy}
-										isReadOnly={isReadOnly}
-									/>
-									<ActionButton
-										icon={Trash2Icon}
-										action="remove"
-										containerId={container.id}
-										onClick={() => onDelete(container)}
-										isPending={isPending}
-										busy={busy}
-										isReadOnly={isReadOnly}
-										variant="destructive"
-									/>
-									<Tooltip>
-										<TooltipTrigger asChild>
-											<Button
-												variant="outline"
-												size="icon"
-												className="h-8 w-8"
-												onClick={() => onViewLogs(container)}
-												disabled={busy}
-											>
-												<FileTextIcon className="size-4" />
-											</Button>
-										</TooltipTrigger>
-										<TooltipContent>View Logs</TooltipContent>
-									</Tooltip>
-								</>
-							)}
-						</div>
-					</TooltipProvider>
-				</TableCell>
-			</TableRow>
-		);
-	};
+    if (groupBy === "compose" && groupedItems) {
+      return groupedItems.map((group) => {
+        const busy = pendingComposeActions.has(group.project);
 
-	const renderBodyRows = () => {
-		if (isLoading) {
-			return (
-				<TableRow>
-					<TableCell colSpan={7} className="h-32">
-						<div className="flex items-center justify-center text-sm text-muted-foreground">
-							<Spinner className="mr-2" />
-							Loading containers…
-						</div>
-					</TableCell>
-				</TableRow>
-			);
-		}
+        return (
+          <Fragment key={group.project}>
+            <tr className="border-b border-border/60 bg-muted/40">
+              <td colSpan={COLUMN_COUNT} className="h-10 px-0">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-baseline gap-2">
+                    <span className="truncate font-medium">
+                      {group.project}
+                    </span>
+                    <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                      {group.items.length} container
+                      {group.items.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    {group.project !== "Standalone" && (
+                      <Button variant="ghost" size="sm">
+                        <FileTextIcon className="size-4" />
+                        Stack logs
+                      </Button>
+                    )}
+                    {isComposeGroup(group) && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            disabled={busy}
+                            aria-label={`Actions for ${group.project}`}
+                          >
+                            {busy ? (
+                              <Spinner className="size-4" />
+                            ) : (
+                              <EllipsisVerticalIcon className="size-4" />
+                            )}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          {isReadOnly && (
+                            <DropdownMenuLabel className="text-muted-foreground">
+                              Read-only mode
+                            </DropdownMenuLabel>
+                          )}
+                          <DropdownMenuItem
+                            disabled={isReadOnly}
+                            onClick={() => onComposeAction("start", group)}
+                          >
+                            <PlayIcon className="size-4" />
+                            Start stack
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            disabled={isReadOnly}
+                            onClick={() => onComposeAction("stop", group)}
+                          >
+                            <SquareIcon className="size-4" />
+                            Stop stack
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            disabled={isReadOnly}
+                            onClick={() => onComposeAction("restart", group)}
+                          >
+                            <RotateCwIcon className="size-4" />
+                            Restart stack
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </div>
+                </div>
+              </td>
+            </tr>
+            {group.items.map(renderRow)}
+          </Fragment>
+        );
+      });
+    }
 
-		if (isError) {
-			return (
-				<TableRow>
-					<TableCell colSpan={7} className="h-32">
-						<div className="flex flex-col items-center gap-3 text-center">
-							<p className="text-sm text-muted-foreground">
-								{(error instanceof Error && error.message) ||
-									"Unable to load containers."}
-							</p>
-							<Button size="sm" variant="outline" onClick={onRetry}>
-								Try again
-							</Button>
-						</div>
-					</TableCell>
-				</TableRow>
-			);
-		}
+    return pageItems.map(renderRow);
+  };
 
-		if (filteredContainers.length === 0) {
-			return (
-				<TableRow>
-					<TableCell colSpan={7} className="h-32">
-						<div className="text-center text-sm text-muted-foreground">
-							{emptyMessage}
-						</div>
-					</TableCell>
-				</TableRow>
-			);
-		}
-
-		if (groupBy === "compose" && groupedItems) {
-			return groupedItems.map((group) => (
-				<Fragment key={group.project}>
-					<TableRow className="bg-muted/30 hover:bg-muted/30">
-						<TableCell
-							colSpan={7}
-							className="h-10 px-4 text-xs font-medium text-muted-foreground"
-						>
-							<div className="flex items-center justify-between">
-								<span>
-									{group.project} · {group.items.length} container
-									{group.items.length === 1 ? "" : "s"}
-								</span>
-								<div className="flex items-center gap-3">
-									{group.project !== "Standalone" && (
-										<span className="inline-flex items-center gap-1 text-primary hover:underline">
-											<FileTextIcon className="size-3" />
-											Stack logs
-										</span>
-									)}
-									{isComposeGroup(group) && (
-										<TooltipProvider>
-											<div className="flex items-center gap-1">
-												<ActionButton
-													icon={PlayIcon}
-													action="start"
-													containerId={group.project}
-													onClick={() => onComposeAction("start", group)}
-													isPending={isComposePending}
-													busy={isComposeBusy(group.project)}
-													isReadOnly={isReadOnly}
-												/>
-												<ActionButton
-													icon={SquareIcon}
-													action="stop"
-													containerId={group.project}
-													onClick={() => onComposeAction("stop", group)}
-													isPending={isComposePending}
-													busy={isComposeBusy(group.project)}
-													isReadOnly={isReadOnly}
-												/>
-												<ActionButton
-													icon={RotateCwIcon}
-													action="restart"
-													containerId={group.project}
-													onClick={() => onComposeAction("restart", group)}
-													isPending={isComposePending}
-													busy={isComposeBusy(group.project)}
-													isReadOnly={isReadOnly}
-												/>
-											</div>
-										</TooltipProvider>
-									)}
-								</div>
-							</div>
-						</TableCell>
-					</TableRow>
-					{group.items.map(renderContainerRow)}
-				</Fragment>
-			));
-		}
-
-		return pageItems.map(renderContainerRow);
-	};
-
-	return (
-		<div className="rounded-lg border bg-card">
-			<Table>
-				<TableHeader>
-					<TableRow className="hover:bg-transparent border-b">
-						<TableHead className="h-12 px-4 font-medium">Name</TableHead>
-						<TableHead className="h-12 px-4 font-medium">Image</TableHead>
-						<TableHead className="h-12 px-4 font-medium w-[120px]">
-							State
-						</TableHead>
-						<TableHead className="h-12 px-4 font-medium w-[160px]">
-							Metrics
-						</TableHead>
-						<TableHead className="h-12 px-4 font-medium">Uptime</TableHead>
-						<TableHead className="h-12 px-4 font-medium">Created</TableHead>
-						<TableHead className="h-12 px-4 font-medium w-[120px]">
-							Actions
-						</TableHead>
-					</TableRow>
-				</TableHeader>
-				<TableBody>{renderBodyRows()}</TableBody>
-			</Table>
-		</div>
-	);
+  return (
+    <div className="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
+      <div className="inline-block min-w-full px-4 py-2 align-middle sm:px-6 lg:px-8">
+        <table className="w-full table-fixed text-sm max-lg:w-max max-lg:min-w-full max-lg:table-auto">
+          <thead>
+            <tr className="border-b">
+              <th className={`${headClass} w-[29%]`}>Container</th>
+              <th className={`${headClass} w-[13%]`}>Status</th>
+              <th className={`${headClass} hidden w-[10%] md:table-cell`}>
+                Uptime
+              </th>
+              <th className={`${headClass} hidden w-[10%] lg:table-cell`}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onSortDirectionChange(
+                      sortDirection === "desc" ? "asc" : "desc",
+                    )
+                  }
+                  aria-label={`Created, sorted ${sortDirection === "desc" ? "newest" : "oldest"} first`}
+                  className="inline-flex items-center gap-1 rounded-sm hover:text-foreground"
+                >
+                  Created
+                  <ArrowUpIcon
+                    className={`size-3.5 shrink-0 ${sortDirection === "desc" ? "rotate-180" : ""}`}
+                  />
+                </button>
+              </th>
+              <th className={`${headClass} hidden w-[10%] lg:table-cell`}>
+                Ports
+              </th>
+              <th className={`${headClass} hidden w-[22%] sm:table-cell`}>
+                Usage
+              </th>
+              <th className={`${headClass} w-[6%]`}>
+                <span className="sr-only">Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>{renderBodyRows()}</tbody>
+        </table>
+      </div>
+    </div>
+  );
 }

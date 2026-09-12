@@ -11,67 +11,67 @@ export type LogSource = (typeof LOG_SOURCES)[number];
 // The view state LogViewer needs from its host. The sheet keeps it in local
 // component state; the full-page route persists it to the URL.
 export interface LogViewState {
-	source: LogSource;
-	setSource: (value: LogSource) => void;
-	searchText: string;
-	setSearchText: (value: string) => void;
-	useRegex: boolean;
-	setUseRegex: (value: boolean) => void;
-	selectedLevels: Set<LogLevel>;
-	setSelectedLevels: (value: Set<LogLevel>) => void;
-	showTimestamps: boolean;
-	setShowTimestamps: (value: boolean) => void;
-	wrapText: boolean;
-	setWrapText: (value: boolean) => void;
-	logLines: number;
-	setLogLines: (value: number) => void;
-	timeRange: TimeRange;
-	setTimeRange: (value: TimeRange) => void;
+  source: LogSource;
+  setSource: (value: LogSource) => void;
+  searchText: string;
+  setSearchText: (value: string) => void;
+  useRegex: boolean;
+  setUseRegex: (value: boolean) => void;
+  selectedLevels: Set<LogLevel>;
+  setSelectedLevels: (value: Set<LogLevel>) => void;
+  showTimestamps: boolean;
+  setShowTimestamps: (value: boolean) => void;
+  wrapText: boolean;
+  setWrapText: (value: boolean) => void;
+  logLines: number;
+  setLogLines: (value: number) => void;
+  timeRange: TimeRange;
+  setTimeRange: (value: TimeRange) => void;
 }
 
 export function useLocalLogViewState(): LogViewState {
-	const [source, setSource] = useState<LogSource>("live");
-	const [searchText, setSearchText] = useState("");
-	const [useRegex, setUseRegex] = useState(false);
-	const [selectedLevels, setSelectedLevels] = useState<Set<LogLevel>>(
-		new Set(),
-	);
-	const [showTimestamps, setShowTimestamps] = useState(true);
-	const [wrapText, setWrapText] = useState(false);
-	const [logLines, setLogLines] = useState(100);
-	const [timeRange, setTimeRange] = useState<TimeRange>(ALL_TIME_RANGE);
+  const [source, setSource] = useState<LogSource>("live");
+  const [searchText, setSearchText] = useState("");
+  const [useRegex, setUseRegex] = useState(false);
+  const [selectedLevels, setSelectedLevels] = useState<Set<LogLevel>>(
+    new Set(),
+  );
+  const [showTimestamps, setShowTimestamps] = useState(true);
+  const [wrapText, setWrapText] = useState(false);
+  const [logLines, setLogLines] = useState(100);
+  const [timeRange, setTimeRange] = useState<TimeRange>(ALL_TIME_RANGE);
 
-	return {
-		source,
-		setSource,
-		searchText,
-		setSearchText,
-		useRegex,
-		setUseRegex,
-		selectedLevels,
-		setSelectedLevels,
-		showTimestamps,
-		setShowTimestamps,
-		wrapText,
-		setWrapText,
-		logLines,
-		setLogLines,
-		timeRange,
-		setTimeRange,
-	};
+  return {
+    source,
+    setSource,
+    searchText,
+    setSearchText,
+    useRegex,
+    setUseRegex,
+    selectedLevels,
+    setSelectedLevels,
+    showTimestamps,
+    setShowTimestamps,
+    wrapText,
+    setWrapText,
+    logLines,
+    setLogLines,
+    timeRange,
+    setTimeRange,
+  };
 }
 
 // The levels the wire actually carries: the log parser normalises "WARNING" to
 // "WARN", and the history endpoint rejects anything outside this set.
 export const LOG_LEVELS: readonly LogLevel[] = [
-	"TRACE",
-	"DEBUG",
-	"INFO",
-	"WARN",
-	"ERROR",
-	"FATAL",
-	"PANIC",
-	"UNKNOWN",
+  "TRACE",
+  "DEBUG",
+  "INFO",
+  "WARN",
+  "ERROR",
+  "FATAL",
+  "PANIC",
+  "UNKNOWN",
 ];
 
 // The demo has no URL state (the docs site must not depend on nuqs); the

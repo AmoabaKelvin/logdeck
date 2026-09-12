@@ -4,8 +4,8 @@ import { toast } from "sonner";
 import { deleteHistoryContainer } from "../api/get-history";
 
 export interface DeleteHistoryTarget {
-	name: string;
-	host: string;
+  name: string;
+  host: string;
 }
 
 /**
@@ -14,22 +14,22 @@ export interface DeleteHistoryTarget {
  * "Removed" chip count.
  */
 export function useDeleteHistoryContainer() {
-	const queryClient = useQueryClient();
+  const queryClient = useQueryClient();
 
-	return useMutation({
-		mutationFn: ({ name, host }: DeleteHistoryTarget) =>
-			deleteHistoryContainer(name, host),
-		onSuccess: (result) => {
-			toast.success(result.message, {
-				description:
-					result.linesDeleted > 0
-						? `${result.linesDeleted.toLocaleString()} log lines deleted.`
-						: undefined,
-			});
-			queryClient.invalidateQueries({ queryKey: ["history", "containers"] });
-			queryClient.invalidateQueries({ queryKey: ["history", "status"] });
-			queryClient.invalidateQueries({ queryKey: ["containers"] });
-		},
-		onError: (error: Error) => toast.error(error.message),
-	});
+  return useMutation({
+    mutationFn: ({ name, host }: DeleteHistoryTarget) =>
+      deleteHistoryContainer(name, host),
+    onSuccess: (result) => {
+      toast.success(result.message, {
+        description:
+          result.linesDeleted > 0
+            ? `${result.linesDeleted.toLocaleString()} log lines deleted.`
+            : undefined,
+      });
+      queryClient.invalidateQueries({ queryKey: ["history", "containers"] });
+      queryClient.invalidateQueries({ queryKey: ["history", "status"] });
+      queryClient.invalidateQueries({ queryKey: ["containers"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
 }

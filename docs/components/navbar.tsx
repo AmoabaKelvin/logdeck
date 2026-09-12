@@ -1,84 +1,67 @@
 "use client";
 
-import { Github } from "lucide-react";
 import Link from "next/link";
-import * as React from "react";
+import { usePathname } from "next/navigation";
 
 import { MobileSidebar } from "@/components/docs/mobile-sidebar";
+import { Github01Icon } from "@hugeicons/core-free-icons";
+
+import { Icon, pill } from "@/components/landing/ui";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export function Navbar() {
-  const [scrolled, setScrolled] = React.useState(false);
+const links = [
+  { title: "Features", href: "/#features" },
+  { title: "Install", href: "/#install" },
+  { title: "Compare", href: "/#compare" },
+  { title: "Docs", href: "/docs/getting-started" },
+];
 
-  React.useEffect(() => {
-    const handleScroll = () => {
-      setScrolled(window.scrollY > 10);
-    };
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+export function Navbar() {
+  const isLanding = usePathname() === "/";
 
   return (
-    <header
-      className={cn(
-        "sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 transition-all",
-        scrolled && "shadow-sm"
-      )}
-    >
-      <div className="container flex h-16 items-center justify-between">
+    <header className="sticky top-0 z-50 w-full border-b border-dashed border-base-200 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div
+        className={cn(
+          "flex h-16 items-center justify-between",
+          isLanding && "font-display",
+          isLanding
+            ? "mx-auto w-full max-w-5xl border-x border-dashed border-base-200 px-4 2xl:max-w-6xl 2xl:px-12"
+            : "container",
+        )}
+      >
         <div className="flex items-center gap-8">
-          <Link href="/" className="flex items-center space-x-2">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-xl">LogDeck</span>
-            </div>
+          <Link href="/" className="font-display text-lg font-medium">
+            LogDeck
           </Link>
-
-          <nav className="hidden md:flex items-center gap-6">
-            <Link
-              href="/docs/getting-started"
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Documentation
-            </Link>
-            <Link
-              href="/#features"
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Features
-            </Link>
-            <Link
-              href="/#installation"
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Installation
-            </Link>
-            <Link
-              href="/demo"
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Demo
-            </Link>
+          <nav className="hidden items-center gap-4 md:flex">
+            {links.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="text-sm text-muted-foreground hover:text-foreground"
+              >
+                {link.title}
+              </Link>
+            ))}
           </nav>
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" asChild className="md:hidden">
-            <Link href="/demo">Demo</Link>
-          </Button>
-          <Button variant="ghost" size="sm" asChild>
-            <a
-              href="https://github.com/AmoabaKelvin/logdeck"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2"
-            >
-              <Github className="h-4 w-4" />
-              <span className="hidden sm:inline">GitHub</span>
-            </a>
-          </Button>
-          <ThemeToggle />
+          <a
+            href="https://github.com/AmoabaKelvin/logdeck"
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`${pill.muted} h-8 gap-2 max-sm:px-2.5`}
+          >
+            <Icon icon={Github01Icon} size={16} className="shrink-0" />
+            <span className="max-sm:sr-only">GitHub</span>
+          </a>
+          <Link href="/demo" className={`${pill.accent} h-8`}>
+            Demo
+          </Link>
+          {!isLanding && <ThemeToggle />}
           <MobileSidebar />
         </div>
       </div>
