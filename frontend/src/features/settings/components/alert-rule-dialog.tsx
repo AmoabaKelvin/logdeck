@@ -1,20 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import {
-	ArrowLeftIcon,
-	CheckIcon,
-	HeartPulseIcon,
-	type LucideIcon,
-	MemoryStickIcon,
-	OctagonXIcon,
-	RegexIcon,
-	RotateCcwIcon,
-	SlidersHorizontalIcon,
-	TrendingUpIcon,
-	XIcon,
-} from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
-
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -23,6 +9,19 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import {
+	ArrowLeftIcon,
+	CheckIcon,
+	HeartPulseIcon,
+	type IconComponent,
+	MemoryStickIcon,
+	OctagonXIcon,
+	RegexIcon,
+	RotateCcwIcon,
+	SlidersHorizontalIcon,
+	TrendingUpIcon,
+	XIcon,
+} from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -94,7 +93,7 @@ const EMPTY_FORM: FormState = {
 
 interface Preset {
 	id: string;
-	icon: LucideIcon;
+	icon: IconComponent;
 	title: string;
 	description: string;
 	form: Partial<FormState>;

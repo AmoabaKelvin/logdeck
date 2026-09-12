@@ -4,10 +4,10 @@ import {
 	useNavigate,
 	useRouter,
 } from "@tanstack/react-router";
-import { ArrowLeftIcon } from "lucide-react";
 import { useMemo } from "react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
+import { ArrowLeftIcon } from "@/components/ui/icons";
 import {
 	Tooltip,
 	TooltipContent,

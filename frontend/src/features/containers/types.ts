@@ -15,6 +15,13 @@ export interface ContainerInfo {
 	health?: string;
 	labels?: Record<string, string>;
 	host: string;
+	ports?: ContainerPort[];
+}
+
+export interface ContainerPort {
+	publicPort: number;
+	privatePort: number;
+	type: string;
 }
 
 export interface HostError {

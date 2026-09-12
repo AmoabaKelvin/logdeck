@@ -1,7 +1,5 @@
-import { Check, Copy } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -21,6 +19,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import { CheckIcon, CopyIcon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -128,9 +127,9 @@ export function ApiTokensSection() {
 							</code>
 							<Button variant="outline" size="sm" onClick={handleCopy}>
 								{copied ? (
-									<Check className="size-3.5" />
+									<CheckIcon className="size-3.5" />
 								) : (
-									<Copy className="size-3.5" />
+									<CopyIcon className="size-3.5" />
 								)}
 								{copied ? "Copied" : "Copy"}
 							</Button>

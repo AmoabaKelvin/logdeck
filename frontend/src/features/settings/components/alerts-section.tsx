@@ -1,7 +1,5 @@
-import { PencilIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -20,6 +18,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import { PencilIcon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {

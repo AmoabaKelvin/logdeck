@@ -45,7 +45,7 @@ export function SettingsPage() {
 	return (
 		<div className="container mx-auto max-w-3xl px-4 py-8 space-y-6">
 			<div>
-				<h1 className="text-2xl font-bold tracking-tight">Settings</h1>
+				<h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
 				<p className="text-sm text-muted-foreground mt-1">
 					Manage LogDeck configuration. Sections marked as set via environment
 					variable can only be changed by updating the environment and

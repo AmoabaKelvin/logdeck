@@ -1,7 +1,6 @@
-import { XIcon } from "lucide-react";
 import { useId, useMemo, useState } from "react";
-
 import { Badge } from "@/components/ui/badge";
+import { XIcon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 

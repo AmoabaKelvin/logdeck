@@ -1,9 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Save } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
-
 import { Button } from "@/components/ui/button";
+import { SaveIcon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -220,7 +219,7 @@ export function ResourceLimits({
 									disabled={isReadOnly || updateMutation.isPending}
 									className="h-8"
 								>
-									<Save className="mr-2 h-3.5 w-3.5" />
+									<SaveIcon className="mr-2 h-3.5 w-3.5" />
 									{updateMutation.isPending ? "Saving..." : "Save"}
 								</Button>
 							</span>

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -130,6 +131,7 @@ func (c *MultiHostClient) ListContainersAllHosts(ctx context.Context) (map[strin
 					Health:  healthFromStatus(ctr.Status),
 					Labels:  ctr.Labels,
 					Host:    name,
+					Ports:   publishedPorts(ctr.Ports),
 				})
 			}
 			result[name] = hostContainers
@@ -138,6 +140,38 @@ func (c *MultiHostClient) ListContainersAllHosts(ctx context.Context) (map[strin
 
 	wg.Wait()
 	return result, hostErrors, nil
+}
+
+// Docker reports one entry per IP binding, so a port published on both IPv4 and
+// IPv6 arrives twice. Deduplicate, drop the unpublished ones, and sort so the
+// order is stable between polls.
+func publishedPorts(ports []container.Port) []models.ContainerPort {
+	seen := make(map[models.ContainerPort]struct{}, len(ports))
+	mapped := make([]models.ContainerPort, 0, len(ports))
+
+	for _, port := range ports {
+		if port.PublicPort == 0 {
+			continue
+		}
+		entry := models.ContainerPort{
+			PublicPort:  port.PublicPort,
+			PrivatePort: port.PrivatePort,
+			Type:        port.Type,
+		}
+		if _, duplicate := seen[entry]; duplicate {
+			continue
+		}
+		seen[entry] = struct{}{}
+		mapped = append(mapped, entry)
+	}
+
+	sort.Slice(mapped, func(i, j int) bool {
+		if mapped[i].PublicPort != mapped[j].PublicPort {
+			return mapped[i].PublicPort < mapped[j].PublicPort
+		}
+		return mapped[i].PrivatePort < mapped[j].PrivatePort
+	})
+	return mapped
 }
 
 func (c *MultiHostClient) GetClient(hostName string) (*client.Client, error) {

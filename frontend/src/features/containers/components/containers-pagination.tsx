@@ -48,7 +48,7 @@ export function ContainersPagination({
 			return Array.from({ length: totalPages }, (_, index) => {
 				const pageNumber = index + 1;
 				return (
-					<PaginationItem key={pageNumber}>
+					<PaginationItem key={pageNumber} className="max-sm:hidden">
 						<PaginationLink
 							href="#"
 							onClick={(event) => {
@@ -66,7 +66,7 @@ export function ContainersPagination({
 
 		return (
 			<>
-				<PaginationItem>
+				<PaginationItem className="max-sm:hidden">
 					<PaginationLink
 						href="#"
 						onClick={(event) => {
@@ -79,12 +79,12 @@ export function ContainersPagination({
 					</PaginationLink>
 				</PaginationItem>
 				{page > 3 && (
-					<PaginationItem>
+					<PaginationItem className="max-sm:hidden">
 						<PaginationEllipsis />
 					</PaginationItem>
 				)}
 				{page > 2 && (
-					<PaginationItem>
+					<PaginationItem className="max-sm:hidden">
 						<PaginationLink
 							href="#"
 							onClick={(event) => {
@@ -97,7 +97,7 @@ export function ContainersPagination({
 					</PaginationItem>
 				)}
 				{page !== 1 && page !== totalPages && (
-					<PaginationItem>
+					<PaginationItem className="max-sm:hidden">
 						<PaginationLink
 							href="#"
 							onClick={(event) => event.preventDefault()}
@@ -108,7 +108,7 @@ export function ContainersPagination({
 					</PaginationItem>
 				)}
 				{page < totalPages - 1 && (
-					<PaginationItem>
+					<PaginationItem className="max-sm:hidden">
 						<PaginationLink
 							href="#"
 							onClick={(event) => {
@@ -121,11 +121,11 @@ export function ContainersPagination({
 					</PaginationItem>
 				)}
 				{page < totalPages - 2 && (
-					<PaginationItem>
+					<PaginationItem className="max-sm:hidden">
 						<PaginationEllipsis />
 					</PaginationItem>
 				)}
-				<PaginationItem>
+				<PaginationItem className="max-sm:hidden">
 					<PaginationLink
 						href="#"
 						onClick={(event) => {
@@ -143,14 +143,17 @@ export function ContainersPagination({
 
 	return (
 		<div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-			<div className="text-sm text-muted-foreground">
+			<p className="text-base text-muted-foreground tabular-nums sm:text-sm">
 				{totalItems > 0
-					? `Showing ${startIndex}-${endIndex} of ${totalItems}`
-					: "0 containers"}
-			</div>
+					? `Showing ${startIndex}–${endIndex} of ${totalItems}`
+					: "No containers"}
+				<span className="sm:hidden">{` · page ${page} of ${totalPages}`}</span>
+			</p>
 			<div className="flex items-center gap-6">
 				<div className="flex items-center gap-2">
-					<span className="text-sm text-muted-foreground">Rows per page</span>
+					<span className="text-base text-muted-foreground sm:text-sm">
+						Rows per page
+					</span>
 					<Select
 						value={String(pageSize)}
 						onValueChange={(value) => onPageSizeChange(Number(value))}
