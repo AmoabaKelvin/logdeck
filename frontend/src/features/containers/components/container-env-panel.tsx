@@ -7,25 +7,19 @@ import { CopyButton } from "@/components/ui/copy-button";
 import {
 	EyeIcon,
 	EyeOffIcon,
-	PencilIcon,
 	PlusIcon,
+	RotateCcwIcon,
 	SearchIcon,
-	Trash2Icon,
 	UploadIcon,
 	XIcon,
 } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 import { getContainerEnvVariables } from "../api/get-container-env-variables";
 import { updateContainerEnvVariables } from "../api/update-container-env-variables";
 import { PanelError, PanelLoading, PanelNote } from "./container-panel-ui";
-import { isSecretKey, MASKED_VALUE, parseEnvFile } from "./env-file";
+import { isSecretKey, parseEnvFile } from "./env-file";
 import { EnvUpdateConfirmDialog } from "./env-update-confirm-dialog";
 import { EnvUploadPreviewDialog } from "./env-upload-preview-dialog";
 
@@ -37,8 +31,15 @@ interface ContainerEnvPanelProps {
 	onContainerIdChange?: (newContainerId: string) => void;
 }
 
-const rowClass =
-	"grid grid-cols-[minmax(0,1fr)] items-center gap-x-3 gap-y-1 py-1.5 sm:grid-cols-[minmax(8rem,18rem)_minmax(0,1fr)_auto]";
+const ROW = "grid gap-x-2 sm:grid-cols-[minmax(9rem,18rem)_minmax(0,1fr)_auto]";
+
+/**
+ * A value reads as text until you touch it. Giving every row a boxed input
+ * turns the list into a wall of rectangles; the border arrives on hover and
+ * focus, where it means something.
+ */
+const VALUE_INPUT =
+	"h-9 border-transparent bg-transparent px-2 font-mono shadow-none hover:border-input focus-visible:border-ring disabled:opacity-100";
 
 export function ContainerEnvPanel({
 	containerId,
@@ -50,23 +51,21 @@ export function ContainerEnvPanel({
 	const queryClient = useQueryClient();
 	const [filter, setFilter] = useState("");
 	const [revealed, setRevealed] = useState<Set<string>>(new Set());
-	const [isEditing, setIsEditing] = useState(false);
-	const [draft, setDraft] = useState<Record<string, string>>({});
-	const [deletedKeys, setDeletedKeys] = useState<Set<string>>(new Set());
-	const [touchedKeys, setTouchedKeys] = useState<Set<string>>(new Set());
+	// Only what the user changed, so the original stays the source of truth and
+	// "is this edited?" needs no bookkeeping.
+	const [edits, setEdits] = useState<Record<string, string>>({});
+	const [removed, setRemoved] = useState<Set<string>>(new Set());
 	const [newKey, setNewKey] = useState("");
 	const [newValue, setNewValue] = useState("");
-	const [showAddNew, setShowAddNew] = useState(false);
+	const [isAdding, setIsAdding] = useState(false);
 	const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 	const [showUploadPreview, setShowUploadPreview] = useState(false);
-	const [parsedEnvFile, setParsedEnvFile] = useState<Record<string, string>>(
-		{},
-	);
+	const [uploadedEnv, setUploadedEnv] = useState<Record<string, string>>({});
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const newValueInputRef = useRef<HTMLInputElement>(null);
 
 	const {
-		data: envVariables,
+		data: original,
 		isLoading,
 		error,
 	} = useQuery({
@@ -90,7 +89,7 @@ export function ContainerEnvPanel({
 			queryClient.invalidateQueries({ queryKey: ["containers"] });
 
 			onContainerIdChange?.(result.newContainerId);
-			resetEditing();
+			discard();
 
 			if (result.coolifySynced === true) {
 				toast.success("Environment updated", {
@@ -115,71 +114,67 @@ export function ContainerEnvPanel({
 		},
 	});
 
-	function resetEditing() {
-		setIsEditing(false);
-		setDraft({});
-		setDeletedKeys(new Set());
-		setTouchedKeys(new Set());
-		setShowAddNew(false);
+	function discard() {
+		setEdits({});
+		setRemoved(new Set());
+		setIsAdding(false);
 		setNewKey("");
 		setNewValue("");
 	}
 
-	const source = isEditing ? draft : (envVariables ?? {});
+	const base = original ?? {};
+	const effective = useMemo(() => ({ ...base, ...edits }), [base, edits]);
+
 	const entries = useMemo(() => {
 		const query = filter.trim().toLowerCase();
-		const list = Object.entries(source).filter(
-			([key]) => !deletedKeys.has(key),
-		);
-		const matched = query
-			? list.filter(
-					([key, value]) =>
-						key.toLowerCase().includes(query) ||
-						value.toLowerCase().includes(query),
-				)
-			: list;
-		// Touched rows float to the top while editing so a long list does not
-		// hide what you just changed.
-		return matched.sort(([a], [b]) => {
-			if (!isEditing) return a.localeCompare(b);
-			const aTouched = touchedKeys.has(a);
-			const bTouched = touchedKeys.has(b);
-			if (aTouched !== bTouched) return aTouched ? -1 : 1;
-			return a.localeCompare(b);
-		});
-	}, [source, deletedKeys, filter, isEditing, touchedKeys]);
+		return Object.entries(effective)
+			.filter(
+				([key, value]) =>
+					!query ||
+					key.toLowerCase().includes(query) ||
+					value.toLowerCase().includes(query),
+			)
+			.sort(([a], [b]) => a.localeCompare(b));
+	}, [effective, filter]);
 
-	const total = Object.keys(source).filter(
-		(key) => !deletedKeys.has(key),
+	const addedCount = Object.keys(edits).filter((key) => !(key in base)).length;
+	const editedCount = Object.keys(edits).filter(
+		(key) => key in base && base[key] !== edits[key],
 	).length;
+	const isDirty = addedCount + editedCount + removed.size > 0;
 	const anySecret = entries.some(([key]) => isSecretKey(key));
-	const allRevealed = entries
-		.filter(([key]) => isSecretKey(key))
-		.every(([key]) => revealed.has(key));
+	const allRevealed =
+		anySecret &&
+		entries
+			.filter(([key]) => isSecretKey(key))
+			.every(([key]) => revealed.has(key));
 
-	const handleAddNew = () => {
-		const key = newKey.trim();
-		if (!key) {
-			toast.error("Key cannot be empty");
-			return;
-		}
-		if (draft[key] !== undefined && !deletedKeys.has(key)) {
-			toast.error("Key already exists");
-			return;
-		}
-		setDraft((prev) => ({ ...prev, [key]: newValue }));
-		setTouchedKeys((prev) => new Set(prev).add(key));
-		setDeletedKeys((prev) => {
+	const applyImport = (imported: Record<string, string>) => {
+		setEdits((prev) => ({ ...prev, ...imported }));
+		setRemoved((prev) => {
 			const next = new Set(prev);
-			next.delete(key);
+			for (const key of Object.keys(imported)) next.delete(key);
 			return next;
 		});
-		setNewKey("");
-		setNewValue("");
-		setShowAddNew(false);
 	};
 
-	// Pasting a whole .env into the key field imports every pair at once. The
+	const handleAdd = () => {
+		const key = newKey.trim();
+		if (!key) {
+			toast.error("Name cannot be empty");
+			return;
+		}
+		if (key in effective && !removed.has(key)) {
+			toast.error(`${key} is already set`);
+			return;
+		}
+		applyImport({ [key]: newValue });
+		setNewKey("");
+		setNewValue("");
+		setIsAdding(false);
+	};
+
+	// Pasting a whole .env into the name field imports every pair at once. The
 	// paste must be intercepted: text inputs strip newlines before onChange.
 	const handleKeyPaste = (event: React.ClipboardEvent<HTMLInputElement>) => {
 		const text = event.clipboardData.getData("text");
@@ -193,11 +188,10 @@ export function ContainerEnvPanel({
 			return;
 		}
 
-		setDraft((prev) => ({ ...prev, ...parsed }));
-		setTouchedKeys((prev) => new Set([...prev, ...Object.keys(parsed)]));
+		applyImport(parsed);
 		setNewKey("");
 		setNewValue("");
-		setShowAddNew(false);
+		setIsAdding(false);
 		toast.success(`Imported ${count} variable${count === 1 ? "" : "s"}`);
 	};
 
@@ -244,7 +238,7 @@ export function ContainerEnvPanel({
 				toast.error("Failed to parse .env file");
 				return;
 			}
-			setParsedEnvFile(parseEnvFile(content));
+			setUploadedEnv(parseEnvFile(content));
 			setShowUploadPreview(true);
 		};
 		reader.readAsText(file);
@@ -253,7 +247,7 @@ export function ContainerEnvPanel({
 		event.target.value = "";
 	};
 
-	if (isLoading && !envVariables) {
+	if (isLoading && !original) {
 		return <PanelLoading label="Reading environment…" />;
 	}
 	if (error) {
@@ -261,6 +255,14 @@ export function ContainerEnvPanel({
 			<PanelError>Could not read this container's environment.</PanelError>
 		);
 	}
+
+	const changeSummary = [
+		editedCount && `${editedCount} changed`,
+		addedCount && `${addedCount} added`,
+		removed.size && `${removed.size} removed`,
+	]
+		.filter(Boolean)
+		.join(" · ");
 
 	return (
 		<div>
@@ -287,151 +289,47 @@ export function ContainerEnvPanel({
 				</div>
 
 				<p className="text-base text-muted-foreground tabular-nums sm:text-sm">
-					{entries.length === total
-						? `${total} variable${total === 1 ? "" : "s"}`
-						: `${entries.length} of ${total}`}
+					{filter.trim()
+						? `${entries.length} of ${Object.keys(effective).length}`
+						: `${Object.keys(effective).length} variable${Object.keys(effective).length === 1 ? "" : "s"}`}
 				</p>
 
 				<div className="ml-auto flex flex-wrap items-center gap-2">
 					{anySecret && (
 						<Button
-							variant="outline"
+							variant="ghost"
 							onClick={() =>
 								setRevealed(
-									allRevealed
-										? new Set()
-										: new Set(entries.map(([key]) => key)),
+									allRevealed ? new Set() : new Set(entries.map(([k]) => k)),
 								)
 							}
-							className="h-10 py-2 pr-3 pl-2 text-base sm:h-9 sm:text-sm"
+							className="h-10 py-2 pr-3 pl-2 text-base text-muted-foreground hover:text-foreground sm:h-9 sm:text-sm"
 						>
 							{allRevealed ? (
 								<EyeOffIcon className="size-4" />
 							) : (
 								<EyeIcon className="size-4" />
 							)}
-							{allRevealed ? "Hide values" : "Reveal values"}
+							{allRevealed ? "Hide secrets" : "Reveal secrets"}
 						</Button>
 					)}
-
-					{isEditing ? (
-						<>
-							<Button
-								variant="outline"
-								onClick={() => fileInputRef.current?.click()}
-								className="h-10 py-2 pr-3 pl-2 text-base sm:h-9 sm:text-sm"
-							>
-								<UploadIcon className="size-4" />
-								Upload .env
-							</Button>
-							<Button
-								variant="outline"
-								onClick={() => setShowAddNew(true)}
-								className="h-10 py-2 pr-3 pl-2 text-base sm:h-9 sm:text-sm"
-							>
-								<PlusIcon className="size-4" />
-								Add
-							</Button>
-							<Button
-								variant="ghost"
-								onClick={resetEditing}
-								className="h-10 text-base sm:h-9 sm:text-sm"
-							>
-								Cancel
-							</Button>
-							<Button
-								onClick={() => setShowConfirmDialog(true)}
-								disabled={updateMutation.isPending}
-								className="h-10 text-base sm:h-9 sm:text-sm"
-							>
-								{updateMutation.isPending && <Spinner className="size-4" />}
-								Save and recreate
-							</Button>
-						</>
-					) : (
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<span className="inline-block">
-									<Button
-										variant="outline"
-										disabled={isReadOnly}
-										onClick={() => {
-											setDraft({ ...envVariables });
-											setDeletedKeys(new Set());
-											setTouchedKeys(new Set());
-											setIsEditing(true);
-										}}
-										className="h-10 py-2 pr-3 pl-2 text-base sm:h-9 sm:text-sm"
-									>
-										<PencilIcon className="size-4" />
-										Edit
-									</Button>
-								</span>
-							</TooltipTrigger>
-							{isReadOnly && (
-								<TooltipContent>LogDeck is in read-only mode</TooltipContent>
-							)}
-						</Tooltip>
+					{!isReadOnly && (
+						<Button
+							variant="ghost"
+							onClick={() => fileInputRef.current?.click()}
+							className="h-10 py-2 pr-3 pl-2 text-base text-muted-foreground hover:text-foreground sm:h-9 sm:text-sm"
+						>
+							<UploadIcon className="size-4" />
+							Import .env
+						</Button>
 					)}
 				</div>
 			</div>
 
-			{isEditing && (
-				<p className="mt-3 text-base text-muted-foreground sm:text-sm">
-					Saving recreates the container — it will get a new ID and restart.
-				</p>
-			)}
-
-			{showAddNew && (
-				<div className={`${rowClass} mt-3 border-b border-border/60 pb-3`}>
-					<Input
-						value={newKey}
-						onChange={(e) => handleNewKeyChange(e.target.value)}
-						onPaste={handleKeyPaste}
-						placeholder="VARIABLE_NAME, KEY=value, or paste a .env"
-						aria-label="New variable name"
-						className="h-10 font-mono sm:h-9"
-					/>
-					<Input
-						ref={newValueInputRef}
-						value={newValue}
-						onChange={(e) => setNewValue(e.target.value)}
-						onKeyDown={(e) => {
-							if (e.key === "Enter") handleAddNew();
-						}}
-						placeholder="value"
-						aria-label="New variable value"
-						className="h-10 font-mono sm:h-9"
-					/>
-					<div className="flex items-center gap-1">
-						<Button
-							variant="outline"
-							onClick={handleAddNew}
-							className="h-10 sm:h-9"
-						>
-							Add
-						</Button>
-						<Button
-							variant="ghost"
-							size="icon-sm"
-							onClick={() => {
-								setShowAddNew(false);
-								setNewKey("");
-								setNewValue("");
-							}}
-							aria-label="Cancel adding a variable"
-							className="size-10 sm:size-9"
-						>
-							<XIcon className="size-4" />
-						</Button>
-					</div>
-				</div>
-			)}
-
-			{entries.length === 0 ? (
+			{entries.length === 0 && !isAdding ? (
 				<div className="mt-4">
 					<PanelNote>
-						{total === 0
+						{Object.keys(effective).length === 0
 							? "This container has no environment variables."
 							: "No variables match that filter."}
 					</PanelNote>
@@ -439,86 +337,108 @@ export function ContainerEnvPanel({
 			) : (
 				<div className="mt-3 max-h-96 divide-y divide-border/60 overflow-y-auto">
 					{entries.map(([key, value]) => {
+						const isRemoved = removed.has(key);
+						const isChanged = key in edits;
 						const secret = isSecretKey(key);
-						const hidden = secret && !revealed.has(key) && !isEditing;
-						return (
-							<div key={key} className={rowClass}>
-								<div className="flex min-w-0 items-center gap-2">
-									<span
-										className="truncate font-mono text-base sm:text-sm"
-										title={key}
-									>
-										{key}
-									</span>
-									{touchedKeys.has(key) && isEditing && (
-										<span className="shrink-0 text-xs text-muted-foreground">
-											edited
-										</span>
-									)}
-								</div>
+						const hidden = secret && !revealed.has(key);
 
-								{isEditing ? (
-									<Input
-										value={value}
-										onChange={(e) => {
-											const next = e.target.value;
-											setDraft((prev) => ({ ...prev, [key]: next }));
-											setTouchedKeys((prev) => new Set(prev).add(key));
-										}}
-										aria-label={`Value for ${key}`}
-										className="h-10 font-mono sm:h-9"
-									/>
-								) : (
-									<span
-										className="truncate font-mono text-base text-muted-foreground sm:text-sm"
-										title={hidden ? undefined : value}
-									>
-										{hidden ? MASKED_VALUE : value || "—"}
+						return (
+							<div
+								key={key}
+								className={`group ${ROW} items-center border-l-2 py-1 pl-2 ${
+									isChanged && !isRemoved
+										? "border-l-amber-500"
+										: "border-l-transparent"
+								} ${isRemoved ? "opacity-60" : ""}`}
+							>
+								<span
+									className={`truncate font-mono text-base sm:text-sm ${
+										isRemoved ? "line-through" : ""
+									}`}
+									title={key}
+								>
+									{key}
+								</span>
+
+								{isRemoved ? (
+									<span className="truncate px-2 font-mono text-base text-muted-foreground line-through sm:text-sm">
+										{hidden ? "••••••••" : value}
 									</span>
+								) : (
+									<Input
+										type={hidden ? "password" : "text"}
+										autoComplete="off"
+										spellCheck={false}
+										name={`env-${key}`}
+										aria-label={`Value for ${key}`}
+										value={value}
+										disabled={isReadOnly}
+										onChange={(e) =>
+											setEdits((prev) => ({ ...prev, [key]: e.target.value }))
+										}
+										className={VALUE_INPUT}
+									/>
 								)}
 
-								<div className="flex items-center justify-end gap-0.5">
-									{isEditing ? (
+								<div className="flex items-center justify-end">
+									{secret && !isRemoved && (
 										<Button
 											variant="ghost"
 											size="icon-sm"
 											onClick={() =>
-												setDeletedKeys((prev) => new Set(prev).add(key))
+												setRevealed((prev) => {
+													const next = new Set(prev);
+													if (next.has(key)) next.delete(key);
+													else next.add(key);
+													return next;
+												})
 											}
-											aria-label={`Remove ${key}`}
-											className="text-muted-foreground hover:text-destructive"
+											aria-label={`${hidden ? "Reveal" : "Hide"} ${key}`}
 										>
-											<Trash2Icon className="size-4" />
-										</Button>
-									) : (
-										<>
-											{secret && (
-												<Button
-													variant="ghost"
-													size="icon-sm"
-													onClick={() =>
-														setRevealed((prev) => {
-															const next = new Set(prev);
-															if (next.has(key)) {
-																next.delete(key);
-															} else {
-																next.add(key);
-															}
-															return next;
-														})
-													}
-													aria-label={`${revealed.has(key) ? "Hide" : "Reveal"} ${key}`}
-												>
-													{revealed.has(key) ? (
-														<EyeOffIcon className="size-4 text-muted-foreground" />
-													) : (
-														<EyeIcon className="size-4 text-muted-foreground" />
-													)}
-												</Button>
+											{hidden ? (
+												<EyeIcon className="size-4 text-muted-foreground" />
+											) : (
+												<EyeOffIcon className="size-4 text-muted-foreground" />
 											)}
-											<CopyButton value={value} label={`Copy ${key}`} />
-										</>
+										</Button>
 									)}
+									<CopyButton value={value} label={`Copy ${key}`} />
+									{!isReadOnly &&
+										(isRemoved ? (
+											<Button
+												variant="ghost"
+												size="icon-sm"
+												onClick={() =>
+													setRemoved((prev) => {
+														const next = new Set(prev);
+														next.delete(key);
+														return next;
+													})
+												}
+												aria-label={`Keep ${key}`}
+											>
+												<RotateCcwIcon className="size-4 text-muted-foreground" />
+											</Button>
+										) : (
+											<Button
+												variant="ghost"
+												size="icon-sm"
+												onClick={() => {
+													setRemoved((prev) => new Set(prev).add(key));
+													setEdits((prev) => {
+														// A key added in this session just goes away.
+														if (key in base) return prev;
+														const next = { ...prev };
+														delete next[key];
+														return next;
+													});
+												}}
+												aria-label={`Remove ${key}`}
+												className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-destructive"
+											>
+												<XIcon className="size-4 text-muted-foreground" />
+											</Button>
+										))}
 								</div>
 							</div>
 						);
@@ -526,25 +446,104 @@ export function ContainerEnvPanel({
 				</div>
 			)}
 
+			{!isReadOnly &&
+				(isAdding ? (
+					<div className={`${ROW} mt-3 items-center pl-2`}>
+						<Input
+							autoFocus
+							value={newKey}
+							onChange={(e) => handleNewKeyChange(e.target.value)}
+							onPaste={handleKeyPaste}
+							onKeyDown={(e) => {
+								if (e.key === "Escape") setIsAdding(false);
+							}}
+							placeholder="NAME, NAME=value, or paste a .env"
+							aria-label="New variable name"
+							className="h-10 font-mono sm:h-9"
+						/>
+						<Input
+							ref={newValueInputRef}
+							value={newValue}
+							onChange={(e) => setNewValue(e.target.value)}
+							onKeyDown={(e) => {
+								if (e.key === "Enter") handleAdd();
+								if (e.key === "Escape") setIsAdding(false);
+							}}
+							placeholder="value"
+							aria-label="New variable value"
+							className="h-10 font-mono sm:h-9"
+						/>
+						<div className="flex items-center gap-1">
+							<Button onClick={handleAdd} className="h-10 sm:h-9">
+								Add
+							</Button>
+							<Button
+								variant="ghost"
+								size="icon-sm"
+								onClick={() => setIsAdding(false)}
+								aria-label="Cancel adding a variable"
+								className="size-10 sm:size-9"
+							>
+								<XIcon className="size-4" />
+							</Button>
+						</div>
+					</div>
+				) : (
+					<Button
+						variant="ghost"
+						onClick={() => setIsAdding(true)}
+						className="mt-2 h-10 py-2 pr-3 pl-2 text-base text-muted-foreground hover:text-foreground sm:h-9 sm:text-sm"
+					>
+						<PlusIcon className="size-4" />
+						Add variable
+					</Button>
+				))}
+
+			{isDirty && (
+				<div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border/70 pt-4">
+					<p className="text-base sm:text-sm">
+						{changeSummary}
+						<span className="ml-1.5 text-muted-foreground">
+							— saving recreates the container under a new ID.
+						</span>
+					</p>
+					<div className="ml-auto flex items-center gap-2">
+						<Button
+							variant="ghost"
+							onClick={discard}
+							disabled={updateMutation.isPending}
+							className="h-10 text-base sm:h-9 sm:text-sm"
+						>
+							Discard
+						</Button>
+						<Button
+							onClick={() => setShowConfirmDialog(true)}
+							disabled={updateMutation.isPending}
+							className="h-10 text-base sm:h-9 sm:text-sm"
+						>
+							{updateMutation.isPending && <Spinner className="size-4" />}
+							Save and recreate
+						</Button>
+					</div>
+				</div>
+			)}
+
 			<EnvUploadPreviewDialog
 				open={showUploadPreview}
 				onOpenChange={setShowUploadPreview}
-				parsedEnv={parsedEnvFile}
-				currentEnv={draft}
+				parsedEnv={uploadedEnv}
+				currentEnv={effective}
 				onConfirm={() => {
-					setDraft((prev) => ({ ...prev, ...parsedEnvFile }));
-					setTouchedKeys(
-						(prev) => new Set([...prev, ...Object.keys(parsedEnvFile)]),
-					);
+					applyImport(uploadedEnv);
 					setShowUploadPreview(false);
-					setParsedEnvFile({});
+					setUploadedEnv({});
 					toast.success(
-						`Imported ${Object.keys(parsedEnvFile).length} variables from .env`,
+						`Imported ${Object.keys(uploadedEnv).length} variables from .env`,
 					);
 				}}
 				onCancel={() => {
 					setShowUploadPreview(false);
-					setParsedEnvFile({});
+					setUploadedEnv({});
 				}}
 			/>
 
@@ -553,8 +552,8 @@ export function ContainerEnvPanel({
 				onOpenChange={setShowConfirmDialog}
 				isCoolifyManaged={isCoolifyManaged}
 				onConfirm={() => {
-					const finalEnv = { ...draft };
-					deletedKeys.forEach((key) => {
+					const finalEnv = { ...effective };
+					removed.forEach((key) => {
 						delete finalEnv[key];
 					});
 					updateMutation.mutate(finalEnv);

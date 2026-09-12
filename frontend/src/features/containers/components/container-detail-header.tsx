@@ -3,16 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuLabel,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
 	ArrowLeftIcon,
-	EllipsisVerticalIcon,
 	PlayIcon,
 	RotateCwIcon,
 	SquareIcon,
@@ -222,7 +213,32 @@ export function ContainerDetailHeader({
 				</div>
 
 				{container && (
-					<div className="flex shrink-0 items-center gap-2">
+					<div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+						{isReadOnly && (
+							<p className="text-base text-muted-foreground sm:text-sm">
+								Read-only
+							</p>
+						)}
+						{state === "running" && (
+							<Button
+								variant="outline"
+								disabled={isReadOnly}
+								onClick={onOpenShell}
+								className={actionButtonClass}
+							>
+								<TerminalIcon className="size-4" />
+								Shell
+							</Button>
+						)}
+						<Button
+							variant="outline"
+							disabled={isReadOnly || isActionPending}
+							onClick={onRestart}
+							className={actionButtonClass}
+						>
+							<RotateCwIcon className="size-4" />
+							Restart
+						</Button>
 						<Button
 							variant={isRunning ? "outline" : "default"}
 							disabled={isReadOnly || isActionPending}
@@ -238,54 +254,17 @@ export function ContainerDetailHeader({
 							)}
 							{isRunning ? "Stop" : "Start"}
 						</Button>
+						{/* Destructive, so it stays quiet until you mean it. It
+						    confirms before removing anything either way. */}
 						<Button
-							variant="outline"
+							variant="ghost"
 							disabled={isReadOnly || isActionPending}
-							onClick={onRestart}
-							className={actionButtonClass}
+							onClick={onDelete}
+							className={`${actionButtonClass} text-muted-foreground hover:bg-destructive/10 hover:text-destructive`}
 						>
-							<RotateCwIcon className="size-4" />
-							Restart
+							<Trash2Icon className="size-4" />
+							Remove
 						</Button>
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
-								<Button
-									variant="ghost"
-									size="icon-sm"
-									aria-label={`More actions for ${name}`}
-									className="size-10 sm:size-9"
-								>
-									<EllipsisVerticalIcon className="size-4" />
-								</Button>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent align="end" className="w-48">
-								{isReadOnly && (
-									<DropdownMenuLabel className="text-muted-foreground">
-										Read-only mode
-									</DropdownMenuLabel>
-								)}
-								{state === "running" && (
-									<>
-										<DropdownMenuItem
-											disabled={isReadOnly}
-											onClick={onOpenShell}
-										>
-											<TerminalIcon className="size-4" />
-											Open shell
-										</DropdownMenuItem>
-										<DropdownMenuSeparator />
-									</>
-								)}
-								<DropdownMenuItem
-									variant="destructive"
-									disabled={isReadOnly}
-									onClick={onDelete}
-								>
-									<Trash2Icon className="size-4" />
-									Remove container
-								</DropdownMenuItem>
-							</DropdownMenuContent>
-						</DropdownMenu>
 					</div>
 				)}
 			</div>
