@@ -295,7 +295,7 @@ export function ContainersDashboard() {
 					isFetching={isFetching}
 				/>
 
-				<div className="mt-4">
+				<div className="mt-6">
 					<ContainersTable
 						isLoading={isLoading}
 						isError={isError}
