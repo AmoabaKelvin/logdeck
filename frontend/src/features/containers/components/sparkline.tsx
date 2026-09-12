@@ -1,5 +1,9 @@
+// Coordinate space only; the rendered width is TREND_WIDTH_CLASS, which the
+// memory meter shares so the two line up.
 const WIDTH = 64;
 const HEIGHT = 20;
+
+export const TREND_WIDTH_CLASS = "w-16";
 
 interface SparklineProps {
 	values: number[];
@@ -41,8 +45,12 @@ function toSmoothPath(points: Point[]): string {
 export function Sparkline({ values }: SparklineProps) {
 	if (values.length < 2) return null;
 
-	const min = Math.min(...values);
-	const range = Math.max(Math.max(...values) - min, 2);
+	const lowest = Math.min(...values);
+	const spread = Math.max(...values) - lowest;
+	const range = Math.max(spread, 2);
+	// Split the floor's padding either side, so an idle series sits centred
+	// rather than pinned to the bottom of the box.
+	const min = lowest - (range - spread) / 2;
 	const stepX = WIDTH / (values.length - 1);
 	const points = values.map((value, index) => ({
 		x: index * stepX,
@@ -54,10 +62,9 @@ export function Sparkline({ values }: SparklineProps) {
 
 	return (
 		<svg
-			width={WIDTH}
 			height={HEIGHT}
 			viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-			className="shrink-0 text-muted-foreground"
+			className={`${TREND_WIDTH_CLASS} shrink-0 text-muted-foreground`}
 			aria-hidden="true"
 		>
 			<path d={area} fill="currentColor" className="sparkline-fill" />

@@ -18,13 +18,10 @@ function makeStat(id: string, cpu: number, memory: number): ContainerStats {
 describe("appendSamples", () => {
 	it("appends a sample per container", () => {
 		const history = appendSamples({}, [makeStat("a", 10, 20)]);
-		expect(history.a).toEqual([{ cpu: 10, memoryPercent: 20 }]);
+		expect(history.a).toEqual([10]);
 
 		const next = appendSamples(history, [makeStat("a", 30, 40)]);
-		expect(next.a).toEqual([
-			{ cpu: 10, memoryPercent: 20 },
-			{ cpu: 30, memoryPercent: 40 },
-		]);
+		expect(next.a).toEqual([10, 30]);
 	});
 
 	it("caps buffers at MAX_SAMPLES, dropping the oldest", () => {
@@ -34,8 +31,8 @@ describe("appendSamples", () => {
 		}
 		const samples = history.a;
 		expect(samples).toHaveLength(MAX_SAMPLES);
-		expect(samples[0].cpu).toBe(5);
-		expect(samples[samples.length - 1].cpu).toBe(MAX_SAMPLES + 4);
+		expect(samples[0]).toBe(5);
+		expect(samples[samples.length - 1]).toBe(MAX_SAMPLES + 4);
 	});
 
 	it("evicts containers no longer present", () => {

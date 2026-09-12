@@ -4,12 +4,7 @@ import type { ContainerStats } from "../types";
 
 export const MAX_SAMPLES = 60;
 
-export interface StatsSample {
-	cpu: number;
-	memoryPercent: number;
-}
-
-export type StatsHistoryMap = Record<string, StatsSample[]>;
+export type StatsHistoryMap = Record<string, number[]>;
 
 /**
  * Append the latest sample for each container, capping every buffer at
@@ -21,10 +16,9 @@ export function appendSamples(
 ): StatsHistoryMap {
 	const next: StatsHistoryMap = {};
 	for (const stat of stats) {
-		next[stat.id] = [
-			...(history[stat.id] ?? []),
-			{ cpu: stat.cpu_percent, memoryPercent: stat.memory_percent },
-		].slice(-MAX_SAMPLES);
+		next[stat.id] = [...(history[stat.id] ?? []), stat.cpu_percent].slice(
+			-MAX_SAMPLES,
+		);
 	}
 	return next;
 }
