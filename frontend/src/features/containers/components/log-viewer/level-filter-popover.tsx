@@ -16,12 +16,15 @@ interface LevelFilterPopoverProps {
 	// Levels offered for filtering: those present in the loaded logs (live), or
 	// the full set the server accepts (history, where it already filtered).
 	availableLogLevels: readonly LogLevel[];
+	// Sizing comes from the host toolbar so every control on a row matches.
+	className?: string;
 }
 
 export function LevelFilterPopover({
 	selectedLevels,
 	setSelectedLevels,
 	availableLogLevels,
+	className,
 }: LevelFilterPopoverProps) {
 	const [open, setOpen] = useState(false);
 
@@ -38,23 +41,24 @@ export function LevelFilterPopover({
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
-				<Button variant="outline" size="sm" className="h-8 text-xs">
+				<Button
+					variant="outline"
+					data-active={selectedLevels.size > 0}
+					className={className}
+				>
 					Log level
 					{selectedLevels.size > 0 && (
-						<Badge
-							variant="secondary"
-							className="ml-1.5 px-1 py-0 h-4 text-[10px] leading-none"
-						>
+						<Badge variant="secondary" className="h-5 px-1.5 tabular-nums">
 							{selectedLevels.size}
 						</Badge>
 					)}
-					<ChevronDownIcon className="ml-1 size-3.5 opacity-50" />
+					<ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
 				</Button>
 			</PopoverTrigger>
 			<PopoverContent align="start" className="w-56">
 				<div className="space-y-3">
 					<div>
-						<h4 className="text-sm font-medium mb-2">Log Levels</h4>
+						<h4 className="mb-2 text-sm font-medium">Log levels</h4>
 						<div className="space-y-2">
 							{availableLogLevels.length === 0 ? (
 								<p className="text-xs text-muted-foreground">
@@ -98,7 +102,7 @@ export function LevelFilterPopover({
 							onClick={() => setSelectedLevels(new Set())}
 							className="w-full"
 						>
-							Clear Filters
+							Clear filters
 						</Button>
 					)}
 				</div>

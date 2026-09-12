@@ -29,10 +29,13 @@ import {
 } from "@/components/ui/tooltip";
 import { LevelFilterPopover } from "./level-filter-popover";
 import { TimeRangeControl } from "./time-range-control";
-import {
-	activeToggleButtonClass,
-	type LogViewerToolbarProps,
-} from "./toolbar-shared";
+import type { LogViewerToolbarProps } from "./toolbar-shared";
+
+// The sheet is narrow, so its controls stay compact rather than adopting the
+// page toolbar's sizing.
+const compactControlClass = "h-8 text-xs";
+const activeToggleButtonClass =
+	"data-[active=true]:bg-muted data-[active=true]:text-foreground";
 
 // Compact icon toolbar with an overflow menu, used inside the logs sheet.
 export function SheetToolbar({
@@ -124,12 +127,14 @@ export function SheetToolbar({
 						selectedLevels={selectedLevels}
 						setSelectedLevels={setSelectedLevels}
 						availableLogLevels={availableLogLevels}
+						className={compactControlClass}
 					/>
 
 					<TimeRangeControl
 						timeRange={timeRange}
 						setTimeRange={setTimeRange}
 						disabled={isStreaming}
+						className={compactControlClass}
 					/>
 
 					<Tooltip>

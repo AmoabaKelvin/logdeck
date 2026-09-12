@@ -4,8 +4,12 @@ import type { LogLevel } from "@/features/containers/api/get-container-logs-pars
 import type { SearchParsed } from "./use-log-search";
 import type { LogViewState } from "./use-log-view-state";
 
-export const activeToggleButtonClass =
-	"h-8 text-xs data-[active=true]:bg-muted data-[active=true]:text-foreground data-[active=true]:border-border data-[active=true]:ring-1 data-[active=true]:ring-primary/30 dark:data-[active=true]:bg-primary/15 dark:data-[active=true]:ring-primary/50 dark:data-[active=true]:border-primary/30";
+// Toolbar controls match the dashboard's: bigger on mobile, and an active
+// toggle reads as a filled chip rather than a second border treatment.
+export const toolbarControlClass =
+	"h-10 text-base sm:h-9 sm:text-sm data-[active=true]:bg-muted data-[active=true]:text-foreground";
+
+export const toolbarIconButtonClass = "size-10 sm:size-9";
 
 // Props shared by the page and sheet toolbar variants; LogViewer supplies
 // them from its state and the stream hook.

@@ -12,7 +12,6 @@ import {
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import type { AggregateLogTarget } from "@/features/containers/api/get-aggregated-logs";
 import {
@@ -899,8 +898,8 @@ export function LogViewer({
 
 	if (variant === "page") {
 		return (
-			<Card>
-				<CardHeader>
+			<div className="flex flex-col overflow-hidden rounded-xl border border-border/70 lg:min-h-0 lg:flex-1">
+				<div className="shrink-0 border-b border-border/70 px-3 py-2.5">
 					<PageToolbar
 						{...toolbarProps}
 						totalCount={logs.length}
@@ -908,17 +907,19 @@ export function LogViewer({
 						isHistory={isHistory}
 						showSourceToggle={historyEnabled && !historyOnly}
 					/>
-				</CardHeader>
+				</div>
 				{logList}
 				{shortcutHelpDialog}
-			</Card>
+			</div>
 		);
 	}
 
 	return (
 		<div className="space-y-3">
 			<SheetToolbar {...toolbarProps} />
-			<Card>{logList}</Card>
+			<div className="overflow-hidden rounded-xl border border-border/70">
+				{logList}
+			</div>
 			{shortcutHelpDialog}
 		</div>
 	);

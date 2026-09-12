@@ -1,7 +1,6 @@
 import type { Virtualizer } from "@tanstack/react-virtual";
 import type React from "react";
 
-import { CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import type { LogEntry } from "@/features/containers/api/get-container-logs-parsed";
 import { SelectionActionBar } from "@/features/containers/components/selection-action-bar";
@@ -79,25 +78,24 @@ export function LogList({
 	onTogglePinSelected,
 	onClearSelection,
 }: LogListProps) {
+	// Empty and loading states centre in the whole scroll area, which on the log
+	// page is most of the viewport; pinned to the top they read as a broken load.
+	const messageClass =
+		"flex h-full min-h-40 items-center justify-center gap-2 px-4 text-center text-base text-muted-foreground sm:text-sm";
+
 	let body: React.ReactNode;
 	if (isLoadingLogs && totalCount === 0) {
 		body = (
-			<div className="flex items-center justify-center py-8 text-muted-foreground">
-				<Spinner className="mr-2 size-4" />
-				Loading logs...
+			<div className={messageClass}>
+				<Spinner className="size-4" />
+				Loading logs…
 			</div>
 		);
 	} else if (totalCount === 0) {
-		body = (
-			<div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
-				{emptyMessage}
-			</div>
-		);
+		body = <div className={messageClass}>{emptyMessage}</div>;
 	} else if (filteredLogs.length === 0) {
 		body = (
-			<div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
-				No logs match the current filters
-			</div>
+			<div className={messageClass}>No logs match the current filters.</div>
 		);
 	} else {
 		body = (
@@ -149,7 +147,16 @@ export function LogList({
 	}
 
 	return (
-		<CardContent className="p-0 relative">
+		// The page variant fills whatever height the route's flex column leaves
+		// it, down to a floor that keeps the list usable when a detail panel is
+		// open; the sheet gets a fixed window.
+		<div
+			className={
+				variant === "page"
+					? "relative flex flex-col lg:min-h-0 lg:flex-1"
+					: "relative"
+			}
+		>
 			<SelectionActionBar
 				selectedCount={selectedIndices.size}
 				onCopy={onCopySelected}
@@ -162,12 +169,12 @@ export function LogList({
 				ref={parentRef}
 				className={
 					variant === "page"
-						? "h-[calc(100vh-400px)] min-h-[400px] w-full overflow-auto"
+						? "h-[60dvh] w-full overflow-auto lg:h-auto lg:min-h-[26rem] lg:flex-1"
 						: "h-[400px] w-full overflow-auto"
 				}
 			>
 				{body}
 			</div>
-		</CardContent>
+		</div>
 	);
 }

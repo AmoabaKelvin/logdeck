@@ -1,18 +1,21 @@
-import { useId } from "react";
 import { Button } from "@/components/ui/button";
-import { CardTitle } from "@/components/ui/card";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
 	ArrowDownIcon,
 	ArrowDownToLineIcon,
+	CheckIcon,
 	ChevronLeftIcon,
 	ChevronRightIcon,
 	DownloadIcon,
+	EllipsisVerticalIcon,
+	HelpCircleIcon,
 	PauseIcon,
 	PlayIcon,
 	RefreshCcwIcon,
@@ -20,19 +23,17 @@ import {
 	SquareIcon,
 } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { LevelFilterPopover } from "./level-filter-popover";
 import { TimeRangeControl } from "./time-range-control";
 import {
-	activeToggleButtonClass,
 	type LogViewerToolbarProps,
+	toolbarControlClass,
+	toolbarIconButtonClass,
 } from "./toolbar-shared";
 import type { LogSource } from "./use-log-view-state";
 
@@ -47,10 +48,57 @@ interface PageToolbarProps extends LogViewerToolbarProps {
 	showSourceToggle: boolean;
 }
 
-const sourceToggleButtonClass =
-	"h-7 rounded-sm px-2.5 text-xs shadow-none data-[active=true]:bg-muted data-[active=true]:text-foreground dark:data-[active=true]:bg-primary/15";
+const segmentButtonClass =
+	"h-8 rounded-sm px-2.5 text-sm text-muted-foreground shadow-none hover:bg-transparent data-[active=true]:bg-background data-[active=true]:text-foreground data-[active=true]:shadow-xs dark:data-[active=true]:bg-input/60";
 
-// Full-width toolbar with labelled controls, used on the log routes.
+/** "3 of 12" plus a pair of steppers — used for both matches and pins. */
+function StepNav({
+	label,
+	disabled,
+	onPrevious,
+	onNext,
+	previousLabel,
+	nextLabel,
+}: {
+	label: string;
+	disabled: boolean;
+	onPrevious: () => void;
+	onNext: () => void;
+	previousLabel: string;
+	nextLabel: string;
+}) {
+	return (
+		<div className="flex shrink-0 items-center gap-0.5">
+			<span className="px-1 text-sm whitespace-nowrap text-muted-foreground tabular-nums">
+				{label}
+			</span>
+			<Button
+				variant="ghost"
+				size="icon-sm"
+				onClick={onPrevious}
+				disabled={disabled}
+				aria-label={previousLabel}
+			>
+				<ChevronLeftIcon className="size-4" />
+			</Button>
+			<Button
+				variant="ghost"
+				size="icon-sm"
+				onClick={onNext}
+				disabled={disabled}
+				aria-label={nextLabel}
+			>
+				<ChevronRightIcon className="size-4" />
+			</Button>
+		</div>
+	);
+}
+
+/**
+ * One wrapping row of controls. Reading settings that are set once and left
+ * alone (timestamps, wrapping, tail length, export) live in the overflow menu;
+ * only the controls a reader reaches for mid-session stay on the surface.
+ */
 export function PageToolbar({
 	viewState,
 	searchParsed,
@@ -100,304 +148,262 @@ export function PageToolbar({
 		timeRange,
 		setTimeRange,
 	} = viewState;
-	const logLinesInputId = useId();
+
+	// History searches server-side: the non-matching lines were never sent, so
+	// there is nothing to step through.
+	const showMatchNav = !isHistory && Boolean(searchText) && !excludeMatches;
 
 	return (
-		<div className="space-y-3">
-			<div className="flex items-center gap-2">
-				<CardTitle className="text-base shrink-0">
-					Logs
-					{filteredCount !== totalCount && (
-						<span className="ml-2 text-xs text-muted-foreground font-normal">
-							({filteredCount} of {totalCount})
-						</span>
-					)}
-				</CardTitle>
-
-				{showSourceToggle && (
-					<div className="flex shrink-0 items-center gap-0.5 rounded-md border p-0.5">
-						{(["live", "history"] as LogSource[]).map((value) => (
-							<Button
-								key={value}
-								variant="ghost"
-								size="sm"
-								data-active={source === value}
-								onClick={() => setSource(value)}
-								aria-pressed={source === value}
-								className={sourceToggleButtonClass}
-							>
-								{value === "live" ? "Live" : "History"}
-							</Button>
-						))}
-					</div>
-				)}
-
-				<div className="relative flex-1 min-w-[140px]">
-					<SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-					<Input
-						ref={searchInputRef}
-						placeholder="Search logs..."
-						value={searchText}
-						onChange={(e) => setSearchText(e.target.value)}
-						className={`pl-8 h-8 text-xs ${useRegex && searchParsed.error ? "border-red-500 focus-visible:ring-red-500" : ""}`}
-					/>
+		<div className="flex flex-wrap items-center gap-2">
+			{showSourceToggle && (
+				<div className="flex shrink-0 items-center gap-0.5 rounded-md bg-muted p-0.5">
+					{(["live", "history"] as LogSource[]).map((value) => (
+						<Button
+							key={value}
+							variant="ghost"
+							data-active={source === value}
+							onClick={() => setSource(value)}
+							aria-pressed={source === value}
+							className={segmentButtonClass}
+						>
+							{value === "live" ? "Live" : "History"}
+						</Button>
+					))}
 				</div>
-				<Button
-					variant={useRegex ? "secondary" : "ghost"}
-					size="sm"
+			)}
+
+			<div className="relative min-w-48 flex-1 sm:max-w-sm">
+				<SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+				<Input
+					ref={searchInputRef}
+					type="search"
+					name="log-search"
+					aria-label="Search logs"
+					placeholder={useRegex ? "Search by regex…" : "Search logs…"}
+					value={searchText}
+					onChange={(e) => setSearchText(e.target.value)}
+					className={`h-10 pr-11 pl-8 sm:h-9 ${
+						useRegex && searchParsed.error
+							? "border-destructive focus-visible:ring-destructive/30"
+							: ""
+					}`}
+				/>
+				<button
+					type="button"
 					onClick={() => setUseRegex(!useRegex)}
 					aria-label={
 						useRegex ? "Switch to plain text search" : "Switch to regex search"
 					}
 					aria-pressed={useRegex}
-					className="h-8 w-8 p-0 font-mono text-xs shrink-0"
-					title={
-						useRegex ? "Switch to plain text search" : "Switch to regex search"
-					}
+					className={`absolute top-1/2 right-1.5 -translate-y-1/2 rounded px-1.5 py-1 font-mono text-xs leading-none ${
+						useRegex
+							? "bg-primary text-primary-foreground"
+							: "text-muted-foreground hover:bg-muted hover:text-foreground"
+					}`}
 				>
 					.*
-				</Button>
-				{/* History searches server-side: the non-matching lines were never
-				    sent, so there is nothing to step through. */}
-				{!isHistory && searchText && !excludeMatches && (
-					<div className="flex items-center gap-0.5 shrink-0">
-						<span className="text-xs tabular-nums text-muted-foreground whitespace-nowrap px-1">
-							{searchMatches.length > 0
-								? `${currentMatchIndex + 1} of ${searchMatches.length}`
-								: "No matches"}
-						</span>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={onPreviousMatch}
-							disabled={searchMatches.length === 0}
-							aria-label="Previous match"
-							className="h-8 w-8 p-0"
-						>
-							<ChevronLeftIcon className="size-3.5" />
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={onNextMatch}
-							disabled={searchMatches.length === 0}
-							aria-label="Next match"
-							className="h-8 w-8 p-0"
-						>
-							<ChevronRightIcon className="size-3.5" />
-						</Button>
-					</div>
-				)}
-
-				{sortedPinnedIndices.length > 0 && (
-					<div className="flex items-center gap-0.5 shrink-0">
-						<span className="text-xs tabular-nums text-muted-foreground whitespace-nowrap px-1">
-							{`${Math.min(currentPinnedIndex + 1, sortedPinnedIndices.length)} of ${sortedPinnedIndices.length} pinned`}
-						</span>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => onNavigatePins(-1)}
-							aria-label="Previous pinned line"
-							className="h-8 w-8 p-0"
-						>
-							<ChevronLeftIcon className="size-3.5" />
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => onNavigatePins(1)}
-							aria-label="Next pinned line"
-							className="h-8 w-8 p-0"
-						>
-							<ChevronRightIcon className="size-3.5" />
-						</Button>
-					</div>
-				)}
-
-				{!isHistory && (
-					<>
-						<div className="flex items-center gap-2 shrink-0">
-							<Label
-								htmlFor={logLinesInputId}
-								className="text-xs text-muted-foreground"
-							>
-								Lines
-							</Label>
-							<Input
-								id={logLinesInputId}
-								type="text"
-								inputMode="numeric"
-								pattern="[0-9]*"
-								value={logLines}
-								onChange={(e) => onLogLinesChange(e.target.value)}
-								disabled={isStreaming}
-								className="h-8 w-20 text-xs"
-							/>
-						</div>
-						{isReconnecting && (
-							<span className="shrink-0 text-xs text-muted-foreground animate-pulse">
-								Reconnecting…
-							</span>
-						)}
-						<Button
-							variant="outline"
-							size="sm"
-							data-active={isStreaming}
-							onClick={onToggleStreaming}
-							disabled={isLoadingLogs && !isStreaming}
-							aria-pressed={isStreaming}
-							className={`shrink-0 ${activeToggleButtonClass}`}
-						>
-							{isStreaming ? (
-								<>
-									<SquareIcon className="mr-2 size-4" />
-									Stop
-								</>
-							) : (
-								<>
-									<PlayIcon className="mr-2 size-4" />
-									Stream
-								</>
-							)}
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							data-active={isStreamPaused}
-							onClick={onTogglePause}
-							disabled={!isStreaming}
-							aria-pressed={isStreamPaused}
-							className={`shrink-0 ${activeToggleButtonClass}`}
-						>
-							{isStreamPaused ? (
-								<>
-									<PlayIcon className="mr-2 size-4" />
-									Resume
-									{bufferedCount > 0 && (
-										<span className="ml-1 text-[10px] tabular-nums">
-											({bufferedCount})
-										</span>
-									)}
-								</>
-							) : (
-								<>
-									<PauseIcon className="mr-2 size-4" />
-									Pause
-								</>
-							)}
-						</Button>
-					</>
-				)}
-				<Button
-					variant="outline"
-					size="sm"
-					onClick={onRefresh}
-					disabled={isStreaming || isLoadingLogs}
-					aria-label="Refresh logs"
-					className="shrink-0"
-				>
-					<RefreshCcwIcon className="size-4" />
-				</Button>
-			</div>
-			<p className="text-[11px] text-muted-foreground">
-				Shortcuts: <kbd className="font-mono">/</kbd> search,{" "}
-				<kbd className="font-mono">j</kbd>/<kbd className="font-mono">k</kbd>{" "}
-				lines, <kbd className="font-mono">n</kbd>/
-				<kbd className="font-mono">N</kbd> matches,{" "}
-				<kbd className="font-mono">p</kbd>/<kbd className="font-mono">P</kbd>{" "}
-				pins,{" "}
-				<button
-					type="button"
-					onClick={onShowShortcutHelp}
-					className="underline underline-offset-2 hover:text-foreground"
-				>
-					<kbd className="font-mono">?</kbd> help
 				</button>
-			</p>
-			<div className="flex flex-wrap items-center gap-2">
-				{!isHistory && searchText && (
-					<Select
-						value={excludeMatches ? "exclude" : "highlight"}
-						onValueChange={(v) => setExcludeMatches(v === "exclude")}
-					>
-						<SelectTrigger size="sm" className="w-[160px] text-xs">
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="highlight">Highlight matches</SelectItem>
-							<SelectItem value="exclude">Exclude matches</SelectItem>
-						</SelectContent>
-					</Select>
+			</div>
+
+			{showMatchNav && (
+				<StepNav
+					label={
+						searchMatches.length > 0
+							? `${currentMatchIndex + 1} of ${searchMatches.length}`
+							: "No matches"
+					}
+					disabled={searchMatches.length === 0}
+					onPrevious={onPreviousMatch}
+					onNext={onNextMatch}
+					previousLabel="Previous match"
+					nextLabel="Next match"
+				/>
+			)}
+
+			{sortedPinnedIndices.length > 0 && (
+				<StepNav
+					label={`${Math.min(currentPinnedIndex + 1, sortedPinnedIndices.length)} of ${sortedPinnedIndices.length} pinned`}
+					disabled={false}
+					onPrevious={() => onNavigatePins(-1)}
+					onNext={() => onNavigatePins(1)}
+					previousLabel="Previous pinned line"
+					nextLabel="Next pinned line"
+				/>
+			)}
+
+			<div className="ml-auto flex flex-wrap items-center gap-2">
+				{isReconnecting && (
+					<span className="animate-pulse text-sm text-muted-foreground">
+						Reconnecting…
+					</span>
+				)}
+
+				{filteredCount !== totalCount && (
+					<span className="text-sm whitespace-nowrap text-muted-foreground tabular-nums">
+						{filteredCount} of {totalCount}
+					</span>
 				)}
 
 				<LevelFilterPopover
 					selectedLevels={selectedLevels}
 					setSelectedLevels={setSelectedLevels}
 					availableLogLevels={availableLogLevels}
+					className={toolbarControlClass}
 				/>
 
 				<TimeRangeControl
 					timeRange={timeRange}
 					setTimeRange={setTimeRange}
 					disabled={isStreaming}
+					className={toolbarControlClass}
 				/>
 
-				<Button
-					variant="outline"
-					size="sm"
-					data-active={showTimestamps}
-					onClick={() => setShowTimestamps(!showTimestamps)}
-					aria-pressed={showTimestamps}
-					className={activeToggleButtonClass}
-				>
-					Timestamps
-				</Button>
-
-				<Button
-					variant="outline"
-					size="sm"
-					data-active={wrapText}
-					onClick={() => setWrapText(!wrapText)}
-					aria-pressed={wrapText}
-					className={activeToggleButtonClass}
-				>
-					Wrap
-				</Button>
-
 				{!isHistory && (
-					<Button
-						variant="outline"
-						size="sm"
-						data-active={autoScroll}
-						onClick={() => setAutoScroll(!autoScroll)}
-						aria-pressed={autoScroll}
-						className={activeToggleButtonClass}
-					>
-						{autoScroll ? (
-							<ArrowDownToLineIcon className="mr-1.5 size-3.5" />
-						) : (
-							<ArrowDownIcon className="mr-1.5 size-3.5" />
+					<>
+						<Button
+							variant="outline"
+							data-active={isStreaming}
+							onClick={onToggleStreaming}
+							disabled={isLoadingLogs && !isStreaming}
+							aria-pressed={isStreaming}
+							className={toolbarControlClass}
+						>
+							{isStreaming ? (
+								<SquareIcon className="size-4" />
+							) : (
+								<PlayIcon className="size-4" />
+							)}
+							{isStreaming ? "Stop" : "Stream"}
+						</Button>
+
+						{isStreaming && (
+							<Button
+								variant="outline"
+								data-active={isStreamPaused}
+								onClick={onTogglePause}
+								aria-pressed={isStreamPaused}
+								className={toolbarControlClass}
+							>
+								{isStreamPaused ? (
+									<PlayIcon className="size-4" />
+								) : (
+									<PauseIcon className="size-4" />
+								)}
+								{isStreamPaused ? "Resume" : "Pause"}
+								{isStreamPaused && bufferedCount > 0 && (
+									<span className="text-muted-foreground tabular-nums">
+										{bufferedCount}
+									</span>
+								)}
+							</Button>
 						)}
-						Auto-scroll
-					</Button>
+
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									variant="outline"
+									size="icon-sm"
+									data-active={autoScroll}
+									onClick={() => setAutoScroll(!autoScroll)}
+									aria-label={`Auto-scroll ${autoScroll ? "on" : "off"}`}
+									aria-pressed={autoScroll}
+									className={`${toolbarIconButtonClass} ${toolbarControlClass}`}
+								>
+									{autoScroll ? (
+										<ArrowDownToLineIcon className="size-4" />
+									) : (
+										<ArrowDownIcon className="size-4" />
+									)}
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>
+								Auto-scroll {autoScroll ? "on" : "off"}
+							</TooltipContent>
+						</Tooltip>
+					</>
 				)}
 
-				<div className="flex-1" />
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Button
+							variant="outline"
+							size="icon-sm"
+							onClick={onRefresh}
+							disabled={isStreaming || isLoadingLogs}
+							aria-label="Refresh logs"
+							className={toolbarIconButtonClass}
+						>
+							<RefreshCcwIcon
+								className={`size-4 ${isLoadingLogs ? "animate-spin" : ""}`}
+							/>
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent>Refresh logs</TooltipContent>
+				</Tooltip>
 
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>
-						<Button variant="outline" size="sm" className="h-8 text-xs">
-							<DownloadIcon className="mr-1.5 size-3.5" />
-							Download
+						<Button
+							variant="outline"
+							size="icon-sm"
+							aria-label="Log view options"
+							className={toolbarIconButtonClass}
+						>
+							<EllipsisVerticalIcon className="size-4" />
 						</Button>
 					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end">
+					<DropdownMenuContent align="end" className="w-56">
+						<DropdownMenuLabel>View</DropdownMenuLabel>
+						<DropdownMenuItem
+							onClick={() => setShowTimestamps(!showTimestamps)}
+						>
+							<span className="flex-1">Timestamps</span>
+							{showTimestamps && <CheckIcon className="size-4" />}
+						</DropdownMenuItem>
+						<DropdownMenuItem onClick={() => setWrapText(!wrapText)}>
+							<span className="flex-1">Wrap long lines</span>
+							{wrapText && <CheckIcon className="size-4" />}
+						</DropdownMenuItem>
+						{!isHistory && searchText && (
+							<DropdownMenuItem
+								onClick={() => setExcludeMatches(!excludeMatches)}
+							>
+								<span className="flex-1">Hide matching lines</span>
+								{excludeMatches && <CheckIcon className="size-4" />}
+							</DropdownMenuItem>
+						)}
+						{!isHistory && (
+							<DropdownMenuItem
+								onSelect={(event) => event.preventDefault()}
+								className="justify-between gap-3"
+							>
+								<span>Tail</span>
+								<Input
+									name="log-lines"
+									type="text"
+									inputMode="numeric"
+									pattern="[0-9]*"
+									aria-label="Number of log lines to load"
+									value={logLines}
+									onChange={(e) => onLogLinesChange(e.target.value)}
+									disabled={isStreaming}
+									className="h-7 w-20 text-center tabular-nums"
+								/>
+							</DropdownMenuItem>
+						)}
+						<DropdownMenuSeparator />
 						<DropdownMenuItem onClick={() => onDownload("json")}>
+							<DownloadIcon className="size-4" />
 							Download as JSON
 						</DropdownMenuItem>
 						<DropdownMenuItem onClick={() => onDownload("txt")}>
+							<DownloadIcon className="size-4" />
 							Download as TXT
+						</DropdownMenuItem>
+						<DropdownMenuSeparator />
+						<DropdownMenuItem onClick={onShowShortcutHelp}>
+							<HelpCircleIcon className="size-4" />
+							Keyboard shortcuts
 						</DropdownMenuItem>
 					</DropdownMenuContent>
 				</DropdownMenu>

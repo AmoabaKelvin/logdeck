@@ -305,8 +305,8 @@ export function Terminal({ containerId, host }: TerminalProps) {
 	}, [connect]);
 
 	return (
-		<div className="w-full space-y-2">
-			<div className="flex items-center justify-between px-3 py-2 bg-muted/30 rounded-t-md border border-b-0 border-border">
+		<div className="w-full">
+			<div className="flex items-center justify-between border-b border-border/70 bg-muted/30 px-3 py-2">
 				<div className="flex items-center gap-2">
 					<div className="flex items-center gap-1.5">
 						<div
@@ -371,7 +371,7 @@ export function Terminal({ containerId, host }: TerminalProps) {
 
 			<div
 				ref={terminalRef}
-				className="w-full h-[400px] rounded-b-md overflow-hidden border border-t-0 border-border bg-background shadow-sm p-2 pb-4"
+				className="h-[400px] w-full overflow-hidden bg-background p-2 pb-4"
 			/>
 		</div>
 	);
