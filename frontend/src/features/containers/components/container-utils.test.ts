@@ -5,6 +5,7 @@ import type { ContainerInfo } from "../types";
 import {
 	countContainerStates,
 	getComposeProject,
+	resolvePublishedHost,
 	selectStackMembers,
 	selectVisibleContainers,
 	sortStoredContainersBySize,
@@ -282,5 +283,26 @@ describe("splitContainerStatus", () => {
 			duration: null,
 			exitCode: null,
 		});
+	});
+});
+
+describe("resolvePublishedHost", () => {
+	it("treats a local socket as the host the browser already reached", () => {
+		expect(resolvePublishedHost("unix:///var/run/docker.sock", "box")).toBe(
+			"box",
+		);
+		expect(resolvePublishedHost(undefined, "box")).toBe("box");
+	});
+
+	it("reads the machine out of remote addresses", () => {
+		expect(resolvePublishedHost("ssh://deploy@example.com:22", "box")).toBe(
+			"example.com",
+		);
+		expect(resolvePublishedHost("tcp://10.0.0.4:2375", "box")).toBe("10.0.0.4");
+		expect(resolvePublishedHost("tcp://[::1]:2375", "box")).toBe("[::1]");
+	});
+
+	it("gives up rather than guess on an address it cannot read", () => {
+		expect(resolvePublishedHost("weird://thing", "box")).toBeNull();
 	});
 });

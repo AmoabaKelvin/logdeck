@@ -1,134 +1,60 @@
 import { useState } from "react";
 
 import { ChevronDownIcon } from "@/components/ui/icons";
-import type { ContainerInfo } from "../types";
-import { formatCreatedDate, isCoolifyManaged } from "./container-utils";
-import { EnvironmentVariables } from "./environment-variables";
-import { ResourceLimits } from "./resource-limits";
-import { Terminal } from "./terminal";
+import type { ContainerInspect } from "../api/get-container-inspect";
+import type { ContainerInfo, ContainerStats } from "../types";
+import { ContainerEnvPanel } from "./container-env-panel";
+import { ContainerLimitsPanel } from "./container-limits-panel";
+import { ContainerNetworkPanel } from "./container-network-panel";
+import { ContainerOverviewPanel } from "./container-overview-panel";
+import { isCoolifyManaged } from "./container-utils";
 
-const PANELS = ["details", "environment", "resources", "terminal"] as const;
+const PANELS = ["overview", "network", "environment", "limits"] as const;
 type Panel = (typeof PANELS)[number];
 
 const PANEL_LABELS: Record<Panel, string> = {
-	details: "Details",
+	overview: "Overview",
+	network: "Network",
 	environment: "Environment",
-	resources: "Resources",
-	terminal: "Terminal",
+	limits: "Limits",
 };
-
-function Field({
-	term,
-	children,
-}: {
-	term: string;
-	children: React.ReactNode;
-}) {
-	return (
-		<div className="grid gap-1 py-3 first:pt-0 last:pb-0 sm:grid-cols-[9rem_1fr] sm:gap-4">
-			<dt className="font-medium">{term}</dt>
-			<dd className="min-w-0 break-all text-muted-foreground">{children}</dd>
-		</div>
-	);
-}
-
-function DetailsPanel({ container }: { container: ContainerInfo }) {
-	const labels = Object.entries(container.labels ?? {});
-	const ports = container.ports ?? [];
-
-	return (
-		<div className="grid gap-8 lg:grid-cols-2">
-			<dl className="divide-y divide-border/60 text-base sm:text-sm">
-				<Field term="Container ID">
-					<span className="font-mono">{container.id}</span>
-				</Field>
-				<Field term="Image">
-					<span className="font-mono">{container.image}</span>
-				</Field>
-				<Field term="Command">
-					<span className="font-mono">{container.command}</span>
-				</Field>
-				<Field term="Created">{formatCreatedDate(container.created)}</Field>
-				<Field term="Host">{container.host}</Field>
-				<Field term="Ports">
-					{ports.length === 0
-						? "None published"
-						: ports
-								.map(
-									(port) =>
-										`${port.publicPort} → ${port.privatePort}/${port.type}`,
-								)
-								.join(", ")}
-				</Field>
-				{isCoolifyManaged(container.labels) && (
-					<Field term="Managed by">Coolify</Field>
-				)}
-			</dl>
-
-			<div className="min-w-0">
-				<h2 className="text-base font-medium sm:text-sm">
-					Labels
-					{labels.length > 0 && (
-						<span className="ml-1.5 text-muted-foreground tabular-nums">
-							{labels.length}
-						</span>
-					)}
-				</h2>
-				{labels.length === 0 ? (
-					<p className="mt-3 text-base text-muted-foreground sm:text-sm">
-						This container has no labels.
-					</p>
-				) : (
-					<dl className="mt-3 max-h-80 divide-y divide-border/60 overflow-y-auto text-base sm:text-sm">
-						{labels.map(([key, value]) => (
-							<div key={key} className="py-2 first:pt-0 last:pb-0">
-								<dt className="truncate font-medium" title={key}>
-									{key}
-								</dt>
-								<dd className="break-all font-mono text-muted-foreground">
-									{value}
-								</dd>
-							</div>
-						))}
-					</dl>
-				)}
-			</div>
-		</div>
-	);
-}
 
 interface ContainerDetailPanelsProps {
 	container: ContainerInfo;
 	// The real Docker id, which stays correct while the list refetches after a
 	// recreate; the panels talk to the API with it.
 	containerId: string;
+	hostAddress: string | undefined;
 	isReadOnly: boolean;
+	stats: ContainerStats | undefined;
+	inspect: ContainerInspect | undefined;
+	isInspectLoading: boolean;
+	isInspectError: boolean;
 	onContainerRecreated: (newContainerId: string) => void;
 }
 
 /**
- * Configuration and metadata for the container, parked behind a disclosure row
- * so the log stream keeps the page. Opening one panel closes the others;
- * clicking the open panel's button closes it again.
+ * Everything about the container that is not its log stream, parked behind a
+ * disclosure row so the stream keeps the page. One panel at a time; clicking
+ * the open one closes it again.
  */
 export function ContainerDetailPanels({
 	container,
 	containerId,
+	hostAddress,
 	isReadOnly,
+	stats,
+	inspect,
+	isInspectLoading,
+	isInspectError,
 	onContainerRecreated,
 }: ContainerDetailPanelsProps) {
 	const [openPanel, setOpenPanel] = useState<Panel | null>(null);
 
-	// There is nothing to exec into unless the container is running.
-	const canExec = container.state.toLowerCase() === "running";
-	const panels: readonly Panel[] = canExec
-		? PANELS
-		: PANELS.filter((panel) => panel !== "terminal");
-
 	return (
 		<div>
 			<div className="-mx-2.5 flex flex-wrap items-center gap-1">
-				{panels.map((panel) => {
+				{PANELS.map((panel) => {
 					const isOpen = openPanel === panel;
 					return (
 						<button
@@ -154,16 +80,29 @@ export function ContainerDetailPanels({
 				})}
 			</div>
 
-			{openPanel && panels.includes(openPanel) && (
+			{openPanel && (
 				<div
 					id="container-detail-panel"
-					className={`mt-3 overflow-hidden rounded-xl border border-border/70 ${
-						openPanel === "terminal" ? "" : "p-4 sm:p-5"
-					}`}
+					className="mt-3 rounded-xl border border-border/70 p-4 sm:p-5"
 				>
-					{openPanel === "details" && <DetailsPanel container={container} />}
+					{openPanel === "overview" && (
+						<ContainerOverviewPanel
+							container={container}
+							inspect={inspect}
+							isLoading={isInspectLoading}
+							isError={isInspectError}
+						/>
+					)}
+					{openPanel === "network" && (
+						<ContainerNetworkPanel
+							inspect={inspect}
+							isLoading={isInspectLoading}
+							isError={isInspectError}
+							hostAddress={hostAddress}
+						/>
+					)}
 					{openPanel === "environment" && (
-						<EnvironmentVariables
+						<ContainerEnvPanel
 							containerId={containerId}
 							containerHost={container.host}
 							isReadOnly={isReadOnly}
@@ -171,15 +110,14 @@ export function ContainerDetailPanels({
 							onContainerIdChange={onContainerRecreated}
 						/>
 					)}
-					{openPanel === "resources" && (
-						<ResourceLimits
+					{openPanel === "limits" && (
+						<ContainerLimitsPanel
 							containerId={containerId}
 							containerHost={container.host}
 							isReadOnly={isReadOnly}
+							stats={stats}
+							inspect={inspect}
 						/>
-					)}
-					{openPanel === "terminal" && (
-						<Terminal containerId={containerId} host={container.host} />
 					)}
 				</div>
 			)}

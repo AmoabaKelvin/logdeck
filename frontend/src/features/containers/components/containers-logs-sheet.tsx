@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/tooltip";
 
 import type { ContainerInfo } from "../types";
+import { ContainerEnvPanel } from "./container-env-panel";
 import {
 	formatContainerName,
 	formatCreatedDate,
@@ -26,7 +27,6 @@ import {
 	isCoolifyManaged,
 	toTitleCase,
 } from "./container-utils";
-import { EnvironmentVariables } from "./environment-variables";
 import { LogViewer } from "./log-viewer/log-viewer";
 import { useLocalLogViewState } from "./log-viewer/use-log-view-state";
 
@@ -221,7 +221,7 @@ export function ContainersLogsSheet({
 											</Button>
 											{showEnvVariables && (
 												<div className="max-h-[300px] overflow-y-auto">
-													<EnvironmentVariables
+													<ContainerEnvPanel
 														containerId={container.id}
 														containerHost={container.host}
 														isReadOnly={isReadOnly}

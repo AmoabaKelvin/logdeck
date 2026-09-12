@@ -65,6 +65,14 @@ export function DownloadIcon(props: IconProps) {
   return <HugeiconsIcon icon={hugeicons.Download01Icon} {...props} />
 }
 
+export function EyeIcon(props: IconProps) {
+  return <HugeiconsIcon icon={hugeicons.ViewIcon} {...props} />
+}
+
+export function EyeOffIcon(props: IconProps) {
+  return <HugeiconsIcon icon={hugeicons.ViewOffSlashIcon} {...props} />
+}
+
 export function EllipsisVerticalIcon(props: IconProps) {
   return <HugeiconsIcon icon={hugeicons.EllipsisVerticalIcon} {...props} />
 }

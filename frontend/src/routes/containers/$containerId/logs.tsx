@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { AppHeader } from "@/components/app-header";
 import { ConfirmActionDialog } from "@/features/containers/components/confirm-action-dialog";
 import { ContainerDetailHeader } from "@/features/containers/components/container-detail-header";
@@ -9,7 +9,9 @@ import { formatContainerName } from "@/features/containers/components/container-
 import type { LogViewerHandle } from "@/features/containers/components/log-viewer/log-viewer";
 import { LogViewer } from "@/features/containers/components/log-viewer/log-viewer";
 import { useUrlLogViewState } from "@/features/containers/components/log-viewer/use-log-view-state";
+import { TerminalDialog } from "@/features/containers/components/terminal-dialog";
 import { useContainerActions } from "@/features/containers/hooks/use-container-actions";
+import { useContainerInspect } from "@/features/containers/hooks/use-container-inspect";
 import { useContainerStats } from "@/features/containers/hooks/use-container-stats";
 import { useHistoryContainers } from "@/features/containers/hooks/use-history-containers";
 import { useLiveContainersQuery } from "@/features/containers/hooks/use-live-containers-query";
@@ -28,6 +30,7 @@ function ContainerLogsPage() {
 
 	const logViewerRef = useRef<LogViewerHandle>(null);
 	const logViewState = useUrlLogViewState();
+	const [isShellOpen, setIsShellOpen] = useState(false);
 
 	// The URL parameter can be a container name or an ID
 	const containerIdentifier = decodeURIComponent(encodedContainerId);
@@ -67,6 +70,18 @@ function ContainerLogsPage() {
 		: undefined;
 	const isRemoved = storedContainer !== undefined;
 
+	// Inspect is where the interesting facts live: restart counts, health probe
+	// output, mounts, networks. The container list carries none of it.
+	const {
+		data: inspect,
+		isLoading: isInspectLoading,
+		isError: isInspectError,
+	} = useContainerInspect(container?.id, container?.host);
+
+	const hostAddress = containersData?.hosts?.find(
+		(host) => host.name === container?.host,
+	)?.host;
+
 	const {
 		pendingActions,
 		confirmAction,
@@ -102,11 +117,13 @@ function ContainerLogsPage() {
 					isReadOnly={isReadOnly}
 					stats={container ? statsMap[container.id] : undefined}
 					history={container ? (statsHistory[container.id] ?? []) : []}
+					inspect={inspect}
 					isActionPending={container ? pendingActions.has(container.id) : false}
 					onStart={() => container && startContainerAction(container)}
 					onStop={() => container && stopContainerAction(container)}
 					onRestart={() => container && restartContainerAction(container)}
 					onDelete={() => container && deleteContainerAction(container)}
+					onOpenShell={() => setIsShellOpen(true)}
 				/>
 
 				{container && (
@@ -114,7 +131,12 @@ function ContainerLogsPage() {
 						<ContainerDetailPanels
 							container={container}
 							containerId={actualContainerId}
+							hostAddress={hostAddress}
 							isReadOnly={isReadOnly}
+							stats={statsMap[container.id]}
+							inspect={inspect}
+							isInspectLoading={isInspectLoading}
+							isInspectError={isInspectError}
 							onContainerRecreated={handleContainerRecreated}
 						/>
 					</section>
@@ -132,6 +154,16 @@ function ContainerLogsPage() {
 					/>
 				</section>
 			</main>
+
+			{container && (
+				<TerminalDialog
+					containerId={actualContainerId}
+					containerName={formatContainerName(container.names)}
+					host={container.host}
+					open={isShellOpen}
+					onOpenChange={setIsShellOpen}
+				/>
+			)}
 
 			<ConfirmActionDialog
 				action={confirmAction}

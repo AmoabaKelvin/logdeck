@@ -7,6 +7,7 @@ import {
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuLabel,
+	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -15,9 +16,11 @@ import {
 	PlayIcon,
 	RotateCwIcon,
 	SquareIcon,
+	TerminalIcon,
 	Trash2Icon,
 } from "@/components/ui/icons";
 import { Spinner } from "@/components/ui/spinner";
+import type { ContainerInspect } from "../api/get-container-inspect";
 import type { StatsSample } from "../hooks/use-stats-history";
 import type { ContainerInfo, ContainerStats } from "../types";
 import {
@@ -45,11 +48,15 @@ interface ContainerDetailHeaderProps {
 	isReadOnly: boolean;
 	stats: ContainerStats | undefined;
 	history: StatsSample[];
+	// Inspect carries what the container list cannot: restart counts and how
+	// the last run ended.
+	inspect: ContainerInspect | undefined;
 	isActionPending: boolean;
 	onStart: () => void;
 	onStop: () => void;
 	onRestart: () => void;
 	onDelete: () => void;
+	onOpenShell: () => void;
 }
 
 interface StatProps {
@@ -57,17 +64,20 @@ interface StatProps {
 	value: string;
 	detail?: string;
 	history?: number[];
+	tone?: "warn";
 }
 
 /** Label beside its reading — the same shape the dashboard header uses. */
-function Stat({ label, value, detail, history }: StatProps) {
+function Stat({ label, value, detail, history, tone }: StatProps) {
 	return (
 		<div className="flex min-w-0 items-center gap-2.5">
 			<span className="shrink-0 font-mono text-[0.625rem] uppercase tracking-wide text-muted-foreground">
 				{label}
 			</span>
 			<span
-				className="truncate text-sm font-medium tabular-nums"
+				className={`truncate text-sm font-medium tabular-nums ${
+					tone === "warn" ? "text-amber-700 dark:text-amber-400" : ""
+				}`}
 				title={detail}
 			>
 				{value}
@@ -98,11 +108,13 @@ export function ContainerDetailHeader({
 	isReadOnly,
 	stats,
 	history,
+	inspect,
 	isActionPending,
 	onStart,
 	onStop,
 	onRestart,
 	onDelete,
+	onOpenShell,
 }: ContainerDetailHeaderProps) {
 	const state = container?.state.toLowerCase();
 	const isRunning = state === "running" || state === "paused";
@@ -146,6 +158,13 @@ export function ContainerDetailHeader({
 				state === "exited" || state === "dead" ? "Stopped" : "Since";
 			vitals.push({ label: sinceLabel, value: `${duration} ago` });
 		}
+		if (inspect && inspect.RestartCount > 0) {
+			vitals.push({
+				label: "Restarts",
+				value: String(inspect.RestartCount),
+				tone: "warn",
+			});
+		}
 		if (ports) {
 			vitals.push({ label: "Ports", value: ports.value, detail: ports.detail });
 		}
@@ -184,6 +203,11 @@ export function ContainerDetailHeader({
 											className={`border-transparent ${getHealthBadgeClass(container.health)}`}
 										>
 											{toTitleCase(container.health)}
+										</Badge>
+									)}
+									{inspect?.State.OOMKilled && (
+										<Badge className="border-transparent bg-rose-500/10 text-rose-700 dark:text-rose-400">
+											Out of memory
 										</Badge>
 									)}
 								</>
@@ -239,6 +263,18 @@ export function ContainerDetailHeader({
 									<DropdownMenuLabel className="text-muted-foreground">
 										Read-only mode
 									</DropdownMenuLabel>
+								)}
+								{state === "running" && (
+									<>
+										<DropdownMenuItem
+											disabled={isReadOnly}
+											onClick={onOpenShell}
+										>
+											<TerminalIcon className="size-4" />
+											Open shell
+										</DropdownMenuItem>
+										<DropdownMenuSeparator />
+									</>
 								)}
 								<DropdownMenuItem
 									variant="destructive"
