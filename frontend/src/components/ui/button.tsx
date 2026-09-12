@@ -39,7 +39,7 @@ const buttonVariants = cva(
 
 /** Marks a toggle as engaged: a filled chip rather than a second border. */
 export const activeControlClass =
-	"data-[active=true]:bg-muted data-[active=true]:text-foreground"
+  "data-[active=true]:bg-muted data-[active=true]:text-foreground"
 
 function Button({
   className,
