@@ -1,104 +1,99 @@
+import {
+  ChartSplineIcon,
+  ComputerTerminal02Icon,
+  ConsoleIcon,
+  KeyGeneratorFobIcon,
+  PuzzleIcon,
+  ServerStack02Icon,
+  Structure01Icon,
+  WaveSquareIcon,
+} from "@hugeicons/core-free-icons";
+
+import { Icon, Wrapper, h2Class } from "./ui";
+
 const features = [
   {
-    title: "Live log streaming",
+    title: "Multi-host, no agents",
     description:
-      "Follow logs in real time with pause, auto-scroll, and timestamps. Thousands of lines stay smooth.",
+      "Local sockets, TCP, or SSH with key auth. One list, nothing to install remotely.",
+    icon: ServerStack02Icon,
   },
   {
-    title: "Log history",
+    title: "Docker and Podman, mixed",
     description:
-      "Logs persist to a local store, so history survives a restart, a rebuild, and even removal.",
+      "Auto-detects Docker and rootless or rootful Podman. Mix both in one setup.",
+    icon: PuzzleIcon,
   },
   {
-    title: "Alerting",
+    title: "Live tail that keeps up",
     description:
-      "Rules on container deaths, OOM kills, and log patterns, delivered to a webhook Slack and Discord accept as-is.",
+      "WebSocket tail with pause, timestamps, collapsible JSON, and line pinning.",
+    icon: WaveSquareIcon,
   },
   {
-    title: "Search and filtering",
+    title: "Stats without a metrics stack",
     description:
-      "Full-text search with match navigation, log level filters, and calendar-based time ranges.",
+      "CPU and memory per container with sparklines, plus engine and host stats.",
+    icon: ChartSplineIcon,
   },
   {
-    title: "Multi-host",
+    title: "A CLI on the same API",
     description:
-      "Manage local, TCP, and SSH daemons from one dashboard. Every container, one list.",
+      "grep every host, follow a service, restart a stack. JSON on every command.",
+    icon: ComputerTerminal02Icon,
   },
   {
-    title: "Docker and Podman",
+    title: "A shell in the browser",
     description:
-      "Works with both engines, rootless or rootful, side by side in the same setup.",
+      "Open a terminal in any running container, or run one command and get the exit code.",
+    icon: ConsoleIcon,
   },
   {
-    title: "Compose stacks",
+    title: "Scoped tokens, read-only mode",
     description:
-      "Start, stop, or restart whole stacks, and read stack logs merged by timestamp.",
-  },
-  {
-    title: "Stats and trends",
-    description:
-      "Live CPU and memory per container, with sparklines covering the last five minutes.",
-  },
-  {
-    title: "Resource limits",
-    description:
-      "Change memory limits, CPU limits, and restart policies live — no recreate, no downtime.",
-  },
-  {
-    title: "Command-line client",
-    description:
-      "A scriptable logdeck CLI with JSON output, built for automation and AI agents.",
-  },
-  {
-    title: "MCP server",
-    description:
-      "Let an AI assistant read your containers, logs, and stats — and act, when you opt in. Read-scoped and safe by default.",
-  },
-  {
-    title: "Web terminal",
-    description:
-      "Open a shell in any running container straight from the browser.",
+      "Admin and read tokens, plus a read-only switch for the instance everyone can see.",
+    icon: KeyGeneratorFobIcon,
   },
   {
     title: "Images, volumes, networks",
     description:
-      "Read-only views of everything else on your hosts, aggregated and filterable.",
-  },
-  {
-    title: "Environment variables",
-    description:
-      "View and edit container env vars, with bulk paste from .env files.",
-  },
-  {
-    title: "Auth and API tokens",
-    description:
-      "Optional login, admin and read-only API tokens for external tools, and a read-only mode for production.",
+      "Read-only views of everything else on every host, in one filterable list.",
+    icon: Structure01Icon,
   },
 ];
 
 export function Features() {
   return (
-    <section id="features" className="container py-20 sm:py-24">
-      <div className="max-w-2xl">
-        <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-          Everything you need to run containers
-        </h2>
-        <p className="mt-3 text-muted-foreground">
-          One binary with the frontend embedded. No external database, no agents
-          on your hosts.
-        </p>
-      </div>
-
-      <dl className="mt-12 grid gap-x-10 gap-y-9 sm:grid-cols-2 lg:grid-cols-3">
-        {features.map((feature) => (
-          <div key={feature.title}>
-            <dt className="font-medium">{feature.title}</dt>
-            <dd className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-              {feature.description}
-            </dd>
-          </div>
-        ))}
-      </dl>
+    <section>
+      <Wrapper className="border-t border-dashed border-base-200 pt-12 pb-4">
+        <div className="max-w-xl text-balance">
+          <h2 className={h2Class}>Everything else, no extra containers</h2>
+          <p className="mt-4 text-pretty text-base text-base-500">
+            One Go binary with the frontend embedded. No database to run, no
+            agents on your hosts, no cloud tier.
+          </p>
+        </div>
+        <div className="mt-8 grid grid-cols-1 items-center gap-2 md:grid-cols-2 lg:grid-cols-4">
+          {features.map((feature) => {
+            return (
+              <div
+                key={feature.title}
+                className="group flex h-full flex-col rounded-xl bg-sand-100 p-4 outline-transparent duration-300 hover:bg-white hover:shadow-2xl hover:outline hover:outline-sand-100"
+              >
+                <div className="inline-flex w-fit rounded-lg bg-white p-4 duration-300 group-hover:-translate-y-2 group-hover:-rotate-12 group-hover:bg-sand-100">
+                  <Icon icon={feature.icon} className="text-accent-500" />
+                </div>
+                <h3 className="mt-12 text-sm font-medium text-base-900">
+                  {feature.title}
+                </h3>
+                <p className="mt-2 text-pretty text-sm text-base-500">
+                  {feature.description}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </Wrapper>
     </section>
   );
 }

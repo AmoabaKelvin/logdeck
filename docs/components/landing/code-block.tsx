@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Check, Copy } from "lucide-react"
+import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { Button } from "@/components/ui/button"
 import copy from "copy-to-clipboard"
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
@@ -40,9 +41,9 @@ export function CodeBlock({ code, language = "bash", showLineNumbers = false }: 
           onClick={handleCopy}
         >
           {copied ? (
-            <Check className="h-4 w-4 text-green-500" />
+            <HugeiconsIcon icon={Tick02Icon} size={16} strokeWidth={1.5} className="text-green-500" />
           ) : (
-            <Copy className="h-4 w-4" />
+            <HugeiconsIcon icon={Copy01Icon} size={16} strokeWidth={1.5} />
           )}
         </Button>
       </div>

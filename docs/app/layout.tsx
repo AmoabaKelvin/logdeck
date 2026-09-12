@@ -17,14 +17,15 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+
 export const metadata: Metadata = {
   metadataBase: new URL("https://logdeck.dev"),
   title: {
-    default: "LogDeck - Logs, stats, and control for your containers",
+    default: "LogDeck – Logs, alerts, and control for every container you run",
     template: "%s | LogDeck",
   },
   description:
-    "Open-source dashboard and CLI for Docker and Podman. Stream logs, watch resource usage, and manage containers across every host you run.",
+    "Free, self-hosted logs, alerts, and control for Docker and Podman. Stored history, alert rules with cooldowns, live limit edits, a CLI, and an MCP server.",
   keywords: [
     "docker",
     "podman",
@@ -39,6 +40,10 @@ export const metadata: Metadata = {
     "docker compose",
     "log monitoring",
     "multi-host",
+    "dozzle alternative",
+    "log history",
+    "container alerts",
+    "mcp server",
   ],
   authors: [{ name: "Amoaba Kelvin", url: "https://github.com/AmoabaKelvin" }],
   creator: "Amoaba Kelvin",
@@ -51,26 +56,26 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_US",
     url: "https://logdeck.dev",
-    title: "LogDeck - Logs, stats, and control for your containers",
+    title: "LogDeck – Logs, alerts, and control for every container you run",
     description:
-      "Open-source dashboard and CLI for Docker and Podman. Stream logs, watch resource usage, and manage containers across every host you run.",
+      "Free, self-hosted logs, alerts, and control for Docker and Podman. Stored history, alert rules with cooldowns, live limit edits, a CLI, and an MCP server.",
     siteName: "LogDeck",
     images: [
       {
-        url: "/new-landing.png",
-        width: 4396,
-        height: 2894,
-        alt: "LogDeck dashboard showing container logs, stats, and controls",
+        url: "/dashboard.png",
+        width: 3850,
+        height: 2188,
+        alt: "LogDeck containers dashboard with health, ports, and live CPU and memory sparklines",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "LogDeck - Logs, stats, and control for your containers",
+    title: "LogDeck – Logs, alerts, and control for every container you run",
     description:
-      "Open-source dashboard and CLI for Docker and Podman. Stream logs, watch resource usage, and manage containers across every host you run.",
+      "Free, self-hosted logs, alerts, and control for Docker and Podman. Stored history, alert rules with cooldowns, live limit edits, a CLI, and an MCP server.",
     creator: "@amoabakelvin",
-    images: ["/new-landing.png"],
+    images: ["/dashboard.png"],
   },
   robots: {
     index: true,
@@ -97,7 +102,7 @@ const structuredData = [
     "@type": "SoftwareApplication",
     name: "LogDeck",
     description:
-      "Open-source dashboard and CLI for Docker and Podman. Stream logs, watch resource usage, and manage containers across every host you run.",
+      "Free, self-hosted logs, alerts, and control for Docker and Podman. Stored history, alert rules with cooldowns, live limit edits, a CLI, and an MCP server.",
     url: "https://logdeck.dev",
     applicationCategory: "DeveloperApplication",
     operatingSystem: "Linux, macOS",
@@ -116,7 +121,7 @@ const structuredData = [
       "https://github.com/AmoabaKelvin/logdeck",
       "https://hub.docker.com/r/amoabakelvin/logdeck",
     ],
-    screenshot: "https://logdeck.dev/new-landing.png",
+    screenshot: "https://logdeck.dev/dashboard.png",
   },
 ];
 
@@ -127,7 +132,16 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.className} ${geistMono.variable} antialiased`}>
+      <head>
+        {/* Google Sans Flex is not in next/font yet. Used for the landing page. */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,100..1000&display=swap"
+        />
+      </head>
+      <body className={`${geistSans.className} ${geistSans.variable} ${geistMono.variable} antialiased`}>
         <script
           type="application/ld+json"
           // biome-ignore lint/security/noDangerouslySetInnerHtml: static JSON-LD literal defined above, no user input

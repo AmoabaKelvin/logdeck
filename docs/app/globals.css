@@ -3,11 +3,58 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Landing page palette: warm sand neutral, one orange-red accent, gray base. */
+@theme {
+  --color-accent-50: oklch(96.37% 0.014 34.3);
+  --color-accent-100: oklch(92.11% 0.031 32.56);
+  --color-accent-200: oklch(85.18% 0.06 35);
+  --color-accent-300: oklch(77.67% 0.096 34.47);
+  --color-accent-400: oklch(70.47% 0.133 35.14);
+  --color-accent-500: oklch(64.47% 0.167 35.21);
+  --color-accent-600: oklch(55.96% 0.174 34.81);
+  --color-accent-700: oklch(45.78% 0.139 34.91);
+  --color-accent-800: oklch(35.02% 0.102 35.05);
+  --color-accent-900: oklch(22.26% 0.055 35.39);
+  --color-accent-950: oklch(16.51% 0.033 41.46);
+  --color-sand-50: oklch(98.73% 0.004 106.47);
+  --color-sand-100: oklch(97.03% 0.007 88.64);
+  --color-sand-200: oklch(90.07% 0.024 90.76);
+  --color-sand-300: oklch(82.59% 0.04 87.57);
+  --color-sand-400: oklch(75.75% 0.057 88.79);
+  --color-sand-500: oklch(68.28% 0.074 88.38);
+  --color-sand-600: oklch(58.28% 0.068 87.84);
+  --color-sand-700: oklch(47.95% 0.054 88.5);
+  --color-sand-800: oklch(36.27% 0.04 89.72);
+  --color-sand-900: oklch(24.54% 0.023 87.95);
+  --color-sand-950: oklch(16.56% 0.011 80.55);
+  --color-base-50: oklch(0.985 0 0);
+  --color-base-100: oklch(0.97 0 0);
+  --color-base-200: oklch(0.922 0 0);
+  --color-base-300: oklch(0.87 0 0);
+  --color-base-400: oklch(0.708 0 0);
+  --color-base-500: oklch(0.556 0 0);
+  --color-base-600: oklch(0.439 0 0);
+  --color-base-700: oklch(0.371 0 0);
+  --color-base-800: oklch(0.269 0 0);
+  --color-base-900: oklch(0.205 0 0);
+  --color-base-950: oklch(0.145 0 0);
+  --animate-marquee: marquee 40s linear infinite;
+  @keyframes marquee {
+    0% {
+      transform: translateX(0%);
+    }
+    100% {
+      transform: translateX(-100%);
+    }
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: "Google Sans Flex", var(--font-geist-sans), sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
