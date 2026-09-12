@@ -5,11 +5,15 @@ import { Spinner } from "@/components/ui/spinner";
 /** A titled block inside a detail panel. */
 export function PanelSection({
 	title,
+	// Status about the section itself, which belongs beside the heading — at
+	// full width, pinning it to the far right strands it.
+	badge,
 	action,
 	children,
 	className,
 }: {
 	title: string;
+	badge?: React.ReactNode;
 	action?: React.ReactNode;
 	children: React.ReactNode;
 	className?: string;
@@ -17,7 +21,10 @@ export function PanelSection({
 	return (
 		<section className={`min-w-0 ${className ?? ""}`}>
 			<div className="flex min-h-8 items-center justify-between gap-3">
-				<h3 className="text-base font-medium sm:text-sm">{title}</h3>
+				<div className="flex min-w-0 items-center gap-2.5">
+					<h3 className="text-base font-medium sm:text-sm">{title}</h3>
+					{badge}
+				</div>
 				{action}
 			</div>
 			<div className="mt-2">{children}</div>

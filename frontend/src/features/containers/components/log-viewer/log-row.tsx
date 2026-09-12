@@ -153,7 +153,7 @@ export function LogRow(props: LogRowProps) {
 				transform: `translateY(${start}px)`,
 				cursor: "pointer",
 			}}
-			className={`group flex items-start gap-x-3 border-l-2 border-transparent px-4 py-1 ${
+			className={`group flex items-start gap-x-3 border-l-2 border-transparent py-1 pr-4 pl-2 ${
 				wrapText ? "" : "whitespace-nowrap"
 			} ${rowStateClass(props)} ${isNewRow ? "log-stream-row-enter" : ""}`}
 		>

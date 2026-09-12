@@ -197,9 +197,27 @@ body {
   animation: sparkline-fade 600ms ease-out;
 }
 
+/* A row that just arrived warms up and settles, so a change you made in a long
+   list tells you where it landed. */
+@keyframes row-added {
+  from {
+    background-color: color-mix(in oklab, var(--color-amber-500) 18%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+.row-added {
+  animation: row-added 1.2s ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sparkline-line,
-  .sparkline-fill {
+  .sparkline-fill,
+  .row-added,
+  .log-stream-row-enter,
+  .animate-in {
     animation: none;
   }
 }

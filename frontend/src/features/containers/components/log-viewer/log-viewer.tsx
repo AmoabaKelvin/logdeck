@@ -898,8 +898,8 @@ export function LogViewer({
 
 	if (variant === "page") {
 		return (
-			<div className="flex flex-col overflow-hidden rounded-xl border border-border/70 lg:min-h-0 lg:flex-1">
-				<div className="shrink-0 border-b border-border/70 px-3 py-2.5">
+			<div className="flex flex-col lg:min-h-0 lg:flex-1">
+				<div className="shrink-0 border-y border-border/70 py-3">
 					<PageToolbar
 						{...toolbarProps}
 						totalCount={logs.length}
@@ -917,9 +917,7 @@ export function LogViewer({
 	return (
 		<div className="space-y-3">
 			<SheetToolbar {...toolbarProps} />
-			<div className="overflow-hidden rounded-xl border border-border/70">
-				{logList}
-			</div>
+			<div className="border-t border-border/70">{logList}</div>
 			{shortcutHelpDialog}
 		</div>
 	);

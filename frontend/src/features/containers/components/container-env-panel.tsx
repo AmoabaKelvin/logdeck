@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,11 @@ import {
 } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 import { getContainerEnvVariables } from "../api/get-container-env-variables";
 import { updateContainerEnvVariables } from "../api/update-container-env-variables";
@@ -38,6 +43,8 @@ const ROW = "grid gap-x-2 sm:grid-cols-[minmax(9rem,18rem)_minmax(0,1fr)_auto]";
  * turns the list into a wall of rectangles; the border arrives on hover and
  * focus, where it means something.
  */
+const ICON_BUTTON = "transition-transform active:scale-90";
+
 const VALUE_INPUT =
 	"h-9 border-transparent bg-transparent px-2 font-mono shadow-none hover:border-input focus-visible:border-ring disabled:opacity-100";
 
@@ -55,14 +62,16 @@ export function ContainerEnvPanel({
 	// "is this edited?" needs no bookkeeping.
 	const [edits, setEdits] = useState<Record<string, string>>({});
 	const [removed, setRemoved] = useState<Set<string>>(new Set());
-	const [newKey, setNewKey] = useState("");
-	const [newValue, setNewValue] = useState("");
+	const [draftEntry, setDraftEntry] = useState("");
 	const [isAdding, setIsAdding] = useState(false);
 	const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 	const [showUploadPreview, setShowUploadPreview] = useState(false);
 	const [uploadedEnv, setUploadedEnv] = useState<Record<string, string>>({});
+	// Rows that just arrived flash once so a change lands somewhere visible in a
+	// list that may be scrolled well away from the add control.
+	const [justAdded, setJustAdded] = useState<Set<string>>(new Set());
 	const fileInputRef = useRef<HTMLInputElement>(null);
-	const newValueInputRef = useRef<HTMLInputElement>(null);
+	const listRef = useRef<HTMLDivElement>(null);
 
 	const {
 		data: original,
@@ -117,10 +126,31 @@ export function ContainerEnvPanel({
 	function discard() {
 		setEdits({});
 		setRemoved(new Set());
+		setJustAdded(new Set());
 		setIsAdding(false);
-		setNewKey("");
-		setNewValue("");
+		setDraftEntry("");
 	}
+
+	// A variable added while the list is scrolled elsewhere would land out of
+	// sight, so the list goes to it and the row flashes on arrival.
+	useEffect(() => {
+		const [first] = justAdded;
+		if (!first) return;
+		// One frame late, so the row is measured where it finally sits rather
+		// than where it landed before the list re-sorted around it.
+		const frame = requestAnimationFrame(() => {
+			listRef.current
+				?.querySelector(`[data-env-key="${CSS.escape(first)}"]`)
+				?.scrollIntoView({
+					block: "center",
+					behavior: window.matchMedia("(prefers-reduced-motion: reduce)")
+						.matches
+						? "auto"
+						: "smooth",
+				});
+		});
+		return () => cancelAnimationFrame(frame);
+	}, [justAdded]);
 
 	const base = original ?? {};
 	const effective = useMemo(() => ({ ...base, ...edits }), [base, edits]);
@@ -150,16 +180,31 @@ export function ContainerEnvPanel({
 			.every(([key]) => revealed.has(key));
 
 	const applyImport = (imported: Record<string, string>) => {
+		const keys = Object.keys(imported);
 		setEdits((prev) => ({ ...prev, ...imported }));
 		setRemoved((prev) => {
 			const next = new Set(prev);
-			for (const key of Object.keys(imported)) next.delete(key);
+			for (const key of keys) next.delete(key);
 			return next;
 		});
+		setJustAdded(new Set(keys));
+		// Long enough for the flash to finish; re-adding the same key restarts it
+		// because the class is removed in between.
+		setTimeout(() => setJustAdded(new Set()), 1300);
 	};
 
+	// One field, parsed on submit. Splitting name from value while the user is
+	// still typing meant moving focus mid-keystroke, which raced anyone typing
+	// faster than a frame and spilled the value into the name.
 	const handleAdd = () => {
-		const key = newKey.trim();
+		const text = draftEntry.trim();
+		if (!text) {
+			toast.error("Enter a name, or NAME=value");
+			return;
+		}
+
+		const equalIndex = text.indexOf("=");
+		const key = (equalIndex === -1 ? text : text.slice(0, equalIndex)).trim();
 		if (!key) {
 			toast.error("Name cannot be empty");
 			return;
@@ -168,15 +213,23 @@ export function ContainerEnvPanel({
 			toast.error(`${key} is already set`);
 			return;
 		}
-		applyImport({ [key]: newValue });
-		setNewKey("");
-		setNewValue("");
+
+		let value = equalIndex === -1 ? "" : text.slice(equalIndex + 1).trim();
+		if (
+			(value.startsWith('"') && value.endsWith('"')) ||
+			(value.startsWith("'") && value.endsWith("'"))
+		) {
+			value = value.slice(1, -1);
+		}
+
+		applyImport({ [key]: value });
+		setDraftEntry("");
 		setIsAdding(false);
 	};
 
-	// Pasting a whole .env into the name field imports every pair at once. The
-	// paste must be intercepted: text inputs strip newlines before onChange.
-	const handleKeyPaste = (event: React.ClipboardEvent<HTMLInputElement>) => {
+	// Pasting a whole .env imports every pair at once. The paste must be
+	// intercepted: text inputs strip newlines before onChange.
+	const handlePaste = (event: React.ClipboardEvent<HTMLInputElement>) => {
 		const text = event.clipboardData.getData("text");
 		if (!text.includes("\n")) return;
 
@@ -189,42 +242,9 @@ export function ContainerEnvPanel({
 		}
 
 		applyImport(parsed);
-		setNewKey("");
-		setNewValue("");
+		setDraftEntry("");
 		setIsAdding(false);
 		toast.success(`Imported ${count} variable${count === 1 ? "" : "s"}`);
-	};
-
-	const handleNewKeyChange = (rawValue: string) => {
-		const equalIndex = rawValue.indexOf("=");
-		if (equalIndex === -1) {
-			setNewKey(rawValue);
-			return;
-		}
-
-		const key = rawValue.substring(0, equalIndex).trim();
-		const rawTail = rawValue.substring(equalIndex + 1);
-		let value = rawTail;
-		if (
-			(value.startsWith('"') && value.endsWith('"')) ||
-			(value.startsWith("'") && value.endsWith("'"))
-		) {
-			value = value.slice(1, -1);
-		}
-
-		setNewKey(key);
-		// Only overwrite the value field when the pasted tail is non-empty;
-		// otherwise typing "FOO=" would wipe text already entered there.
-		if (rawTail.length > 0) {
-			setNewValue(value);
-		}
-		requestAnimationFrame(() => {
-			const input = newValueInputRef.current;
-			if (!input) return;
-			input.focus();
-			const caret = input.value.length;
-			input.setSelectionRange(caret, caret);
-		});
 	};
 
 	const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -335,7 +355,10 @@ export function ContainerEnvPanel({
 					</PanelNote>
 				</div>
 			) : (
-				<div className="mt-3 max-h-96 divide-y divide-border/60 overflow-y-auto">
+				<div
+					ref={listRef}
+					className="mt-3 max-h-96 divide-y divide-border/60 overflow-y-auto"
+				>
 					{entries.map(([key, value]) => {
 						const isRemoved = removed.has(key);
 						const isChanged = key in edits;
@@ -345,11 +368,14 @@ export function ContainerEnvPanel({
 						return (
 							<div
 								key={key}
+								data-env-key={key}
 								className={`group ${ROW} items-center border-l-2 py-1 pl-2 ${
 									isChanged && !isRemoved
 										? "border-l-amber-500"
 										: "border-l-transparent"
-								} ${isRemoved ? "opacity-60" : ""}`}
+								} ${isRemoved ? "opacity-60" : ""} ${
+									justAdded.has(key) ? "row-added" : ""
+								}`}
 							>
 								<span
 									className={`truncate font-mono text-base sm:text-sm ${
@@ -448,59 +474,58 @@ export function ContainerEnvPanel({
 
 			{!isReadOnly &&
 				(isAdding ? (
-					<div className={`${ROW} mt-3 items-center pl-2`}>
+					<div className="mt-3 flex animate-in items-center gap-2 fade-in pl-2 duration-200 slide-in-from-top-1">
 						<Input
 							autoFocus
-							value={newKey}
-							onChange={(e) => handleNewKeyChange(e.target.value)}
-							onPaste={handleKeyPaste}
-							onKeyDown={(e) => {
-								if (e.key === "Escape") setIsAdding(false);
-							}}
-							placeholder="NAME, NAME=value, or paste a .env"
-							aria-label="New variable name"
-							className="h-10 font-mono sm:h-9"
-						/>
-						<Input
-							ref={newValueInputRef}
-							value={newValue}
-							onChange={(e) => setNewValue(e.target.value)}
+							value={draftEntry}
+							onChange={(e) => setDraftEntry(e.target.value)}
+							onPaste={handlePaste}
 							onKeyDown={(e) => {
 								if (e.key === "Enter") handleAdd();
-								if (e.key === "Escape") setIsAdding(false);
+								if (e.key === "Escape") {
+									setIsAdding(false);
+									setDraftEntry("");
+								}
 							}}
-							placeholder="value"
-							aria-label="New variable value"
-							className="h-10 font-mono sm:h-9"
+							placeholder="NAME=value, or paste a .env"
+							aria-label="New variable"
+							className="h-10 max-w-lg font-mono sm:h-9"
 						/>
-						<div className="flex items-center gap-1">
-							<Button onClick={handleAdd} className="h-10 sm:h-9">
-								Add
-							</Button>
+						<Button onClick={handleAdd} className="h-10 sm:h-9">
+							Add
+						</Button>
+						<Button
+							variant="ghost"
+							size="icon-sm"
+							onClick={() => {
+								setIsAdding(false);
+								setDraftEntry("");
+							}}
+							aria-label="Cancel adding a variable"
+							className={`${ICON_BUTTON} size-10 sm:size-9`}
+						>
+							<XIcon className="size-4" />
+						</Button>
+					</div>
+				) : (
+					<Tooltip>
+						<TooltipTrigger asChild>
 							<Button
 								variant="ghost"
 								size="icon-sm"
-								onClick={() => setIsAdding(false)}
-								aria-label="Cancel adding a variable"
-								className="size-10 sm:size-9"
+								onClick={() => setIsAdding(true)}
+								aria-label="Add variable"
+								className={`${ICON_BUTTON} mt-2 ml-0.5 text-muted-foreground hover:text-foreground`}
 							>
-								<XIcon className="size-4" />
+								<PlusIcon className="size-4" />
 							</Button>
-						</div>
-					</div>
-				) : (
-					<Button
-						variant="ghost"
-						onClick={() => setIsAdding(true)}
-						className="mt-2 h-10 py-2 pr-3 pl-2 text-base text-muted-foreground hover:text-foreground sm:h-9 sm:text-sm"
-					>
-						<PlusIcon className="size-4" />
-						Add variable
-					</Button>
+						</TooltipTrigger>
+						<TooltipContent>Add variable</TooltipContent>
+					</Tooltip>
 				))}
 
 			{isDirty && (
-				<div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border/70 pt-4">
+				<div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border/70 pt-4 animate-in fade-in slide-in-from-bottom-1 duration-200">
 					<p className="text-base sm:text-sm">
 						{changeSummary}
 						<span className="ml-1.5 text-muted-foreground">

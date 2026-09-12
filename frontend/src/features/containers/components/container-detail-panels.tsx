@@ -83,7 +83,7 @@ export function ContainerDetailPanels({
 			{openPanel && (
 				<div
 					id="container-detail-panel"
-					className="mt-3 rounded-xl border border-border/70 p-4 sm:p-5"
+					className="mt-3 border-t border-border/70 pt-5 pb-2"
 				>
 					{openPanel === "overview" && (
 						<ContainerOverviewPanel
