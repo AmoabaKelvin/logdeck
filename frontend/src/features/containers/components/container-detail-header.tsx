@@ -26,10 +26,6 @@ import {
 import { Meter } from "./meter";
 import { Sparkline } from "./sparkline";
 
-// Action buttons match the dashboard toolbar's control height so the app has
-// one button size, not four.
-const actionButtonClass = "h-10 py-2 pr-3 pl-2 text-base sm:h-9 sm:text-sm";
-
 interface ContainerDetailHeaderProps {
 	name: string;
 	// Undefined while the live list loads, or for a container that no longer
@@ -229,7 +225,6 @@ export function ContainerDetailHeader({
 								variant="outline"
 								disabled={isReadOnly}
 								onClick={onOpenShell}
-								className={actionButtonClass}
 							>
 								<TerminalIcon className="size-4" />
 								Shell
@@ -239,7 +234,6 @@ export function ContainerDetailHeader({
 							variant="outline"
 							disabled={isReadOnly || isActionPending}
 							onClick={onRestart}
-							className={actionButtonClass}
 						>
 							<RotateCwIcon className="size-4" />
 							Restart
@@ -248,7 +242,6 @@ export function ContainerDetailHeader({
 							variant={isRunning ? "outline" : "default"}
 							disabled={isReadOnly || isActionPending}
 							onClick={isRunning ? onStop : onStart}
-							className={actionButtonClass}
 						>
 							{isActionPending ? (
 								<Spinner className="size-4" />
@@ -265,7 +258,7 @@ export function ContainerDetailHeader({
 							variant="ghost"
 							disabled={isReadOnly || isActionPending}
 							onClick={onDelete}
-							className={`${actionButtonClass} text-muted-foreground hover:bg-destructive/10 hover:text-destructive`}
+							className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
 						>
 							<Trash2Icon className="size-4" />
 							Remove

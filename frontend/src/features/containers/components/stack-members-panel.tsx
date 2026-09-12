@@ -2,11 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-	ChevronDownIcon,
-	FileTextIcon,
-	Trash2Icon,
-} from "@/components/ui/icons";
+import { FileTextIcon, Trash2Icon } from "@/components/ui/icons";
 import {
 	Table,
 	TableBody,
@@ -22,6 +18,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useDeleteHistoryContainer } from "../hooks/use-delete-history-container";
 import type { ContainerInfo } from "../types";
+import { DisclosureTrigger } from "./container-panel-ui";
 import {
 	formatBytes,
 	formatContainerName,
@@ -33,6 +30,8 @@ import {
 } from "./container-utils";
 import type { PurgeHistoryTarget } from "./purge-history-dialog";
 import { PurgeHistoryDialog } from "./purge-history-dialog";
+
+const PANEL_ID = "stack-members-panel";
 
 interface StackMembersPanelProps {
 	members: ContainerInfo[];
@@ -66,26 +65,19 @@ export function StackMembersPanel({
 	}
 
 	return (
-		<div>
-			<button
-				type="button"
-				aria-expanded={isOpen}
-				aria-controls="stack-members-panel"
+		<div className="-ml-2.5">
+			<DisclosureTrigger
+				label="Containers"
+				isOpen={isOpen}
+				controls={PANEL_ID}
 				onClick={() => setIsOpen((open) => !open)}
-				className={`-ml-2.5 inline-flex items-center gap-1.5 rounded-md px-2.5 py-2 text-sm whitespace-nowrap sm:py-1.5 ${
-					isOpen
-						? "bg-muted text-foreground"
-						: "text-muted-foreground hover:text-foreground"
-				}`}
 			>
-				Containers
 				<span className="tabular-nums">{members.length}</span>
-				{isOpen && <ChevronDownIcon className="size-4 shrink-0 rotate-180" />}
-			</button>
+			</DisclosureTrigger>
 
 			{isOpen && (
 				<div
-					id="stack-members-panel"
+					id={PANEL_ID}
 					className="mt-3 rounded-xl border border-border/70 p-4 sm:p-5"
 				>
 					{hasRemoved && (

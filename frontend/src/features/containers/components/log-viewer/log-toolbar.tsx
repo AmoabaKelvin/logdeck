@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui/button";
+import { activeControlClass, Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -28,16 +28,43 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import type { LogLevel } from "@/features/containers/api/get-container-logs-parsed";
 import { LevelFilterPopover } from "./level-filter-popover";
 import { TimeRangeControl } from "./time-range-control";
-import {
-	type LogViewerToolbarProps,
-	toolbarControlClass,
-	toolbarIconButtonClass,
-} from "./toolbar-shared";
-import type { LogSource } from "./use-log-view-state";
+import type { SearchParsed } from "./use-log-search";
+import type { LogSource, LogViewState } from "./use-log-view-state";
 
-interface PageToolbarProps extends LogViewerToolbarProps {
+// What LogViewer hands the toolbar, from its view state and the stream hook.
+interface StreamControls {
+	viewState: LogViewState;
+	searchParsed: SearchParsed;
+	searchInputRef: React.RefObject<HTMLInputElement | null>;
+	excludeMatches: boolean;
+	setExcludeMatches: (value: boolean) => void;
+	autoScroll: boolean;
+	setAutoScroll: (value: boolean) => void;
+	availableLogLevels: readonly LogLevel[];
+	searchMatches: number[];
+	currentMatchIndex: number;
+	onPreviousMatch: () => void;
+	onNextMatch: () => void;
+	sortedPinnedIndices: number[];
+	currentPinnedIndex: number;
+	onNavigatePins: (offset: 1 | -1) => void;
+	isStreaming: boolean;
+	isStreamPaused: boolean;
+	isReconnecting: boolean;
+	isLoadingLogs: boolean;
+	bufferedCount: number;
+	onToggleStreaming: () => void;
+	onTogglePause: () => void;
+	onRefresh: () => void;
+	onLogLinesChange: (value: string) => void;
+	onDownload: (format: "json" | "txt") => void;
+	onShowShortcutHelp: () => void;
+}
+
+interface LogToolbarProps extends StreamControls {
 	totalCount: number;
 	filteredCount: number;
 	// Reading from the log store instead of the live container: streaming and
@@ -95,11 +122,13 @@ function StepNav({
 }
 
 /**
- * One wrapping row of controls. Reading settings that are set once and left
- * alone (timestamps, wrapping, tail length, export) live in the overflow menu;
- * only the controls a reader reaches for mid-session stay on the surface.
+ * One wrapping row of controls, used by both the log page and the sheet: the
+ * row wraps to the width it is given, so a narrow sheet needs no second
+ * implementation. Reading settings that are set once and left alone
+ * (timestamps, wrapping, tail length, export) live in the overflow menu; only
+ * the controls a reader reaches for mid-session stay on the surface.
  */
-export function PageToolbar({
+export function LogToolbar({
 	viewState,
 	searchParsed,
 	searchInputRef,
@@ -130,7 +159,7 @@ export function PageToolbar({
 	filteredCount,
 	isHistory,
 	showSourceToggle,
-}: PageToolbarProps) {
+}: LogToolbarProps) {
 	const {
 		source,
 		setSource,
@@ -182,7 +211,7 @@ export function PageToolbar({
 					placeholder={useRegex ? "Search by regex…" : "Search logs…"}
 					value={searchText}
 					onChange={(e) => setSearchText(e.target.value)}
-					className={`h-10 pr-11 pl-8 sm:h-9 ${
+					className={`pr-11 pl-8 ${
 						useRegex && searchParsed.error
 							? "border-destructive focus-visible:ring-destructive/30"
 							: ""
@@ -248,14 +277,14 @@ export function PageToolbar({
 					selectedLevels={selectedLevels}
 					setSelectedLevels={setSelectedLevels}
 					availableLogLevels={availableLogLevels}
-					className={toolbarControlClass}
+					className={activeControlClass}
 				/>
 
 				<TimeRangeControl
 					timeRange={timeRange}
 					setTimeRange={setTimeRange}
 					disabled={isStreaming}
-					className={toolbarControlClass}
+					className={activeControlClass}
 				/>
 
 				{!isHistory && (
@@ -266,7 +295,7 @@ export function PageToolbar({
 							onClick={onToggleStreaming}
 							disabled={isLoadingLogs && !isStreaming}
 							aria-pressed={isStreaming}
-							className={toolbarControlClass}
+							className={activeControlClass}
 						>
 							{isStreaming ? (
 								<SquareIcon className="size-4" />
@@ -282,7 +311,7 @@ export function PageToolbar({
 								data-active={isStreamPaused}
 								onClick={onTogglePause}
 								aria-pressed={isStreamPaused}
-								className={toolbarControlClass}
+								className={activeControlClass}
 							>
 								{isStreamPaused ? (
 									<PlayIcon className="size-4" />
@@ -307,7 +336,7 @@ export function PageToolbar({
 									onClick={() => setAutoScroll(!autoScroll)}
 									aria-label={`Auto-scroll ${autoScroll ? "on" : "off"}`}
 									aria-pressed={autoScroll}
-									className={`${toolbarIconButtonClass} ${toolbarControlClass}`}
+									className={`${activeControlClass} ${activeControlClass}`}
 								>
 									{autoScroll ? (
 										<ArrowDownToLineIcon className="size-4" />
@@ -331,7 +360,7 @@ export function PageToolbar({
 							onClick={onRefresh}
 							disabled={isStreaming || isLoadingLogs}
 							aria-label="Refresh logs"
-							className={toolbarIconButtonClass}
+							className={activeControlClass}
 						>
 							<RefreshCcwIcon
 								className={`size-4 ${isLoadingLogs ? "animate-spin" : ""}`}
@@ -347,7 +376,7 @@ export function PageToolbar({
 							variant="outline"
 							size="icon-sm"
 							aria-label="Log view options"
-							className={toolbarIconButtonClass}
+							className={activeControlClass}
 						>
 							<EllipsisVerticalIcon className="size-4" />
 						</Button>

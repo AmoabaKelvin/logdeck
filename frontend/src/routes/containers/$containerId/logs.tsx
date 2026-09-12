@@ -72,11 +72,10 @@ function ContainerLogsPage() {
 
 	// Inspect is where the interesting facts live: restart counts, health probe
 	// output, mounts, networks. The container list carries none of it.
-	const {
-		data: inspect,
-		isLoading: isInspectLoading,
-		isError: isInspectError,
-	} = useContainerInspect(container?.id, container?.host);
+	const { data: inspect, isError: isInspectError } = useContainerInspect(
+		container?.id,
+		container?.host,
+	);
 
 	const hostAddress = containersData?.hosts?.find(
 		(host) => host.name === container?.host,
@@ -135,7 +134,6 @@ function ContainerLogsPage() {
 							isReadOnly={isReadOnly}
 							stats={statsMap[container.id]}
 							inspect={inspect}
-							isInspectLoading={isInspectLoading}
 							isInspectError={isInspectError}
 							onContainerRecreated={handleContainerRecreated}
 						/>

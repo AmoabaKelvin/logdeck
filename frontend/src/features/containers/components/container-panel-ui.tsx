@@ -1,6 +1,45 @@
 import type React from "react";
 
+import { ChevronDownIcon } from "@/components/ui/icons";
 import { Spinner } from "@/components/ui/spinner";
+
+/**
+ * The button that opens a detail panel. Quiet until it is the open one, since
+ * a row of them sits above content that should keep the eye.
+ */
+export function DisclosureTrigger({
+	label,
+	isOpen,
+	controls,
+	onClick,
+	children,
+}: {
+	label: string;
+	isOpen: boolean;
+	controls: string;
+	onClick: () => void;
+	children?: React.ReactNode;
+}) {
+	return (
+		<button
+			type="button"
+			aria-expanded={isOpen}
+			aria-controls={controls}
+			onClick={onClick}
+			// text-sm on mobile so a row of these fits a 390px screen; the
+			// vertical padding carries the touch target instead.
+			className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-2 text-sm whitespace-nowrap sm:py-1.5 ${
+				isOpen
+					? "bg-muted text-foreground"
+					: "text-muted-foreground hover:text-foreground"
+			}`}
+		>
+			{label}
+			{children}
+			{isOpen && <ChevronDownIcon className="size-4 shrink-0 rotate-180" />}
+		</button>
+	);
+}
 
 /** A titled block inside a detail panel. */
 export function PanelSection({

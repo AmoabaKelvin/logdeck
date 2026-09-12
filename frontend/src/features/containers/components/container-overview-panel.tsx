@@ -12,10 +12,8 @@ import {
 	formatNanoseconds,
 	formatTimestamp,
 	isZeroTime,
-	PanelError,
 	PanelField,
 	PanelFields,
-	PanelLoading,
 	PanelNote,
 	PanelSection,
 } from "./container-panel-ui";
@@ -190,9 +188,7 @@ function LabelsBand({ container }: { container: ContainerInfo }) {
 
 interface ContainerOverviewPanelProps {
 	container: ContainerInfo;
-	inspect: ContainerInspect | undefined;
-	isLoading: boolean;
-	isError: boolean;
+	inspect: ContainerInspect;
 }
 
 /**
@@ -203,16 +199,7 @@ interface ContainerOverviewPanelProps {
 export function ContainerOverviewPanel({
 	container,
 	inspect,
-	isLoading,
-	isError,
 }: ContainerOverviewPanelProps) {
-	if (isLoading && !inspect) {
-		return <PanelLoading label="Inspecting container…" />;
-	}
-	if (isError || !inspect) {
-		return <PanelError>Could not inspect this container.</PanelError>;
-	}
-
 	const { State, Config } = inspect;
 	const entrypoint = joinCommand(Config.Entrypoint);
 	const command = joinCommand(Config.Cmd) ?? container.command;

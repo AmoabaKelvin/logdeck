@@ -217,7 +217,7 @@ export function ContainerLimitsPanel({
 						onChange={(e) => setMemory(e.target.value)}
 						disabled={isReadOnly}
 						placeholder="unlimited"
-						className="h-10 w-32 font-mono sm:h-9"
+						className="w-32 font-mono"
 					/>
 				</div>
 			</Reading>
@@ -248,7 +248,7 @@ export function ContainerLimitsPanel({
 						onChange={(e) => setCpus(e.target.value)}
 						disabled={isReadOnly}
 						placeholder="unlimited"
-						className="h-10 w-32 font-mono sm:h-9"
+						className="w-32 font-mono"
 					/>
 				</div>
 			</Reading>
@@ -257,11 +257,7 @@ export function ContainerLimitsPanel({
 				<div className="flex flex-wrap items-center gap-2">
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
-							<Button
-								variant="outline"
-								disabled={isReadOnly}
-								className="h-10 text-base sm:h-9 sm:text-sm"
-							>
+							<Button variant="outline" disabled={isReadOnly}>
 								{policyLabel(restartPolicy)}
 								<ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
 							</Button>
@@ -301,7 +297,7 @@ export function ContainerLimitsPanel({
 								onChange={(e) => setMaxRetries(e.target.value)}
 								disabled={isReadOnly}
 								placeholder="0"
-								className="h-10 w-24 font-mono sm:h-9"
+								className="w-24 font-mono"
 							/>
 						</div>
 					)}
@@ -317,7 +313,6 @@ export function ContainerLimitsPanel({
 				<Button
 					onClick={handleSave}
 					disabled={isReadOnly || !isDirty || updateMutation.isPending}
-					className="h-10 text-base sm:h-9 sm:text-sm"
 				>
 					{updateMutation.isPending && <Spinner className="size-4" />}
 					Save limits

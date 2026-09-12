@@ -1,11 +1,6 @@
 import { ExternalLinkIcon } from "@/components/ui/icons";
 import type { ContainerInspect } from "../api/get-container-inspect";
-import {
-	PanelError,
-	PanelLoading,
-	PanelNote,
-	PanelSection,
-} from "./container-panel-ui";
+import { PanelNote, PanelSection } from "./container-panel-ui";
 import { resolvePublishedHost } from "./container-utils";
 
 interface PortBinding {
@@ -75,9 +70,7 @@ function PortRow({
 }
 
 interface ContainerNetworkPanelProps {
-	inspect: ContainerInspect | undefined;
-	isLoading: boolean;
-	isError: boolean;
+	inspect: ContainerInspect;
 	// The Docker host's address, used to work out where published ports live.
 	hostAddress: string | undefined;
 }
@@ -85,17 +78,8 @@ interface ContainerNetworkPanelProps {
 /** Everything the container is attached to: networks, ports, and storage. */
 export function ContainerNetworkPanel({
 	inspect,
-	isLoading,
-	isError,
 	hostAddress,
 }: ContainerNetworkPanelProps) {
-	if (isLoading && !inspect) {
-		return <PanelLoading label="Inspecting container…" />;
-	}
-	if (isError || !inspect) {
-		return <PanelError>Could not inspect this container.</PanelError>;
-	}
-
 	const networks = Object.entries(inspect.NetworkSettings.Networks ?? {});
 	const bindings = collectBindings(inspect);
 	const mounts = inspect.Mounts ?? [];

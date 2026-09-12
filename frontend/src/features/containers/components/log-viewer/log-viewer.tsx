@@ -34,11 +34,9 @@ import { useHistoryStatus } from "@/features/containers/hooks/use-history-status
 import { mapRawRangeToGroupedRange } from "./animated-range";
 import { downloadLogs, formatLogEntryLine } from "./log-export";
 import { LogList } from "./log-list";
-import { PageToolbar } from "./page-toolbar";
-import { SheetToolbar } from "./sheet-toolbar";
+import { LogToolbar } from "./log-toolbar";
 import { ShortcutHelpDialog } from "./shortcut-help";
 import { resolveTimeRange } from "./time-range";
-import type { LogViewerToolbarProps } from "./toolbar-shared";
 import { useLogFiltering } from "./use-log-filtering";
 import { navigatePins, useLogPins } from "./use-log-pins";
 import { useLogSearch, useSearchMatches } from "./use-log-search";
@@ -822,34 +820,40 @@ export function LogViewer({
 			</div>
 		) : null;
 
-	const toolbarProps: LogViewerToolbarProps = {
-		viewState,
-		searchParsed,
-		searchInputRef,
-		excludeMatches,
-		setExcludeMatches,
-		autoScroll,
-		setAutoScroll,
-		availableLogLevels: levelFilterOptions,
-		searchMatches,
-		currentMatchIndex,
-		onPreviousMatch: goToPreviousMatch,
-		onNextMatch: goToNextMatch,
-		sortedPinnedIndices,
-		currentPinnedIndex,
-		onNavigatePins: goToPinnedByOffset,
-		isStreaming,
-		isStreamPaused,
-		isReconnecting,
-		isLoadingLogs,
-		bufferedCount,
-		onToggleStreaming: toggleStreaming,
-		onTogglePause: togglePauseStreaming,
-		onRefresh: handleRefresh,
-		onLogLinesChange: handleLogLinesChange,
-		onDownload: handleDownloadLogs,
-		onShowShortcutHelp: () => setShowShortcutHelp(true),
-	};
+	const toolbar = (
+		<LogToolbar
+			viewState={viewState}
+			searchParsed={searchParsed}
+			searchInputRef={searchInputRef}
+			excludeMatches={excludeMatches}
+			setExcludeMatches={setExcludeMatches}
+			autoScroll={autoScroll}
+			setAutoScroll={setAutoScroll}
+			availableLogLevels={levelFilterOptions}
+			searchMatches={searchMatches}
+			currentMatchIndex={currentMatchIndex}
+			onPreviousMatch={goToPreviousMatch}
+			onNextMatch={goToNextMatch}
+			sortedPinnedIndices={sortedPinnedIndices}
+			currentPinnedIndex={currentPinnedIndex}
+			onNavigatePins={goToPinnedByOffset}
+			isStreaming={isStreaming}
+			isStreamPaused={isStreamPaused}
+			isReconnecting={isReconnecting}
+			isLoadingLogs={isLoadingLogs}
+			bufferedCount={bufferedCount}
+			onToggleStreaming={toggleStreaming}
+			onTogglePause={togglePauseStreaming}
+			onRefresh={handleRefresh}
+			onLogLinesChange={handleLogLinesChange}
+			onDownload={handleDownloadLogs}
+			onShowShortcutHelp={() => setShowShortcutHelp(true)}
+			totalCount={logs.length}
+			filteredCount={filteredLogs.length}
+			isHistory={isHistory}
+			showSourceToggle={historyEnabled && !historyOnly}
+		/>
+	);
 
 	const logList = (
 		<LogList
@@ -899,15 +903,7 @@ export function LogViewer({
 	if (variant === "page") {
 		return (
 			<div className="flex flex-col lg:min-h-0 lg:flex-1">
-				<div className="shrink-0 border-y border-border/70 py-3">
-					<PageToolbar
-						{...toolbarProps}
-						totalCount={logs.length}
-						filteredCount={filteredLogs.length}
-						isHistory={isHistory}
-						showSourceToggle={historyEnabled && !historyOnly}
-					/>
-				</div>
+				<div className="shrink-0 border-y border-border/70 py-3">{toolbar}</div>
 				{logList}
 				{shortcutHelpDialog}
 			</div>
@@ -916,7 +912,7 @@ export function LogViewer({
 
 	return (
 		<div className="space-y-3">
-			<SheetToolbar {...toolbarProps} />
+			{toolbar}
 			<div className="border-t border-border/70">{logList}</div>
 			{shortcutHelpDialog}
 		</div>

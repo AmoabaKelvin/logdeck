@@ -27,6 +27,7 @@ import { PanelError, PanelLoading, PanelNote } from "./container-panel-ui";
 import { isSecretKey, parseEnvFile } from "./env-file";
 import { EnvUpdateConfirmDialog } from "./env-update-confirm-dialog";
 import { EnvUploadPreviewDialog } from "./env-upload-preview-dialog";
+import { useEnvDraft } from "./use-env-draft";
 
 interface ContainerEnvPanelProps {
 	containerId: string;
@@ -57,19 +58,14 @@ export function ContainerEnvPanel({
 }: ContainerEnvPanelProps) {
 	const queryClient = useQueryClient();
 	const [filter, setFilter] = useState("");
-	const [revealed, setRevealed] = useState<Set<string>>(new Set());
+	const [revealed, setRevealed] = useState<ReadonlySet<string>>(new Set());
 	// Only what the user changed, so the original stays the source of truth and
 	// "is this edited?" needs no bookkeeping.
-	const [edits, setEdits] = useState<Record<string, string>>({});
-	const [removed, setRemoved] = useState<Set<string>>(new Set());
 	const [draftEntry, setDraftEntry] = useState("");
 	const [isAdding, setIsAdding] = useState(false);
 	const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 	const [showUploadPreview, setShowUploadPreview] = useState(false);
 	const [uploadedEnv, setUploadedEnv] = useState<Record<string, string>>({});
-	// Rows that just arrived flash once so a change lands somewhere visible in a
-	// list that may be scrolled well away from the add control.
-	const [justAdded, setJustAdded] = useState<Set<string>>(new Set());
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const listRef = useRef<HTMLDivElement>(null);
 
@@ -82,6 +78,8 @@ export function ContainerEnvPanel({
 		queryFn: () => getContainerEnvVariables(containerId, containerHost),
 		enabled: !!containerId && !!containerHost,
 	});
+
+	const draft = useEnvDraft(original);
 
 	const updateMutation = useMutation({
 		mutationFn: (env: Record<string, string>) =>
@@ -123,18 +121,10 @@ export function ContainerEnvPanel({
 		},
 	});
 
-	function discard() {
-		setEdits({});
-		setRemoved(new Set());
-		setJustAdded(new Set());
-		setIsAdding(false);
-		setDraftEntry("");
-	}
-
 	// A variable added while the list is scrolled elsewhere would land out of
 	// sight, so the list goes to it and the row flashes on arrival.
 	useEffect(() => {
-		const [first] = justAdded;
+		const [first] = draft.recentlyAdded;
 		if (!first) return;
 		// One frame late, so the row is measured where it finally sits rather
 		// than where it landed before the list re-sorted around it.
@@ -150,14 +140,11 @@ export function ContainerEnvPanel({
 				});
 		});
 		return () => cancelAnimationFrame(frame);
-	}, [justAdded]);
-
-	const base = original ?? {};
-	const effective = useMemo(() => ({ ...base, ...edits }), [base, edits]);
+	}, [draft.recentlyAdded]);
 
 	const entries = useMemo(() => {
 		const query = filter.trim().toLowerCase();
-		return Object.entries(effective)
+		return Object.entries(draft.effective)
 			.filter(
 				([key, value]) =>
 					!query ||
@@ -165,13 +152,8 @@ export function ContainerEnvPanel({
 					value.toLowerCase().includes(query),
 			)
 			.sort(([a], [b]) => a.localeCompare(b));
-	}, [effective, filter]);
+	}, [draft.effective, filter]);
 
-	const addedCount = Object.keys(edits).filter((key) => !(key in base)).length;
-	const editedCount = Object.keys(edits).filter(
-		(key) => key in base && base[key] !== edits[key],
-	).length;
-	const isDirty = addedCount + editedCount + removed.size > 0;
 	const anySecret = entries.some(([key]) => isSecretKey(key));
 	const allRevealed =
 		anySecret &&
@@ -179,18 +161,10 @@ export function ContainerEnvPanel({
 			.filter(([key]) => isSecretKey(key))
 			.every(([key]) => revealed.has(key));
 
-	const applyImport = (imported: Record<string, string>) => {
-		const keys = Object.keys(imported);
-		setEdits((prev) => ({ ...prev, ...imported }));
-		setRemoved((prev) => {
-			const next = new Set(prev);
-			for (const key of keys) next.delete(key);
-			return next;
-		});
-		setJustAdded(new Set(keys));
-		// Long enough for the flash to finish; re-adding the same key restarts it
-		// because the class is removed in between.
-		setTimeout(() => setJustAdded(new Set()), 1300);
+	const discard = () => {
+		draft.discard();
+		setIsAdding(false);
+		setDraftEntry("");
 	};
 
 	// One field, parsed on submit. Splitting name from value while the user is
@@ -209,7 +183,7 @@ export function ContainerEnvPanel({
 			toast.error("Name cannot be empty");
 			return;
 		}
-		if (key in effective && !removed.has(key)) {
+		if (key in draft.effective && !draft.isRemoved(key)) {
 			toast.error(`${key} is already set`);
 			return;
 		}
@@ -222,7 +196,7 @@ export function ContainerEnvPanel({
 			value = value.slice(1, -1);
 		}
 
-		applyImport({ [key]: value });
+		draft.add({ [key]: value });
 		setDraftEntry("");
 		setIsAdding(false);
 	};
@@ -241,7 +215,7 @@ export function ContainerEnvPanel({
 			return;
 		}
 
-		applyImport(parsed);
+		draft.add(parsed);
 		setDraftEntry("");
 		setIsAdding(false);
 		toast.success(`Imported ${count} variable${count === 1 ? "" : "s"}`);
@@ -277,9 +251,9 @@ export function ContainerEnvPanel({
 	}
 
 	const changeSummary = [
-		editedCount && `${editedCount} changed`,
-		addedCount && `${addedCount} added`,
-		removed.size && `${removed.size} removed`,
+		draft.counts.changed && `${draft.counts.changed} changed`,
+		draft.counts.added && `${draft.counts.added} added`,
+		draft.counts.removed && `${draft.counts.removed} removed`,
 	]
 		.filter(Boolean)
 		.join(" · ");
@@ -304,14 +278,14 @@ export function ContainerEnvPanel({
 						placeholder="Filter…"
 						value={filter}
 						onChange={(e) => setFilter(e.target.value)}
-						className="h-10 pl-8 sm:h-9"
+						className="pl-8"
 					/>
 				</div>
 
 				<p className="text-base text-muted-foreground tabular-nums sm:text-sm">
 					{filter.trim()
-						? `${entries.length} of ${Object.keys(effective).length}`
-						: `${Object.keys(effective).length} variable${Object.keys(effective).length === 1 ? "" : "s"}`}
+						? `${entries.length} of ${Object.keys(draft.effective).length}`
+						: `${Object.keys(draft.effective).length} variable${Object.keys(draft.effective).length === 1 ? "" : "s"}`}
 				</p>
 
 				<div className="ml-auto flex flex-wrap items-center gap-2">
@@ -323,7 +297,7 @@ export function ContainerEnvPanel({
 									allRevealed ? new Set() : new Set(entries.map(([k]) => k)),
 								)
 							}
-							className="h-10 py-2 pr-3 pl-2 text-base text-muted-foreground hover:text-foreground sm:h-9 sm:text-sm"
+							className="py-2 pr-3 pl-2 text-muted-foreground hover:text-foreground"
 						>
 							{allRevealed ? (
 								<EyeOffIcon className="size-4" />
@@ -337,7 +311,7 @@ export function ContainerEnvPanel({
 						<Button
 							variant="ghost"
 							onClick={() => fileInputRef.current?.click()}
-							className="h-10 py-2 pr-3 pl-2 text-base text-muted-foreground hover:text-foreground sm:h-9 sm:text-sm"
+							className="py-2 pr-3 pl-2 text-muted-foreground hover:text-foreground"
 						>
 							<UploadIcon className="size-4" />
 							Import .env
@@ -349,7 +323,7 @@ export function ContainerEnvPanel({
 			{entries.length === 0 && !isAdding ? (
 				<div className="mt-4">
 					<PanelNote>
-						{Object.keys(effective).length === 0
+						{Object.keys(draft.effective).length === 0
 							? "This container has no environment variables."
 							: "No variables match that filter."}
 					</PanelNote>
@@ -360,8 +334,8 @@ export function ContainerEnvPanel({
 					className="mt-3 max-h-96 divide-y divide-border/60 overflow-y-auto"
 				>
 					{entries.map(([key, value]) => {
-						const isRemoved = removed.has(key);
-						const isChanged = key in edits;
+						const isRemoved = draft.isRemoved(key);
+						const isChanged = draft.isChanged(key);
 						const secret = isSecretKey(key);
 						const hidden = secret && !revealed.has(key);
 
@@ -374,7 +348,7 @@ export function ContainerEnvPanel({
 										? "border-l-amber-500"
 										: "border-l-transparent"
 								} ${isRemoved ? "opacity-60" : ""} ${
-									justAdded.has(key) ? "row-added" : ""
+									draft.recentlyAdded.has(key) ? "row-added" : ""
 								}`}
 							>
 								<span
@@ -399,9 +373,7 @@ export function ContainerEnvPanel({
 										aria-label={`Value for ${key}`}
 										value={value}
 										disabled={isReadOnly}
-										onChange={(e) =>
-											setEdits((prev) => ({ ...prev, [key]: e.target.value }))
-										}
+										onChange={(e) => draft.setValue(key, e.target.value)}
 										className={VALUE_INPUT}
 									/>
 								)}
@@ -434,13 +406,7 @@ export function ContainerEnvPanel({
 											<Button
 												variant="ghost"
 												size="icon-sm"
-												onClick={() =>
-													setRemoved((prev) => {
-														const next = new Set(prev);
-														next.delete(key);
-														return next;
-													})
-												}
+												onClick={() => draft.restore(key)}
 												aria-label={`Keep ${key}`}
 											>
 												<RotateCcwIcon className="size-4 text-muted-foreground" />
@@ -449,16 +415,7 @@ export function ContainerEnvPanel({
 											<Button
 												variant="ghost"
 												size="icon-sm"
-												onClick={() => {
-													setRemoved((prev) => new Set(prev).add(key));
-													setEdits((prev) => {
-														// A key added in this session just goes away.
-														if (key in base) return prev;
-														const next = { ...prev };
-														delete next[key];
-														return next;
-													});
-												}}
+												onClick={() => draft.remove(key)}
 												aria-label={`Remove ${key}`}
 												className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-destructive"
 											>
@@ -489,11 +446,9 @@ export function ContainerEnvPanel({
 							}}
 							placeholder="NAME=value, or paste a .env"
 							aria-label="New variable"
-							className="h-10 max-w-lg font-mono sm:h-9"
+							className="max-w-lg font-mono"
 						/>
-						<Button onClick={handleAdd} className="h-10 sm:h-9">
-							Add
-						</Button>
+						<Button onClick={handleAdd}>Add</Button>
 						<Button
 							variant="ghost"
 							size="icon-sm"
@@ -502,7 +457,7 @@ export function ContainerEnvPanel({
 								setDraftEntry("");
 							}}
 							aria-label="Cancel adding a variable"
-							className={`${ICON_BUTTON} size-10 sm:size-9`}
+							className={ICON_BUTTON}
 						>
 							<XIcon className="size-4" />
 						</Button>
@@ -524,7 +479,7 @@ export function ContainerEnvPanel({
 					</Tooltip>
 				))}
 
-			{isDirty && (
+			{draft.isDirty && (
 				<div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border/70 pt-4 animate-in fade-in slide-in-from-bottom-1 duration-200">
 					<p className="text-base sm:text-sm">
 						{changeSummary}
@@ -537,14 +492,12 @@ export function ContainerEnvPanel({
 							variant="ghost"
 							onClick={discard}
 							disabled={updateMutation.isPending}
-							className="h-10 text-base sm:h-9 sm:text-sm"
 						>
 							Discard
 						</Button>
 						<Button
 							onClick={() => setShowConfirmDialog(true)}
 							disabled={updateMutation.isPending}
-							className="h-10 text-base sm:h-9 sm:text-sm"
 						>
 							{updateMutation.isPending && <Spinner className="size-4" />}
 							Save and recreate
@@ -557,9 +510,9 @@ export function ContainerEnvPanel({
 				open={showUploadPreview}
 				onOpenChange={setShowUploadPreview}
 				parsedEnv={uploadedEnv}
-				currentEnv={effective}
+				currentEnv={draft.effective}
 				onConfirm={() => {
-					applyImport(uploadedEnv);
+					draft.add(uploadedEnv);
 					setShowUploadPreview(false);
 					setUploadedEnv({});
 					toast.success(
@@ -577,11 +530,7 @@ export function ContainerEnvPanel({
 				onOpenChange={setShowConfirmDialog}
 				isCoolifyManaged={isCoolifyManaged}
 				onConfirm={() => {
-					const finalEnv = { ...effective };
-					removed.forEach((key) => {
-						delete finalEnv[key];
-					});
-					updateMutation.mutate(finalEnv);
+					updateMutation.mutate(draft.payload());
 					setShowConfirmDialog(false);
 				}}
 			/>
