@@ -1,7 +1,8 @@
 import { Badge } from "@/components/ui/badge";
 import type { ContainerInfo, ContainerPort, ContainerStatsMap } from "../types";
 import { formatBytes, formatCPUPercent } from "./container-utils";
-import { Sparkline, TREND_WIDTH_CLASS } from "./sparkline";
+import { Meter } from "./meter";
+import { Sparkline } from "./sparkline";
 
 // Flush with the page container: only the inner gutters are padded.
 export const cellClass =
@@ -58,39 +59,11 @@ const metricLabelClass =
 	"w-7 shrink-0 text-[0.625rem] uppercase tracking-wide text-muted-foreground";
 const metricValueClass = "w-14 shrink-0 text-right tabular-nums";
 
-const METER_TONE = {
-	normal: { fill: "bg-foreground/50", track: "bg-foreground/10" },
-	warn: { fill: "bg-amber-500", track: "bg-amber-500/15" },
-	fail: { fill: "bg-rose-500", track: "bg-rose-500/15" },
-} as const;
-
-function memoryMeterGeometry(used: number, limit: number) {
-	const ratio = Math.min(used / limit, 1);
-
-	return {
-		tone: ratio >= 0.9 ? "fail" : ratio >= 0.75 ? "warn" : "normal",
-		// 140KB of 512MB is 0.03%, a sub-pixel fill. The floor keeps it visible
-		// without ever applying at zero, where none would read as some.
-		width: ratio === 0 ? "0" : `max(2px, ${(ratio * 100).toFixed(1)}%)`,
-	} as const;
-}
-
 /** Memory as a length rather than a percentage: "1.5 GB ▓▓▓░░ of 8.0 GB". */
 function MemoryMeter({ used, limit }: { used: number; limit: number }) {
-	const { tone, width } = memoryMeterGeometry(used, limit);
-	const { fill, track } = METER_TONE[tone];
-
 	return (
 		<div className="flex min-w-0 items-center gap-2">
-			<div
-				className={`${TREND_WIDTH_CLASS} h-1.5 shrink-0 overflow-hidden rounded-full ${track}`}
-				aria-hidden="true"
-			>
-				<div
-					className={`h-full rounded-full duration-600 ease-out motion-safe:transition-[width] ${fill}`}
-					style={{ width }}
-				/>
-			</div>
+			<Meter used={used} limit={limit} />
 			{/* No room for the words beside the bar below xl. */}
 			<span className="truncate text-muted-foreground tabular-nums max-xl:hidden">
 				of {formatBytes(limit)}

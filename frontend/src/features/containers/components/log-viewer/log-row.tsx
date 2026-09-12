@@ -1,5 +1,4 @@
 import type React from "react";
-import { Badge } from "@/components/ui/badge";
 import { CopyIcon } from "@/components/ui/icons";
 import {
 	Tooltip,
@@ -7,30 +6,28 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { LogEntry } from "@/features/containers/api/get-container-logs-parsed";
-import { getLogLevelBadgeColor } from "@/features/containers/api/get-container-logs-parsed";
+import { getLogLevelTextColor } from "@/features/containers/api/get-container-logs-parsed";
 import { CollapsibleJson } from "@/features/containers/components/collapsible-json";
 import { isJsonString } from "@/lib/json-format";
 
-// Deterministic per-container badge color for aggregate views.
-const CONTAINER_NAME_BADGE_COLORS = [
-	"bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300",
-	"bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300",
-	"bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300",
-	"bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300",
-	"bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-300",
-	"bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-300",
-	"bg-lime-100 text-lime-700 dark:bg-lime-900 dark:text-lime-300",
-	"bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900 dark:text-fuchsia-300",
+// Deterministic per-container colour for aggregate views.
+const CONTAINER_NAME_COLORS = [
+	"text-sky-600 dark:text-sky-400",
+	"text-violet-600 dark:text-violet-400",
+	"text-emerald-600 dark:text-emerald-400",
+	"text-orange-600 dark:text-orange-400",
+	"text-pink-600 dark:text-pink-400",
+	"text-cyan-600 dark:text-cyan-400",
+	"text-lime-600 dark:text-lime-400",
+	"text-fuchsia-600 dark:text-fuchsia-400",
 ];
 
-function getContainerNameBadgeColor(name: string): string {
+function getContainerNameColor(name: string): string {
 	let hash = 0;
 	for (let i = 0; i < name.length; i++) {
 		hash = (hash * 31 + name.charCodeAt(i)) | 0;
 	}
-	return CONTAINER_NAME_BADGE_COLORS[
-		Math.abs(hash) % CONTAINER_NAME_BADGE_COLORS.length
-	];
+	return CONTAINER_NAME_COLORS[Math.abs(hash) % CONTAINER_NAME_COLORS.length];
 }
 
 function formatRowTimestamp(timestamp: string | undefined): string {
@@ -49,23 +46,25 @@ function formatRowTimestamp(timestamp: string | undefined): string {
 }
 
 function rowStateClass(props: LogRowProps): string {
-	const { isSelected, isPinned, isCurrentMatch, index } = props;
+	const { isSelected, isPinned, isCurrentMatch, index, wrapText } = props;
 	if (isSelected && isPinned) {
-		return "bg-amber-200/80 dark:bg-amber-800/45 border-l-[3px] border-amber-500 shadow-[inset_0_0_0_1px_rgba(245,158,11,0.35)]";
+		return "bg-amber-200/80 dark:bg-amber-800/45 border-l-amber-500";
 	}
 	if (isSelected) {
-		return "bg-primary/[0.08] dark:bg-primary/[0.15] border-l-[3px] border-primary shadow-[inset_0_0_0_1px_rgba(var(--primary),0.1)]";
+		return "bg-primary/[0.08] dark:bg-primary/[0.15] border-l-primary";
 	}
 	if (isPinned) {
-		return "bg-amber-100/80 dark:bg-amber-900/35 border-l-[3px] border-amber-500 hover:bg-amber-100 dark:hover:bg-amber-900/45";
+		return "bg-amber-100/80 dark:bg-amber-900/35 border-l-amber-500 hover:bg-amber-100 dark:hover:bg-amber-900/45";
 	}
 	if (isCurrentMatch) {
-		return "bg-yellow-100 dark:bg-yellow-900/30 border-y-2 border-yellow-400 dark:border-yellow-600";
+		return "bg-yellow-100 dark:bg-yellow-900/30 border-l-yellow-400 dark:border-l-yellow-600";
 	}
-	if (index % 2 === 0) {
-		return "bg-muted/30 border-l-[3px] border-transparent hover:bg-muted/50";
+	// Wrapped lines run to different heights, so the eye needs a band to tell
+	// one entry from the next. Single-line rows read fine on alignment alone.
+	if (wrapText && index % 2 === 0) {
+		return "bg-muted/30 hover:bg-muted/60";
 	}
-	return "border-l-[3px] border-transparent hover:bg-muted/50";
+	return "hover:bg-muted/60";
 }
 
 export interface LogRowProps {
@@ -121,6 +120,10 @@ export function LogRow(props: LogRowProps) {
 	const displayText = entry.message || entry.raw || "";
 	if (!displayText.trim()) return null;
 
+	// An "UNKNOWN" on every unparsed line is noise; the column still holds its
+	// width so messages stay in one vertical line.
+	const level = entry.level && entry.level !== "UNKNOWN" ? entry.level : null;
+
 	return (
 		// biome-ignore lint/a11y/useSemanticElements: div required for virtual scrolling absolute positioning
 		<div
@@ -150,31 +153,33 @@ export function LogRow(props: LogRowProps) {
 				transform: `translateY(${start}px)`,
 				cursor: "pointer",
 			}}
-			className={`group flex items-start gap-3 px-4 py-1.5 transition-all duration-150 ease-out ${
+			className={`group flex items-start gap-x-3 border-l-2 border-transparent py-1 pr-4 pl-2 ${
 				wrapText ? "" : "whitespace-nowrap"
 			} ${rowStateClass(props)} ${isNewRow ? "log-stream-row-enter" : ""}`}
 		>
 			{showTimestamps && (
-				<span className="text-muted-foreground shrink-0 text-[11px]">
+				<span className="shrink-0 text-muted-foreground tabular-nums">
 					{formatRowTimestamp(entry.timestamp)}
 				</span>
 			)}
-			<Badge
-				variant="outline"
-				className={`shrink-0 text-xs px-1.5 py-0 h-5 ${getLogLevelBadgeColor(entry.level ?? "UNKNOWN")}`}
+
+			<span
+				className={`w-12 shrink-0 ${level ? getLogLevelTextColor(entry.level) : ""}`}
 			>
-				{entry.level ?? "UNKNOWN"}
-			</Badge>
+				{level}
+			</span>
+
 			{showContainerName && entry.containerName && (
-				<Badge
-					variant="outline"
-					className={`shrink-0 text-xs px-1.5 py-0 h-5 ${getContainerNameBadgeColor(entry.containerName)}`}
+				<span
+					title={entry.containerName}
+					className={`w-40 shrink-0 truncate ${getContainerNameColor(entry.containerName)}`}
 				>
 					{entry.containerName}
-				</Badge>
+				</span>
 			)}
+
 			<span
-				className={`text-foreground flex-1 ${wrapText ? "whitespace-pre-wrap break-words" : "whitespace-pre"}`}
+				className={`min-w-0 flex-1 text-foreground ${wrapText ? "break-words whitespace-pre-wrap" : "whitespace-pre"}`}
 			>
 				{isJsonString(displayText) ? (
 					<CollapsibleJson
@@ -190,6 +195,7 @@ export function LogRow(props: LogRowProps) {
 					displayText
 				)}
 			</span>
+
 			<Tooltip>
 				<TooltipTrigger asChild>
 					<button
@@ -199,7 +205,7 @@ export function LogRow(props: LogRowProps) {
 							onCopy(entry);
 						}}
 						aria-label="Copy log entry"
-						className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-muted rounded"
+						className="shrink-0 rounded p-1 opacity-0 group-hover:opacity-100 hover:bg-muted focus-visible:opacity-100"
 					>
 						<CopyIcon className="size-3 text-muted-foreground" />
 					</button>

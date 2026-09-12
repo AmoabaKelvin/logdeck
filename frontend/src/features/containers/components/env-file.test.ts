@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseEnvFile } from "./environment-variables";
+import { isSecretKey, parseEnvFile } from "./env-file";
 
 describe("parseEnvFile", () => {
 	it("parses multiple KEY=value lines", () => {
@@ -33,5 +33,33 @@ describe("parseEnvFile", () => {
 
 	it("ignores lines without an equals sign", () => {
 		expect(parseEnvFile("NOTAVAR\nA=1")).toEqual({ A: "1" });
+	});
+});
+
+describe("isSecretKey", () => {
+	it("masks the names that usually hold credentials", () => {
+		for (const key of [
+			"DATABASE_PASSWORD",
+			"API_TOKEN",
+			"JWT_SECRET",
+			"STRIPE_SECRET_KEY",
+			"AWS_SECRET_ACCESS_KEY",
+			"SESSION_SALT",
+			"DATABASE_DSN",
+		]) {
+			expect(isSecretKey(key), key).toBe(true);
+		}
+	});
+
+	it("leaves ordinary configuration visible", () => {
+		for (const key of [
+			"PORT",
+			"NODE_ENV",
+			"LOG_LEVEL",
+			"KEYCLOAK_URL",
+			"PATH",
+		]) {
+			expect(isSecretKey(key), key).toBe(false);
+		}
 	});
 });

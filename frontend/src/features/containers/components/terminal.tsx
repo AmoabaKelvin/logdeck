@@ -91,7 +91,7 @@ const createTerminal = (theme: ITheme) => {
 		fastScrollSensitivity: 5,
 		theme,
 		fontFamily:
-			'"Google Sans Code", "PT Mono", Menlo, Monaco, "Courier New", monospace',
+			'"Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, "Courier New", monospace',
 		fontSize: 14,
 		lineHeight: 1.5,
 		letterSpacing: 0.5,
@@ -305,8 +305,8 @@ export function Terminal({ containerId, host }: TerminalProps) {
 	}, [connect]);
 
 	return (
-		<div className="w-full space-y-2">
-			<div className="flex items-center justify-between px-3 py-2 bg-muted/30 rounded-t-md border border-b-0 border-border">
+		<div className="flex h-full min-h-0 w-full flex-col">
+			<div className="flex shrink-0 items-center justify-between border-b border-border/70 bg-muted/30 px-3 py-2">
 				<div className="flex items-center gap-2">
 					<div className="flex items-center gap-1.5">
 						<div
@@ -371,7 +371,7 @@ export function Terminal({ containerId, host }: TerminalProps) {
 
 			<div
 				ref={terminalRef}
-				className="w-full h-[400px] rounded-b-md overflow-hidden border border-t-0 border-border bg-background shadow-sm p-2 pb-4"
+				className="min-h-64 w-full flex-1 overflow-hidden bg-background p-2 pb-4"
 			/>
 		</div>
 	);

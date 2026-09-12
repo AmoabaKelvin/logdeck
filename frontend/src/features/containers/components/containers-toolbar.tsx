@@ -1,5 +1,5 @@
 import type { DateRange } from "react-day-picker";
-import { Button } from "@/components/ui/button";
+import { activeControlClass, Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
 	DropdownMenu,
@@ -48,9 +48,6 @@ interface ContainersToolbarProps {
 	onStateFilterChange: (value: string) => void;
 }
 
-const controlClass =
-	"h-10 text-base sm:h-9 sm:text-sm data-[active=true]:bg-muted data-[active=true]:text-foreground";
-
 function formatDay(date: Date) {
 	return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
@@ -93,7 +90,7 @@ export function ContainersToolbar({
 					value={searchTerm}
 					onChange={(event) => onSearchChange(event.target.value)}
 					placeholder="Search name, image, or ID…"
-					className="h-10 pl-8 sm:h-9"
+					className="pl-8"
 				/>
 			</div>
 
@@ -102,7 +99,7 @@ export function ContainersToolbar({
 					stateCounts={stateCounts}
 					stateFilter={stateFilter}
 					onStateFilterChange={onStateFilterChange}
-					className={controlClass}
+					className={activeControlClass}
 				/>
 
 				{availableHosts.length > 1 && (
@@ -111,7 +108,7 @@ export function ContainersToolbar({
 							<Button
 								variant="outline"
 								data-active={hostFilter !== "all"}
-								className={controlClass}
+								className={activeControlClass}
 							>
 								{hostFilter === "all" ? "All hosts" : hostFilter}
 								<ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
@@ -140,7 +137,7 @@ export function ContainersToolbar({
 						<Button
 							variant="outline"
 							data-active={groupBy !== "none"}
-							className={controlClass}
+							className={activeControlClass}
 						>
 							{groupBy === "compose" ? "By project" : "No grouping"}
 							<ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
@@ -166,7 +163,7 @@ export function ContainersToolbar({
 						<Button
 							variant="outline"
 							data-active={Boolean(dateRange?.from)}
-							className={controlClass}
+							className={activeControlClass}
 						>
 							<CalendarIcon className="size-4 shrink-0 text-muted-foreground" />
 							{renderDateRange()}
@@ -202,7 +199,6 @@ export function ContainersToolbar({
 							size="icon-sm"
 							onClick={onRefresh}
 							aria-label="Refresh containers"
-							className="size-10 sm:size-9"
 						>
 							<RefreshCcwIcon
 								className={`size-4 ${isFetching ? "animate-spin" : ""}`}

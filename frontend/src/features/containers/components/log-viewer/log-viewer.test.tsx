@@ -244,10 +244,13 @@ describe("LogViewer shortcut help overlay", () => {
 
 		// ? typed while focused in an input must not open the overlay.
 		await act(async () => {
-			fireEvent.keyDown(screen.getByPlaceholderText("Search logs..."), {
-				key: "?",
-				shiftKey: true,
-			});
+			fireEvent.keyDown(
+				screen.getByRole("searchbox", { name: "Search logs" }),
+				{
+					key: "?",
+					shiftKey: true,
+				},
+			);
 		});
 		expect(screen.queryByText("Keyboard shortcuts")).toBeNull();
 

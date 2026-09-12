@@ -167,6 +167,30 @@ export async function* streamContainerLogsParsed(
 	}
 }
 
+/**
+ * Level colour for a log row, where a filled pill on every line would be more
+ * chrome than signal. The filter popover still uses the pill version.
+ */
+export function getLogLevelTextColor(level: LogLevel | undefined): string {
+	switch (level ?? "UNKNOWN") {
+		case "TRACE":
+		case "DEBUG":
+			return "text-muted-foreground";
+		case "INFO":
+			return "text-blue-600 dark:text-blue-400";
+		case "WARN":
+		case "WARNING":
+			return "text-amber-600 dark:text-amber-400";
+		case "ERROR":
+			return "text-red-600 dark:text-red-400";
+		case "FATAL":
+		case "PANIC":
+			return "font-semibold text-red-700 dark:text-red-300";
+		default:
+			return "text-muted-foreground";
+	}
+}
+
 export function getLogLevelBadgeColor(level: LogLevel | undefined): string {
 	switch (level ?? "UNKNOWN") {
 		case "TRACE":

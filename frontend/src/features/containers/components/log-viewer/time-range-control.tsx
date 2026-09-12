@@ -3,7 +3,14 @@ import { useId, useState } from "react";
 import type { DateRange } from "react-day-picker";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { ClockIcon } from "@/components/ui/icons";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuRadioGroup,
+	DropdownMenuRadioItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ChevronDownIcon, ClockIcon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -11,13 +18,6 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
 import {
 	TIME_RANGE_PRESET_LABELS,
 	TIME_RANGE_PRESETS,
@@ -31,6 +31,8 @@ interface TimeRangeControlProps {
 	// Time bounds only apply to historical fetches, so the control is disabled
 	// while live-streaming.
 	disabled?: boolean;
+	// Sizing comes from the host toolbar so every control on a row matches.
+	className?: string;
 }
 
 function combineDateAndTime(day: Date, time: string): string {
@@ -59,6 +61,7 @@ export function TimeRangeControl({
 	timeRange,
 	setTimeRange,
 	disabled = false,
+	className,
 }: TimeRangeControlProps) {
 	const [isCustomOpen, setIsCustomOpen] = useState(false);
 	const [draftRange, setDraftRange] = useState<DateRange | undefined>();
@@ -101,32 +104,41 @@ export function TimeRangeControl({
 
 	return (
 		<div className="flex items-center gap-1">
-			<Select
-				value={timeRange.preset}
-				onValueChange={handlePresetChange}
-				disabled={disabled}
-			>
-				<SelectTrigger size="sm" className="text-xs" aria-label="Time range">
-					<ClockIcon className="size-3.5 text-muted-foreground" />
-					<SelectValue />
-				</SelectTrigger>
-				<SelectContent>
-					{TIME_RANGE_PRESETS.map((preset) => (
-						<SelectItem key={preset} value={preset}>
-							{TIME_RANGE_PRESET_LABELS[preset]}
-						</SelectItem>
-					))}
-				</SelectContent>
-			</Select>
+			<DropdownMenu>
+				<DropdownMenuTrigger asChild>
+					<Button
+						variant="outline"
+						disabled={disabled}
+						data-active={timeRange.preset !== "all"}
+						aria-label="Time range"
+						className={className}
+					>
+						<ClockIcon className="size-4 shrink-0 text-muted-foreground" />
+						{TIME_RANGE_PRESET_LABELS[timeRange.preset]}
+						<ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
+					</Button>
+				</DropdownMenuTrigger>
+				<DropdownMenuContent align="start">
+					<DropdownMenuRadioGroup
+						value={timeRange.preset}
+						onValueChange={handlePresetChange}
+					>
+						{TIME_RANGE_PRESETS.map((preset) => (
+							<DropdownMenuRadioItem key={preset} value={preset}>
+								{TIME_RANGE_PRESET_LABELS[preset]}
+							</DropdownMenuRadioItem>
+						))}
+					</DropdownMenuRadioGroup>
+				</DropdownMenuContent>
+			</DropdownMenu>
 			{timeRange.preset === "custom" && (
 				<Popover open={isCustomOpen} onOpenChange={setIsCustomOpen}>
 					<PopoverTrigger asChild>
 						<Button
 							variant="outline"
-							size="sm"
 							disabled={disabled}
 							onClick={openCustomEditor}
-							className="h-8 text-xs"
+							className={className}
 						>
 							{customRangeLabel(timeRange)}
 						</Button>
