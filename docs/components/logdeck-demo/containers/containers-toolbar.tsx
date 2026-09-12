@@ -1,264 +1,217 @@
-import {
-	CalendarIcon,
-	ChevronDownIcon,
-	RefreshCcwIcon,
-	SettingsIcon,
-	XIcon,
-} from "lucide-react";
 import type { DateRange } from "react-day-picker";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/logdeck-demo/ui/button";
 import { Calendar } from "@/components/logdeck-demo/ui/calendar";
 import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuRadioGroup,
-	DropdownMenuRadioItem,
-	DropdownMenuTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
 } from "@/components/logdeck-demo/ui/dropdown-menu";
+import {
+  CalendarIcon,
+  ChevronDownIcon,
+  RefreshCcwIcon,
+  SearchIcon,
+} from "@/components/logdeck-demo/ui/icons";
 import { Input } from "@/components/logdeck-demo/ui/input";
 import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
 } from "@/components/logdeck-demo/ui/popover";
 import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
 } from "@/components/logdeck-demo/ui/tooltip";
+
 import type { DockerHost } from "../types";
-import type { GroupByOption, SortDirection } from "./container-utils";
-import { toTitleCase } from "./container-utils";
+import type { GroupByOption, StateCounts } from "./container-utils";
+import { ContainersStateFilter } from "./containers-state-filter";
 
 interface ContainersToolbarProps {
-	searchTerm: string;
-	onSearchChange: (value: string) => void;
-	stateFilter: string;
-	onStateFilterChange: (value: string) => void;
-	availableStates: string[];
-	hostFilter: string;
-	onHostFilterChange: (value: string) => void;
-	availableHosts: DockerHost[];
-	sortDirection: SortDirection;
-	onSortDirectionChange: (direction: SortDirection) => void;
-	groupBy: GroupByOption;
-	onGroupByChange: (value: GroupByOption) => void;
-	dateRange: DateRange | undefined;
-	onDateRangeChange: (range: DateRange | undefined) => void;
-	onDateRangeClear: () => void;
-	onRefresh: () => void;
-	isFetching: boolean;
+  searchTerm: string;
+  onSearchChange: (value: string) => void;
+  hostFilter: string;
+  onHostFilterChange: (value: string) => void;
+  availableHosts: DockerHost[];
+  groupBy: GroupByOption;
+  onGroupByChange: (value: GroupByOption) => void;
+  dateRange: DateRange | undefined;
+  onDateRangeChange: (range: DateRange | undefined) => void;
+  onDateRangeClear: () => void;
+  onRefresh: () => void;
+  isFetching: boolean;
+  stateCounts: StateCounts;
+  stateFilter: string;
+  onStateFilterChange: (value: string) => void;
+}
+
+const controlClass =
+  "h-10 text-base sm:h-9 sm:text-sm data-[active=true]:bg-muted data-[active=true]:text-foreground";
+
+function formatDay(date: Date) {
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 export function ContainersToolbar({
-	searchTerm,
-	onSearchChange,
-	stateFilter,
-	onStateFilterChange,
-	availableStates,
-	hostFilter,
-	onHostFilterChange,
-	availableHosts,
-	sortDirection,
-	onSortDirectionChange,
-	groupBy,
-	onGroupByChange,
-	dateRange,
-	onDateRangeChange,
-	onDateRangeClear,
-	onRefresh,
-	isFetching,
+  searchTerm,
+  onSearchChange,
+  hostFilter,
+  onHostFilterChange,
+  availableHosts,
+  groupBy,
+  onGroupByChange,
+  dateRange,
+  onDateRangeChange,
+  onDateRangeClear,
+  onRefresh,
+  isFetching,
+  stateCounts,
+  stateFilter,
+  onStateFilterChange,
 }: ContainersToolbarProps) {
-	const renderDateRange = () => {
-		if (!dateRange?.from) {
-			return <span>Date range</span>;
-		}
+  const renderDateRange = () => {
+    if (!dateRange?.from) {
+      return "Created any time";
+    }
+    if (dateRange.to) {
+      return `${formatDay(dateRange.from)} – ${formatDay(dateRange.to)}`;
+    }
+    return `From ${formatDay(dateRange.from)}`;
+  };
 
-		if (dateRange.to) {
-			const from = dateRange.from.toLocaleDateString("en-US", {
-				month: "short",
-				day: "numeric",
-			});
-			const to = dateRange.to.toLocaleDateString("en-US", {
-				month: "short",
-				day: "numeric",
-			});
-			return (
-				<>
-					{from} - {to}
-				</>
-			);
-		}
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <div className="relative min-w-56 flex-1 sm:max-w-sm">
+        <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          type="search"
+          name="container-search"
+          aria-label="Search containers by name, image, or ID"
+          value={searchTerm}
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder="Search name, image, or ID…"
+          className="h-10 pl-8 sm:h-9"
+        />
+      </div>
 
-		return dateRange.from.toLocaleDateString("en-US", {
-			month: "short",
-			day: "numeric",
-		});
-	};
+      <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
+        <ContainersStateFilter
+          stateCounts={stateCounts}
+          stateFilter={stateFilter}
+          onStateFilterChange={onStateFilterChange}
+          className={controlClass}
+        />
 
-	return (
-		<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-			<Input
-				type="search"
-				value={searchTerm}
-				onChange={(event) => onSearchChange(event.target.value)}
-				placeholder="Search containers..."
-				className="sm:max-w-sm"
-			/>
-			<div className="flex items-center gap-2">
-				<DropdownMenu>
-					<DropdownMenuTrigger asChild>
-						<Button variant="outline" size="sm" className="h-9">
-							{hostFilter === "all" ? "All hosts" : hostFilter}
-							<ChevronDownIcon className="ml-2 size-4" />
-						</Button>
-					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end">
-						<DropdownMenuRadioGroup
-							value={hostFilter}
-							onValueChange={onHostFilterChange}
-						>
-							<DropdownMenuRadioItem value="all">
-								All hosts
-							</DropdownMenuRadioItem>
-							{availableHosts.map((host) => (
-								<DropdownMenuRadioItem key={host.name} value={host.name}>
-									{host.name}
-								</DropdownMenuRadioItem>
-							))}
-						</DropdownMenuRadioGroup>
-					</DropdownMenuContent>
-				</DropdownMenu>
+        {availableHosts.length > 1 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                data-active={hostFilter !== "all"}
+                className={controlClass}
+              >
+                {hostFilter === "all" ? "All hosts" : hostFilter}
+                <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuRadioGroup
+                value={hostFilter}
+                onValueChange={onHostFilterChange}
+              >
+                <DropdownMenuRadioItem value="all">
+                  All hosts
+                </DropdownMenuRadioItem>
+                {availableHosts.map((host) => (
+                  <DropdownMenuRadioItem key={host.name} value={host.name}>
+                    {host.name}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
 
-				<DropdownMenu>
-					<DropdownMenuTrigger asChild>
-						<Button variant="outline" size="sm" className="h-9">
-							{stateFilter === "all" ? "All states" : toTitleCase(stateFilter)}
-							<ChevronDownIcon className="ml-2 size-4" />
-						</Button>
-					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end">
-						<DropdownMenuRadioGroup
-							value={stateFilter}
-							onValueChange={onStateFilterChange}
-						>
-							<DropdownMenuRadioItem value="all">
-								All states
-							</DropdownMenuRadioItem>
-							{availableStates.map((state) => (
-								<DropdownMenuRadioItem key={state} value={state}>
-									{toTitleCase(state)}
-								</DropdownMenuRadioItem>
-							))}
-						</DropdownMenuRadioGroup>
-					</DropdownMenuContent>
-				</DropdownMenu>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              data-active={groupBy !== "none"}
+              className={controlClass}
+            >
+              {groupBy === "compose" ? "By project" : "No grouping"}
+              <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuRadioGroup
+              value={groupBy}
+              onValueChange={(value) => onGroupByChange(value as GroupByOption)}
+            >
+              <DropdownMenuRadioItem value="none">
+                No grouping
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="compose">
+                By compose project
+              </DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
-				<DropdownMenu>
-					<DropdownMenuTrigger asChild>
-						<Button variant="outline" size="sm" className="h-9">
-							{sortDirection === "desc" ? "Newest" : "Oldest"}
-							<ChevronDownIcon className="ml-2 size-4" />
-						</Button>
-					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end">
-						<DropdownMenuRadioGroup
-							value={sortDirection}
-							onValueChange={(value) =>
-								onSortDirectionChange(value as SortDirection)
-							}
-						>
-							<DropdownMenuRadioItem value="desc">
-								Newest first
-							</DropdownMenuRadioItem>
-							<DropdownMenuRadioItem value="asc">
-								Oldest first
-							</DropdownMenuRadioItem>
-						</DropdownMenuRadioGroup>
-					</DropdownMenuContent>
-				</DropdownMenu>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              data-active={Boolean(dateRange?.from)}
+              className={controlClass}
+            >
+              <CalendarIcon className="size-4 shrink-0 text-muted-foreground" />
+              {renderDateRange()}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="end">
+            <Calendar
+              mode="range"
+              defaultMonth={dateRange?.from}
+              selected={dateRange}
+              onSelect={onDateRangeChange}
+              numberOfMonths={2}
+            />
+            {dateRange?.from && (
+              <div className="border-t p-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onDateRangeClear}
+                  className="w-full"
+                >
+                  Clear date range
+                </Button>
+              </div>
+            )}
+          </PopoverContent>
+        </Popover>
 
-				<DropdownMenu>
-					<DropdownMenuTrigger asChild>
-						<Button variant="outline" size="sm" className="h-9">
-							{groupBy === "compose" ? "By project" : "No grouping"}
-							<ChevronDownIcon className="ml-2 size-4" />
-						</Button>
-					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end">
-						<DropdownMenuRadioGroup
-							value={groupBy}
-							onValueChange={(value) => onGroupByChange(value as GroupByOption)}
-						>
-							<DropdownMenuRadioItem value="none">
-								No grouping
-							</DropdownMenuRadioItem>
-							<DropdownMenuRadioItem value="compose">
-								By compose project
-							</DropdownMenuRadioItem>
-						</DropdownMenuRadioGroup>
-					</DropdownMenuContent>
-				</DropdownMenu>
-
-				<Popover>
-					<PopoverTrigger asChild>
-						<Button
-							variant={dateRange?.from ? "default" : "outline"}
-							size="sm"
-							className="h-9 justify-start text-left font-normal"
-						>
-							<CalendarIcon className="mr-2 size-4" />
-							{renderDateRange()}
-							{dateRange?.from && (
-								<XIcon
-									className="ml-2 size-4 hover:text-destructive"
-									onClick={(event) => {
-										event.stopPropagation();
-										onDateRangeClear();
-									}}
-								/>
-							)}
-						</Button>
-					</PopoverTrigger>
-					<PopoverContent className="w-auto p-0" align="end">
-						<Calendar
-							mode="range"
-							defaultMonth={dateRange?.from}
-							selected={dateRange}
-							onSelect={onDateRangeChange}
-							numberOfMonths={2}
-						/>
-					</PopoverContent>
-				</Popover>
-
-				<Button
-					variant="ghost"
-					size="sm"
-					onClick={onRefresh}
-					className="h-9 shrink-0"
-				>
-					<RefreshCcwIcon
-						className={`size-4 ${isFetching ? "animate-spin" : ""}`}
-					/>
-				</Button>
-
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<Button
-							variant="ghost"
-							size="sm"
-							className="h-9 shrink-0"
-							aria-label="Settings"
-						>
-							<SettingsIcon className="size-4" />
-						</Button>
-					</TooltipTrigger>
-					<TooltipContent>Settings</TooltipContent>
-				</Tooltip>
-
-				<ThemeToggle />
-			</div>
-		</div>
-	);
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              onClick={onRefresh}
+              aria-label="Refresh containers"
+              className="size-10 sm:size-9"
+            >
+              <RefreshCcwIcon
+                className={`size-4 ${isFetching ? "animate-spin" : ""}`}
+              />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Refresh</TooltipContent>
+        </Tooltip>
+      </div>
+    </div>
+  );
 }

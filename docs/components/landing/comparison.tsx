@@ -1,18 +1,54 @@
 import { Wrapper, h2Class } from "./ui";
 
 const rows = [
-  ["Stored log history", "On disk, searchable, survives rebuild and removal", "None: live only, history via Dozzle Cloud"],
-  ["Search", "Regex, level, and time range on the server, across history", "Regex on the live view, SQL over JSON logs in the browser"],
-  ["Alerts", "Event and log rules, rate windows, cooldowns, delivery history", "Event, log, and metric rules with an expression language"],
-  ["Alert channels", "Webhook (Slack and Discord as-is), ntfy, Gotify, Telegram", "Webhook, Slack, Discord, ntfy; Telegram and email via Cloud"],
-  ["Edit env vars and resource limits", "Yes, with .env import and Coolify sync", "No"],
-  ["Compose stacks", "Start, stop, restart a whole stack; merged logs", "Merged group logs"],
-  ["Multi-host", "Local, TCP, or SSH; no agents", "TCP, or an agent container on each host"],
+  [
+    "Stored log history",
+    "On disk, searchable, survives rebuild and removal",
+    "None: live only, history via Dozzle Cloud",
+  ],
+  [
+    "Search",
+    "Regex, level, and time range on the server, across history",
+    "Regex on the live view, SQL over JSON logs in the browser",
+  ],
+  [
+    "Alerts",
+    "Event and log rules, rate windows, cooldowns, delivery history",
+    "Event, log, and metric rules with an expression language",
+  ],
+  [
+    "Alert channels",
+    "Webhook (Slack and Discord as-is), ntfy, Gotify, Telegram",
+    "Webhook, Slack, Discord, ntfy; Telegram and email via Cloud",
+  ],
+  [
+    "Edit env vars and resource limits",
+    "Yes, with .env import and Coolify sync",
+    "No",
+  ],
+  [
+    "Compose stacks",
+    "Start, stop, restart a whole stack; merged logs",
+    "Merged group logs",
+  ],
+  [
+    "Multi-host",
+    "Local, TCP, or SSH; no agents",
+    "TCP, or an agent container on each host",
+  ],
   ["Web terminal", "Yes", "Yes"],
   ["Split-screen log view", "No", "Yes"],
   ["Swarm and Kubernetes", "No", "Yes"],
-  ["CLI and MCP", "logdeck CLI on the server API; MCP with read and action tools", "No API CLI; read-only MCP"],
-  ["Users and auth", "Single admin, scoped API tokens, read-only mode", "Multiple users, OIDC, forward proxy, per-user roles"],
+  [
+    "CLI and MCP",
+    "logdeck CLI on the server API; MCP with read and action tools",
+    "No API CLI; read-only MCP",
+  ],
+  [
+    "Users and auth",
+    "Single admin, scoped API tokens, read-only mode",
+    "Multiple users, OIDC, forward proxy, per-user roles",
+  ],
   ["Hosted tier", "None", "Dozzle Cloud (paid tiers)"],
   ["License", "GPL-3.0", "MIT"],
 ];
@@ -46,11 +82,16 @@ export function Comparison() {
             <tbody className="divide-y divide-dashed divide-base-200">
               {rows.map(([feature, ours, theirs]) => (
                 <tr key={feature}>
-                  <th scope="row" className="px-4 py-3 align-top font-medium text-base-900 2xl:px-12">
+                  <th
+                    scope="row"
+                    className="px-4 py-3 align-top font-medium text-base-900 2xl:px-12"
+                  >
                     {feature}
                   </th>
                   <td className="py-3 pr-4 align-top text-base-800">{ours}</td>
-                  <td className="py-3 pr-4 align-top text-base-500 2xl:pr-12">{theirs}</td>
+                  <td className="py-3 pr-4 align-top text-base-500 2xl:pr-12">
+                    {theirs}
+                  </td>
                 </tr>
               ))}
             </tbody>

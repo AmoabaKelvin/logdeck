@@ -1,10 +1,11 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { Github01Icon } from "@hugeicons/core-free-icons";
+
+import { DemoApp } from "@/components/logdeck-demo/demo-app";
 
 import { Icon, Wrapper, h1Class, pill } from "./ui";
 
@@ -59,14 +60,11 @@ export function Hero() {
         <p className="mt-4 text-center text-sm text-base-500">
           Open source, self-hosted, no cloud tier. Keep your deploy tool.
         </p>
-        <Image
-          src="/dashboard.png"
-          alt="LogDeck dashboard listing containers with health badges, ports, and CPU and memory sparklines"
-          width={3850}
-          height={2188}
-          className="mt-8 h-auto w-full rounded-xl outline-1 -outline-offset-1 outline-sand-500/10"
-          priority
-        />
+        {/* contain:paint makes the frame the containing block for the fixed sheet and overlay. */}
+        <DemoApp className="relative mt-8 rounded-xl text-left shadow-sm outline outline-sand-500/10 [contain:paint] lg:-mx-16 2xl:-mx-24" />
+        <p className="mt-3 text-center text-sm text-base-500">
+          Live demo. Click anything.
+        </p>
       </Wrapper>
     </section>
   );

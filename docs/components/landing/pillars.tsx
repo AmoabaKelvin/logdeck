@@ -15,9 +15,17 @@ const level: Record<string, string> = {
 };
 
 const historyLines = [
-  { ts: "23:58:41", level: "ERROR", msg: "upstream timeout after 30s (attempt 3/3)" },
+  {
+    ts: "23:58:41",
+    level: "ERROR",
+    msg: "upstream timeout after 30s (attempt 3/3)",
+  },
   { ts: "23:59:07", level: "WARN", msg: "circuit open for payments-svc" },
-  { ts: "00:02:19", level: "ERROR", msg: "upstream timeout after 30s (attempt 1/3)" },
+  {
+    ts: "00:02:19",
+    level: "ERROR",
+    msg: "upstream timeout after 30s (attempt 1/3)",
+  },
   { ts: "00:02:20", level: "INFO", msg: "listening on :8080" },
 ];
 
@@ -44,8 +52,12 @@ function HistoryCard() {
         </span>
       </div>
       <div className="flex items-center gap-2 border-t border-sand-500/10 px-4 py-2 font-mono text-xs text-base-500">
-        <span className="rounded-full bg-sand-100 px-2 py-0.5">timeout|circuit</span>
-        <span className="rounded-full bg-sand-100 px-2 py-0.5">level ≥ WARN</span>
+        <span className="rounded-full bg-sand-100 px-2 py-0.5">
+          timeout|circuit
+        </span>
+        <span className="rounded-full bg-sand-100 px-2 py-0.5">
+          level ≥ WARN
+        </span>
         <span className="rounded-full bg-sand-100 px-2 py-0.5">7d</span>
       </div>
       <ul className="border-t border-sand-500/10 py-1">
@@ -70,7 +82,11 @@ function HistoryCard() {
 
 const alerts = [
   { time: "03:12", what: "stack-worker died (exit 137)", via: "Telegram" },
-  { time: "02:58", what: "api-errors: 7 ERROR in 60s", via: "ntfy · 212 repeats suppressed" },
+  {
+    time: "02:58",
+    what: "api-errors: 7 ERROR in 60s",
+    via: "ntfy · 212 repeats suppressed",
+  },
   { time: "01:31", what: "stack-db unhealthy", via: "webhook" },
 ];
 
@@ -83,11 +99,15 @@ function AlertsCard() {
         <dl className="mt-4 grid grid-cols-3 gap-4 text-sm">
           <div>
             <dt className="text-base-500">Trigger</dt>
-            <dd className="mt-0.5 font-mono text-xs text-base-900">ERROR ≥ 5 / 60s</dd>
+            <dd className="mt-0.5 font-mono text-xs text-base-900">
+              ERROR ≥ 5 / 60s
+            </dd>
           </div>
           <div>
             <dt className="text-base-500">Target</dt>
-            <dd className="mt-0.5 font-mono text-xs text-base-900">prod / stack-api</dd>
+            <dd className="mt-0.5 font-mono text-xs text-base-900">
+              prod / stack-api
+            </dd>
           </div>
           <div>
             <dt className="text-base-500">Cooldown</dt>
@@ -103,7 +123,9 @@ function AlertsCard() {
               <span className="shrink-0 font-mono text-xs text-base-400 tabular-nums">
                 {a.time}
               </span>
-              <span className="min-w-0 flex-1 truncate text-base-900">{a.what}</span>
+              <span className="min-w-0 flex-1 truncate text-base-900">
+                {a.what}
+              </span>
               <span className="flex shrink-0 items-center gap-1.5 text-xs text-base-500">
                 <span className="size-2 rounded-full bg-[#5aab69]" />
                 {a.via}
@@ -167,8 +189,19 @@ function ControlCard() {
   );
 }
 
-const readTools = ["list_containers", "get_logs", "search_logs", "history_search", "container_stats"];
-const adminTools = ["restart_container", "run_command", "set_env", "set_read_only"];
+const readTools = [
+  "list_containers",
+  "get_logs",
+  "search_logs",
+  "history_search",
+  "container_stats",
+];
+const adminTools = [
+  "restart_container",
+  "run_command",
+  "set_env",
+  "set_read_only",
+];
 
 function AgentCard() {
   return (
@@ -185,7 +218,10 @@ function AgentCard() {
         <p className="text-sm text-base-500">Read token</p>
         <div className="mt-2 flex flex-wrap gap-1.5">
           {readTools.map((t) => (
-            <span key={t} className="rounded-full bg-sand-100 px-2.5 py-1 font-mono text-xs text-base-800">
+            <span
+              key={t}
+              className="rounded-full bg-sand-100 px-2.5 py-1 font-mono text-xs text-base-800"
+            >
               {t}
             </span>
           ))}
@@ -193,7 +229,10 @@ function AgentCard() {
         <p className="mt-4 text-sm text-base-500">Admin token adds</p>
         <div className="mt-2 flex flex-wrap gap-1.5">
           {adminTools.map((t) => (
-            <span key={t} className="rounded-full bg-accent-50 px-2.5 py-1 font-mono text-xs text-accent-800">
+            <span
+              key={t}
+              className="rounded-full bg-accent-50 px-2.5 py-1 font-mono text-xs text-accent-800"
+            >
               {t}
             </span>
           ))}

@@ -8,28 +8,28 @@ import { useContainerStatsHistory } from "./use-stats-history";
 import { useDocumentVisible } from "./use-document-visible";
 
 export function useContainerStats() {
-	const isVisible = useDocumentVisible();
-	const query = useQuery({
-		queryKey: ["containers", "stats"],
-		queryFn: getContainerStats,
-		refetchInterval: isVisible ? 5000 : false,
-		staleTime: 4000,
-	});
+  const isVisible = useDocumentVisible();
+  const query = useQuery({
+    queryKey: ["containers", "stats"],
+    queryFn: getContainerStats,
+    refetchInterval: isVisible ? 5000 : false,
+    staleTime: 4000,
+  });
 
-	const statsMap = useMemo<ContainerStatsMap>(() => {
-		if (!query.data?.stats) return {};
+  const statsMap = useMemo<ContainerStatsMap>(() => {
+    if (!query.data?.stats) return {};
 
-		return query.data.stats.reduce((acc, stat) => {
-			acc[stat.id] = stat;
-			return acc;
-		}, {} as ContainerStatsMap);
-	}, [query.data?.stats]);
+    return query.data.stats.reduce((acc, stat) => {
+      acc[stat.id] = stat;
+      return acc;
+    }, {} as ContainerStatsMap);
+  }, [query.data?.stats]);
 
-	const statsHistory = useContainerStatsHistory(query.data?.stats);
+  const statsHistory = useContainerStatsHistory(query.data?.stats);
 
-	return {
-		...query,
-		statsMap,
-		statsHistory,
-	};
+  return {
+    ...query,
+    statsMap,
+    statsHistory,
+  };
 }

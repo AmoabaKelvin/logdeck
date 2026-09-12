@@ -20,7 +20,7 @@ export function Cta() {
             <Link href="/demo" className={pill.muted}>
               Try the live demo
             </Link>
-            <a href="#install" className={`${pill.black}`}>
+            <a href="#install" className={pill.black}>
               Install in a minute
             </a>
           </div>

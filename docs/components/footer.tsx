@@ -23,10 +23,22 @@ const footerLinks = [
     heading: "Project",
     links: [
       { label: "GitHub", href: "https://github.com/AmoabaKelvin/logdeck" },
-      { label: "Docker Hub", href: "https://hub.docker.com/r/amoabakelvin/logdeck" },
-      { label: "Releases", href: "https://github.com/AmoabaKelvin/logdeck/releases" },
-      { label: "Report an issue", href: "https://github.com/AmoabaKelvin/logdeck/issues" },
-      { label: "License (GPL-3.0)", href: "https://github.com/AmoabaKelvin/logdeck/blob/main/LICENSE" },
+      {
+        label: "Docker Hub",
+        href: "https://hub.docker.com/r/amoabakelvin/logdeck",
+      },
+      {
+        label: "Releases",
+        href: "https://github.com/AmoabaKelvin/logdeck/releases",
+      },
+      {
+        label: "Report an issue",
+        href: "https://github.com/AmoabaKelvin/logdeck/issues",
+      },
+      {
+        label: "License (GPL-3.0)",
+        href: "https://github.com/AmoabaKelvin/logdeck/blob/main/LICENSE",
+      },
     ],
   },
   {

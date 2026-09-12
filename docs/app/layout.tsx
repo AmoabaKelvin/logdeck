@@ -17,7 +17,6 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-
 export const metadata: Metadata = {
   metadataBase: new URL("https://logdeck.dev"),
   title: {
@@ -135,13 +134,19 @@ export default function RootLayout({
       <head>
         {/* Google Sans Flex is not in next/font yet. Used for the landing page. */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin="anonymous"
+        />
         <link
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,100..1000&display=swap"
         />
       </head>
-      <body className={`${geistSans.className} ${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body
+        className={`${geistSans.className} ${geistSans.variable} ${geistMono.variable} antialiased`}
+      >
         <script
           type="application/ld+json"
           // biome-ignore lint/security/noDangerouslySetInnerHtml: static JSON-LD literal defined above, no user input
@@ -158,7 +163,7 @@ export default function RootLayout({
             <Footer />
           </div>
         </ThemeProvider>
-        {process.env.NODE_ENV === 'production' && (
+        {process.env.NODE_ENV === "production" && (
           <script
             defer
             src="https://static.cloudflareinsights.com/beacon.min.js"

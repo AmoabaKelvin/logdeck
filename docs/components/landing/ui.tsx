@@ -7,15 +7,12 @@ import { cn } from "@/lib/utils";
 export function Wrapper({
   className,
   children,
-  id,
 }: {
   className?: string;
   children: React.ReactNode;
-  id?: string;
 }) {
   return (
     <div
-      id={id}
       className={cn(
         "mx-auto w-full max-w-5xl border-x border-dashed border-base-200 px-4 2xl:max-w-6xl 2xl:px-12",
         className,

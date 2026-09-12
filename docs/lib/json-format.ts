@@ -1,7 +1,13 @@
 const JSON_CACHE_LIMIT = 1000;
-const jsonFormatCache = new Map<string, { formatted: string; isJson: boolean }>();
+const jsonFormatCache = new Map<
+  string,
+  { formatted: string; isJson: boolean }
+>();
 
-function setCachedValue(text: string, value: { formatted: string; isJson: boolean }) {
+function setCachedValue(
+  text: string,
+  value: { formatted: string; isJson: boolean },
+) {
   if (jsonFormatCache.size >= JSON_CACHE_LIMIT) {
     const oldestKey = jsonFormatCache.keys().next().value;
     if (oldestKey) {
@@ -16,9 +22,10 @@ function setCachedValue(text: string, value: { formatted: string; isJson: boolea
  * Returns formatted JSON with isJson flag on success.
  * Returns original text with isJson: false on failure.
  */
-export function formatJson(
-  text: string
-): { formatted: string; isJson: boolean } {
+export function formatJson(text: string): {
+  formatted: string;
+  isJson: boolean;
+} {
   const cached = jsonFormatCache.get(text);
   if (cached) return cached;
 
@@ -32,7 +39,10 @@ export function formatJson(
   try {
     const parsed = JSON.parse(trimmed);
     if (typeof parsed === "object" && parsed !== null) {
-      const result = { formatted: JSON.stringify(parsed, null, 2), isJson: true };
+      const result = {
+        formatted: JSON.stringify(parsed, null, 2),
+        isJson: true,
+      };
       setCachedValue(text, result);
       return result;
     }

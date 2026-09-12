@@ -1,13 +1,15 @@
 "use client";
 
 import type * as React from "react";
-import { useTheme } from "next-themes";
+import { useContext } from "react";
 import { Toaster as Sonner } from "sonner";
 
 import type { ToasterProps } from "sonner";
 
+import { DemoThemeContext } from "@/components/logdeck-demo/demo-view";
+
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme();
+  const { theme } = useContext(DemoThemeContext);
 
   return (
     <Sonner

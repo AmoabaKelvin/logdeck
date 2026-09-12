@@ -103,7 +103,8 @@ export function Install() {
           <h2 className={h2Class}>Up and running in a minute</h2>
           <p className="mx-auto mt-4 max-w-xl text-pretty text-base text-base-500">
             One container for the server, one command for the CLI, one JSON
-            block for your agent. Mount a volume or lose the history on recreate.
+            block for your agent. Mount a volume or lose the history on
+            recreate.
           </p>
         </div>
 
@@ -155,7 +156,9 @@ export function Install() {
             </dd>
           </div>
           <div>
-            <dt className="font-medium text-base-900">Logs live on this disk</dt>
+            <dt className="font-medium text-base-900">
+              Logs live on this disk
+            </dt>
             <dd className="mt-1 text-pretty text-base-500">
               Stored on the LogDeck host, capped by the retention you set.
               Health badges are Docker-only.
@@ -164,7 +167,10 @@ export function Install() {
         </dl>
         <p className="mt-6 text-center text-sm text-base-500">
           Auth, more hosts, retention caps? See the{" "}
-          <Link href="/docs/configuration" className="text-base-900 hover:text-accent-500">
+          <Link
+            href="/docs/configuration"
+            className="text-base-900 hover:text-accent-500"
+          >
             configuration guide
           </Link>
           .
