@@ -1,10 +1,9 @@
 import { format } from "date-fns";
-import { ClockIcon } from "lucide-react";
 import { useId, useState } from "react";
 import type { DateRange } from "react-day-picker";
-
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import { ClockIcon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {

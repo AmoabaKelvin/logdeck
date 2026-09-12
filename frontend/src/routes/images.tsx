@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { AppHeader } from "@/components/app-header";
+
 import { ImagesPage } from "@/features/resources/components/images-page";
 import { requireAuthIfEnabled } from "@/lib/auth-guard";
 
@@ -12,8 +14,11 @@ export const Route = createFileRoute("/images")({
 
 function Images() {
 	return (
-		<main className="container mx-auto px-4 py-8">
-			<ImagesPage />
-		</main>
+		<div className="isolate min-h-dvh bg-background">
+			<AppHeader />
+			<main className="app-width px-4 py-8 sm:px-6 lg:px-8">
+				<ImagesPage />
+			</main>
+		</div>
 	);
 }

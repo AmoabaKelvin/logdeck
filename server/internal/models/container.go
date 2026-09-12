@@ -13,6 +13,15 @@ type ContainerInfo struct {
 	Health  string            `json:"health,omitempty"`
 	Labels  map[string]string `json:"labels,omitempty"`
 	Host    string            `json:"host"`
+	Ports   []ContainerPort   `json:"ports,omitempty"`
+}
+
+// ContainerPort is a port published to the host. Exposed-but-unpublished ports
+// carry no host port and are left out.
+type ContainerPort struct {
+	PublicPort  uint16 `json:"publicPort"`
+	PrivatePort uint16 `json:"privatePort"`
+	Type        string `json:"type"`
 }
 
 // ContainerEvent represents a container lifecycle event streamed to the frontend

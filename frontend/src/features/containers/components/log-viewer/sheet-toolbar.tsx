@@ -1,3 +1,11 @@
+import { Button } from "@/components/ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
 	ArrowDownIcon,
 	ArrowDownToLineIcon,
@@ -12,16 +20,7 @@ import {
 	RefreshCcwIcon,
 	SearchIcon,
 	SquareIcon,
-} from "lucide-react";
-
-import { Button } from "@/components/ui/button";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import {
 	Tooltip,

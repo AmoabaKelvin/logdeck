@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
+import { AppHeader } from "@/components/app-header";
 
 import { ContainersDashboard } from "@/features/containers/components/containers-dashboard";
 import { requireAuthIfEnabled } from "@/lib/auth-guard";
@@ -28,8 +29,11 @@ export const Route = createFileRoute("/")({
 
 function Index() {
 	return (
-		<main className="container mx-auto px-4 py-8">
-			<ContainersDashboard />
-		</main>
+		<div className="isolate min-h-dvh bg-background">
+			<AppHeader />
+			<main className="app-width px-4 py-8 sm:px-6 lg:px-8">
+				<ContainersDashboard />
+			</main>
+		</div>
 	);
 }

@@ -1,10 +1,9 @@
 import { Link } from "@tanstack/react-router";
-import { FileTextIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { FileTextIcon, Trash2Icon } from "@/components/ui/icons";
 import {
 	Table,
 	TableBody,

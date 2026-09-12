@@ -8,6 +8,7 @@ import {
 	selectStackMembers,
 	selectVisibleContainers,
 	sortStoredContainersBySize,
+	splitContainerStatus,
 	synthesizeRemovedContainers,
 } from "./container-utils";
 
@@ -233,5 +234,53 @@ describe("sortStoredContainersBySize", () => {
 
 		expect(sorted.map((entry) => entry.name)).toEqual(["a", "b"]);
 		expect(input.map((entry) => entry.name)).toEqual(["b", "a"]);
+	});
+});
+
+describe("splitContainerStatus", () => {
+	const make = (state: string, status: string) =>
+		({ state, status }) as Parameters<typeof splitContainerStatus>[0];
+
+	// Every string here came off a real daemon while reviewing the dashboard.
+	it.each([
+		["running", "Up 47 hours", "Running", "47 hours", null],
+		["running", "Up 3 minutes (healthy)", "Running", "3 minutes", null],
+		[
+			"running",
+			"Up 3 minutes (health: starting)",
+			"Running",
+			"3 minutes",
+			null,
+		],
+		["paused", "Up 22 seconds (Paused)", "Paused", "22 seconds", null],
+		["exited", "Exited (0) 6 hours ago", "Exited (0)", "6 hours", 0],
+		["exited", "Exited (137) 3 minutes ago", "Exited (137)", "3 minutes", 137],
+		["exited", "Exited (1) 2 days ago", "Exited (1)", "2 days", 1],
+		[
+			"restarting",
+			"Restarting (1) 24 seconds ago",
+			"Restarting (1)",
+			"24 seconds",
+			1,
+		],
+	])("splits %s %j", (state, status, label, duration, exitCode) => {
+		expect(splitContainerStatus(make(state, status))).toEqual({
+			label,
+			duration,
+			exitCode,
+		});
+	});
+
+	it("falls back to the state when there is no duration", () => {
+		expect(splitContainerStatus(make("removed", ""))).toEqual({
+			label: "Removed",
+			duration: null,
+			exitCode: null,
+		});
+		expect(splitContainerStatus(make("created", "Created"))).toEqual({
+			label: "Created",
+			duration: null,
+			exitCode: null,
+		});
 	});
 });
