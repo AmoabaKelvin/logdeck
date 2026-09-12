@@ -12,18 +12,18 @@ import {
 } from "@/components/ui/icons";
 import { Spinner } from "@/components/ui/spinner";
 import type { ContainerInspect } from "../api/get-container-inspect";
-import type { StatsSample } from "../hooks/use-stats-history";
 import type { ContainerInfo, ContainerStats } from "../types";
 import {
+	formatBytes,
 	formatCPUPercent,
 	formatImageName,
-	formatMemoryStats,
 	formatRelativeCreated,
 	getHealthBadgeClass,
 	getStateBadgeClass,
 	splitContainerStatus,
 	toTitleCase,
 } from "./container-utils";
+import { Meter } from "./meter";
 import { Sparkline } from "./sparkline";
 
 // Action buttons match the dashboard toolbar's control height so the app has
@@ -38,7 +38,8 @@ interface ContainerDetailHeaderProps {
 	isRemoved: boolean;
 	isReadOnly: boolean;
 	stats: ContainerStats | undefined;
-	history: StatsSample[];
+	// CPU samples only; memory reads against its ceiling, not as a trend.
+	history: number[];
 	// Inspect carries what the container list cannot: restart counts and how
 	// the last run ended.
 	inspect: ContainerInspect | undefined;
@@ -54,12 +55,13 @@ interface StatProps {
 	label: string;
 	value: string;
 	detail?: string;
-	history?: number[];
+	// A sparkline for a trend, a meter for a ratio — whichever the reading is.
+	trend?: React.ReactNode;
 	tone?: "warn";
 }
 
 /** Label beside its reading — the same shape the dashboard header uses. */
-function Stat({ label, value, detail, history, tone }: StatProps) {
+function Stat({ label, value, detail, trend, tone }: StatProps) {
 	return (
 		<div className="flex min-w-0 items-center gap-2.5">
 			<span className="shrink-0 font-mono text-[0.625rem] uppercase tracking-wide text-muted-foreground">
@@ -73,7 +75,7 @@ function Stat({ label, value, detail, history, tone }: StatProps) {
 			>
 				{value}
 			</span>
-			{history && <Sparkline values={history} />}
+			{trend}
 		</div>
 	);
 }
@@ -131,16 +133,19 @@ export function ContainerDetailHeader({
 				{
 					label: "CPU",
 					value: formatCPUPercent(stats?.cpu_percent),
-					history: history.map((sample) => sample.cpu),
+					trend: <Sparkline values={history} />,
 				},
 				{
 					label: "Mem",
-					value:
-						stats?.memory_percent != null
-							? `${stats.memory_percent.toFixed(1)}%`
-							: "—",
-					detail: formatMemoryStats(stats),
-					history: history.map((sample) => sample.memoryPercent),
+					value: stats ? formatBytes(stats.memory_used) : "—",
+					trend: stats && stats.memory_limit > 0 && (
+						<>
+							<Meter used={stats.memory_used} limit={stats.memory_limit} />
+							<span className="shrink-0 text-sm text-muted-foreground tabular-nums">
+								of {formatBytes(stats.memory_limit)}
+							</span>
+						</>
+					),
 				},
 			);
 			if (duration) vitals.push({ label: "Up", value: duration });

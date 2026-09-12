@@ -23,6 +23,7 @@ import {
 import type { ContainerStats } from "../types";
 import { PanelError, PanelLoading, PanelSection } from "./container-panel-ui";
 import { formatBytes } from "./container-utils";
+import { Meter } from "./meter";
 import { formatMemoryBytes, parseMemoryInput } from "./parse-memory";
 
 const RESTART_POLICIES = [
@@ -37,44 +38,23 @@ function policyLabel(value: string) {
 }
 
 /**
- * How close the container is running to its ceiling. Without a ceiling there is
- * nothing to be close to, so the bar is left out rather than drawn against the
- * host's total — that reads as headroom the container has not been granted.
+ * A reading against its ceiling. Without a ceiling there is nothing to be
+ * close to, so no bar is drawn rather than one against the host's total —
+ * that reads as headroom the container has not been granted.
  */
-function UsageBar({ percent }: { percent: number }) {
-	const clamped = Math.min(100, Math.max(0, percent));
-	const tone =
-		clamped >= 90
-			? "bg-rose-500"
-			: clamped >= 75
-				? "bg-amber-500"
-				: "bg-foreground/60";
-
-	return (
-		// The reading is spelled out next to the bar, so the bar is decoration.
-		<div
-			className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
-			aria-hidden="true"
-		>
-			<div
-				className={`h-full rounded-full ${tone} w-(--usage)`}
-				style={{ "--usage": `${clamped}%` } as React.CSSProperties}
-			/>
-		</div>
-	);
-}
-
 function Reading({
 	title,
 	value,
 	detail,
-	percent,
+	used,
+	limit,
 	children,
 }: {
 	title: string;
 	value: string;
 	detail?: string;
-	percent: number | null;
+	used: number | null;
+	limit: number | null;
 	children: React.ReactNode;
 }) {
 	return (
@@ -89,12 +69,12 @@ function Reading({
 				</p>
 			</div>
 			<div className="mt-2">
-				{percent === null ? (
+				{limit === null || used === null ? (
 					<p className="text-base text-muted-foreground sm:text-sm">
 						No limit set — the container can use the whole host.
 					</p>
 				) : (
-					<UsageBar percent={percent} />
+					<Meter used={used} limit={limit} className="w-full" />
 				)}
 			</div>
 			<div className="mt-3">{children}</div>
@@ -220,11 +200,8 @@ export function ContainerLimitsPanel({
 				title="Memory"
 				value={stats ? formatBytes(stats.memory_used) : "—"}
 				detail={memoryLimited ? `of ${formatBytes(resources.memoryBytes)}` : ""}
-				percent={
-					memoryLimited && stats
-						? (stats.memory_used / resources.memoryBytes) * 100
-						: null
-				}
+				used={memoryLimited && stats ? stats.memory_used : null}
+				limit={memoryLimited ? resources.memoryBytes : null}
 			>
 				<div className="flex items-center gap-2">
 					<Label
@@ -251,11 +228,8 @@ export function ContainerLimitsPanel({
 				detail={
 					cpuCores ? `of ${cpuCores} core${cpuCores === 1 ? "" : "s"}` : ""
 				}
-				percent={
-					cpuCores && stats
-						? (stats.cpu_percent / (cpuCores * 100)) * 100
-						: null
-				}
+				used={cpuCores && stats ? stats.cpu_percent : null}
+				limit={cpuCores ? cpuCores * 100 : null}
 			>
 				<div className="flex items-center gap-2">
 					<Label
