@@ -1,5 +1,5 @@
-import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import type React from "react";
+import { ChevronDownIcon, ChevronRightIcon } from "@/components/ui/icons";
 import { formatJson } from "@/lib/json-format";
 
 interface CollapsibleJsonProps {

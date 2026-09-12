@@ -1,8 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { ResourceNav } from "@/features/resources/components/resource-nav";
 import type { GetContainersResponse } from "../api/get-containers";
 import { useContainerActions } from "../hooks/use-container-actions";
 import { useContainerStats } from "../hooks/use-container-stats";
@@ -26,10 +24,9 @@ import {
 } from "./container-utils";
 import { ContainersLogsSheet } from "./containers-logs-sheet";
 import { ContainersPagination } from "./containers-pagination";
-import { ContainersStateSummary } from "./containers-state-summary";
-import { ContainersSummaryCards } from "./containers-summary-cards";
 import { ContainersTable } from "./containers-table";
 import { ContainersToolbar } from "./containers-toolbar";
+import { DashboardHeader } from "./dashboard-header";
 import type { PurgeHistoryTarget } from "./purge-history-dialog";
 import { PurgeHistoryDialog } from "./purge-history-dialog";
 
@@ -59,28 +56,6 @@ export function ContainersDashboard() {
 				: [],
 		[isHistoryEnabled, storedContainers, containers],
 	);
-
-	useEffect(() => {
-		for (const he of hostErrors) {
-			toast.warning(`Could not reach host "${he.host}"`, {
-				id: `host-error-${he.host}`,
-				description:
-					he.message || "Containers from this host could not be loaded.",
-				duration: 8000,
-			});
-		}
-	}, [hostErrors]);
-
-	const hostInfo = {
-		hostname: systemStats?.hostInfo.hostname ?? "Loading...",
-		os: systemStats?.hostInfo.platform ?? "Unknown",
-		kernel: systemStats?.hostInfo.kernelVersion ?? "Unknown",
-	};
-
-	const systemUsage = {
-		cpu: Math.round(systemStats?.usage.cpuPercent ?? 0),
-		memory: Math.round(systemStats?.usage.memoryPercent ?? 0),
-	};
 
 	const {
 		searchTerm,
@@ -158,19 +133,6 @@ export function ContainersDashboard() {
 		};
 	}, [searchTerm, hostFilter, dateRange, stateFilter]);
 
-	const availableStates = useMemo(() => {
-		const unique = new Set<string>();
-		containers.forEach((container) => {
-			if (container.state) {
-				unique.add(container.state.toLowerCase());
-			}
-		});
-		if (removedContainers.length > 0) {
-			unique.add(REMOVED_STATE);
-		}
-		return Array.from(unique).sort();
-	}, [containers, removedContainers]);
-
 	const filteredContainers = useMemo(() => {
 		const filtered = selectVisibleContainers(
 			containers,
@@ -229,6 +191,20 @@ export function ContainersDashboard() {
 		[containers, removedContainers, matchesFilters],
 	);
 
+	// Grouping is a view preference, not a filter: it never hides a row.
+	const hasActiveFilters =
+		searchTerm.trim() !== "" ||
+		stateFilter !== "all" ||
+		hostFilter !== "all" ||
+		dateRange !== undefined;
+
+	const clearFilters = useCallback(() => {
+		setSearchTerm("");
+		setStateFilter("all");
+		setHostFilter("all");
+		clearDateRange();
+	}, [setSearchTerm, setStateFilter, setHostFilter, clearDateRange]);
+
 	const handleViewLogs = (container: ContainerInfo) => {
 		setSelectedContainer(container);
 		setIsLogsSheetOpen(true);
@@ -268,89 +244,111 @@ export function ContainersDashboard() {
 	};
 
 	return (
-		<div className="w-full space-y-8">
-			<ResourceNav />
-			<ContainersSummaryCards
+		<div className="w-full">
+			<DashboardHeader
 				totalContainers={containers.length}
-				hostInfo={hostInfo}
-				systemUsage={systemUsage}
-				hostsStats={hostsStatsData?.hosts}
+				hostname={systemStats?.hostInfo.hostname ?? "this host"}
+				platform={systemStats?.hostInfo.platform ?? "unknown"}
+				kernel={systemStats?.hostInfo.kernelVersion ?? ""}
+				cpuPercent={Math.round(systemStats?.usage.cpuPercent ?? 0)}
+				memoryPercent={Math.round(systemStats?.usage.memoryPercent ?? 0)}
 				systemHistory={systemHistory}
+				hostsStats={hostsStatsData?.hosts}
 			/>
 
-			<section className="space-y-4">
+			{hostErrors.length > 0 && (
+				<div className="mt-6 rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-3">
+					<p className="text-base font-medium sm:text-sm">
+						{hostErrors.length === 1
+							? "A host could not be reached"
+							: `${hostErrors.length} hosts could not be reached`}
+					</p>
+					{hostErrors.map((hostError) => (
+						<p
+							key={hostError.host}
+							className="mt-1 text-base text-muted-foreground sm:text-sm"
+						>
+							<span className="font-mono">{hostError.host}</span> —{" "}
+							{hostError.message ||
+								"Containers from this host could not be loaded."}
+						</p>
+					))}
+				</div>
+			)}
+
+			<section className="mt-8">
 				<ContainersToolbar
 					searchTerm={searchTerm}
 					onSearchChange={setSearchTerm}
-					stateFilter={stateFilter}
-					onStateFilterChange={setStateFilter}
-					availableStates={availableStates}
 					hostFilter={hostFilter}
 					onHostFilterChange={setHostFilter}
 					availableHosts={hosts}
-					sortDirection={sortDirection}
-					onSortDirectionChange={setSortDirection}
 					groupBy={groupBy}
 					onGroupByChange={setGroupBy}
 					dateRange={dateRange}
 					onDateRangeChange={setDateRange}
 					onDateRangeClear={clearDateRange}
+					stateCounts={stateCounts}
+					stateFilter={stateFilter}
+					onStateFilterChange={setStateFilter}
 					onRefresh={refetch}
 					isFetching={isFetching}
 				/>
 
-				<ContainersStateSummary
-					stateCounts={stateCounts}
-					stateFilter={stateFilter}
-					onStateFilterChange={setStateFilter}
-				/>
+				<div className="mt-4">
+					<ContainersTable
+						isLoading={isLoading}
+						isError={isError}
+						error={error}
+						groupBy={groupBy}
+						sortDirection={sortDirection}
+						onSortDirectionChange={setSortDirection}
+						emptyMessage={
+							stateFilter === REMOVED_STATE
+								? "No removed containers with stored logs."
+								: "No containers found."
+						}
+						hasActiveFilters={hasActiveFilters}
+						onClearFilters={clearFilters}
+						filteredContainers={filteredContainers}
+						groupedItems={groupedItems}
+						pageItems={pageItems}
+						pendingActions={pendingActions}
+						pendingComposeActions={pendingComposeActions}
+						isReadOnly={isReadOnly}
+						statsMap={statsMap}
+						statsHistory={statsHistory}
+						onStart={startContainerAction}
+						onStop={stopContainerAction}
+						onRestart={restartContainerAction}
+						onDelete={deleteContainerAction}
+						onComposeAction={composeAction}
+						onViewLogs={handleViewLogs}
+						onPurgeHistory={(container) =>
+							setPurgeTarget({
+								name: getContainerUrlIdentifier(container),
+								host: container.host,
+								removed: true,
+							})
+						}
+						onRetry={() => {
+							void refetch();
+						}}
+					/>
+				</div>
 
-				<ContainersTable
-					isLoading={isLoading}
-					isError={isError}
-					error={error}
-					groupBy={groupBy}
-					emptyMessage={
-						stateFilter === REMOVED_STATE
-							? "No removed containers with stored logs."
-							: "No containers found."
-					}
-					filteredContainers={filteredContainers}
-					groupedItems={groupedItems}
-					pageItems={pageItems}
-					pendingActions={pendingActions}
-					pendingComposeActions={pendingComposeActions}
-					isReadOnly={isReadOnly}
-					statsMap={statsMap}
-					statsHistory={statsHistory}
-					onStart={startContainerAction}
-					onStop={stopContainerAction}
-					onRestart={restartContainerAction}
-					onDelete={deleteContainerAction}
-					onComposeAction={composeAction}
-					onViewLogs={handleViewLogs}
-					onPurgeHistory={(container) =>
-						setPurgeTarget({
-							name: getContainerUrlIdentifier(container),
-							host: container.host,
-							removed: true,
-						})
-					}
-					onRetry={() => {
-						void refetch();
-					}}
-				/>
-
-				<ContainersPagination
-					totalItems={filteredContainers.length}
-					startIndex={startIndex}
-					endIndex={endIndex}
-					page={page}
-					totalPages={totalPages}
-					pageSize={pageSize}
-					onPageChange={setPage}
-					onPageSizeChange={setPageSize}
-				/>
+				<div className="mt-6">
+					<ContainersPagination
+						totalItems={filteredContainers.length}
+						startIndex={startIndex}
+						endIndex={endIndex}
+						page={page}
+						totalPages={totalPages}
+						pageSize={pageSize}
+						onPageChange={setPage}
+						onPageSizeChange={setPageSize}
+					/>
+				</div>
 			</section>
 
 			<ConfirmActionDialog

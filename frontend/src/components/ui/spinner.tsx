@@ -1,8 +1,8 @@
-import { Loader2Icon } from "lucide-react"
+import { type IconProps, Loader2Icon } from "@/components/ui/icons"
 
 import { cn } from "@/lib/utils"
 
-function Spinner({ className, ...props }: React.ComponentProps<"svg">) {
+function Spinner({ className, ...props }: IconProps) {
   return (
     <Loader2Icon
       role="status"

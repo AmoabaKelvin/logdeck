@@ -1,10 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Edit2, Plus, Save, Trash2, Upload, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+	PencilIcon,
+	PlusIcon,
+	SaveIcon,
+	Trash2Icon,
+	UploadIcon,
+	XIcon,
+} from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import {
 	Tooltip,
@@ -352,7 +358,7 @@ export function EnvironmentVariables({
 									disabled={isReadOnly}
 									className="h-8"
 								>
-									<Edit2 className="mr-2 h-3.5 w-3.5" />
+									<PencilIcon className="mr-2 h-3.5 w-3.5" />
 									Edit
 								</Button>
 							</TooltipTrigger>
@@ -369,7 +375,7 @@ export function EnvironmentVariables({
 							onClick={() => fileInputRef.current?.click()}
 							className="h-8"
 						>
-							<Upload className="mr-2 h-3.5 w-3.5" />
+							<UploadIcon className="mr-2 h-3.5 w-3.5" />
 							Upload .env
 						</Button>
 						<Button
@@ -378,7 +384,7 @@ export function EnvironmentVariables({
 							onClick={() => setShowAddNew(true)}
 							className="h-8"
 						>
-							<Plus className="mr-2 h-3.5 w-3.5" />
+							<PlusIcon className="mr-2 h-3.5 w-3.5" />
 							Add
 						</Button>
 						<Button
@@ -387,7 +393,7 @@ export function EnvironmentVariables({
 							onClick={handleCancel}
 							className="h-8"
 						>
-							<X className="mr-2 h-3.5 w-3.5" />
+							<XIcon className="mr-2 h-3.5 w-3.5" />
 							Cancel
 						</Button>
 						<Button
@@ -397,7 +403,7 @@ export function EnvironmentVariables({
 							disabled={updateMutation.isPending}
 							className="h-8"
 						>
-							<Save className="mr-2 h-3.5 w-3.5" />
+							<SaveIcon className="mr-2 h-3.5 w-3.5" />
 							{updateMutation.isPending ? "Saving..." : "Save"}
 						</Button>
 					</>
@@ -441,7 +447,7 @@ export function EnvironmentVariables({
 									className="h-8 w-8 text-primary hover:text-primary"
 									title="Add variable"
 								>
-									<Plus className="h-3.5 w-3.5" />
+									<PlusIcon className="h-3.5 w-3.5" />
 								</Button>
 								<Button
 									variant="ghost"
@@ -454,7 +460,7 @@ export function EnvironmentVariables({
 									className="h-8 w-8 text-muted-foreground"
 									title="Cancel"
 								>
-									<X className="h-3.5 w-3.5" />
+									<XIcon className="h-3.5 w-3.5" />
 								</Button>
 							</div>
 						</div>
@@ -505,7 +511,7 @@ export function EnvironmentVariables({
 										className="h-8 w-8 text-muted-foreground hover:text-destructive"
 										title="Remove variable"
 									>
-										<Trash2 className="h-3.5 w-3.5" />
+										<Trash2Icon className="h-3.5 w-3.5" />
 									</Button>
 								) : (
 									<span />

@@ -1,7 +1,12 @@
-import { CheckIcon, CopyIcon, PinIcon, PinOffIcon, XIcon } from "lucide-react";
 import { useEffect, useState } from "react";
-
 import { Button } from "@/components/ui/button";
+import {
+	CheckIcon,
+	CopyIcon,
+	PinIcon,
+	PinOffIcon,
+	XIcon,
+} from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 
 interface SelectionActionBarProps {
