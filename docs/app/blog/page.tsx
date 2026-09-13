@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { ForceLight } from "@/components/landing/force-light";
 import { Wrapper, h1Class } from "@/components/landing/ui";
 
 export const metadata: Metadata = {
@@ -23,7 +22,6 @@ const posts = [
 export default function BlogIndex() {
   return (
     <div className="bg-white font-display text-base-900 selection:bg-sand-100 selection:text-accent-500">
-      <ForceLight />
       <Wrapper className="pt-16 pb-4 sm:pt-24">
         <h1 className={h1Class}>Engineering notes</h1>
         <p className="mt-4 max-w-xl text-pretty text-base text-base-500">

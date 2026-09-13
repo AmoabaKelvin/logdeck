@@ -12,7 +12,6 @@ import {
   FigTimestampTrap,
 } from "@/components/blog/figures";
 import { Toc } from "@/components/blog/toc";
-import { ForceLight } from "@/components/landing/force-light";
 import { Wrapper, h1Class, pill } from "@/components/landing/ui";
 
 export const metadata: Metadata = {
@@ -112,7 +111,6 @@ const corpora = [
 export default function LogStorePost() {
   return (
     <div className="bg-white font-display text-base-900 selection:bg-sand-100 selection:text-accent-500">
-      <ForceLight />
       <article>
         <Wrapper className="pt-16 pb-4 sm:pt-24">
           <p className="font-mono text-xs text-base-500">

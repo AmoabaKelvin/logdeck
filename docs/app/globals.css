@@ -159,6 +159,152 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* Rendered markdown in the docs (components/docs/markdown.tsx). */
+@utility prose {
+  color: var(--color-base-700);
+  font-size: var(--text-base);
+  line-height: --spacing(7);
+
+  & > * + *,
+  & li > * + * {
+    margin-top: --spacing(5);
+  }
+
+  & h2,
+  & h3 {
+    color: var(--color-black);
+    font-weight: var(--font-weight-medium);
+    text-wrap: balance;
+  }
+
+  & h2 {
+    margin-top: --spacing(12);
+    border-top: 1px dashed var(--color-base-200);
+    padding-top: --spacing(10);
+    font-size: var(--text-2xl);
+    line-height: var(--text-2xl--line-height);
+    letter-spacing: var(--tracking-tight);
+  }
+
+  & > h2:first-child {
+    margin-top: 0;
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  & h3 {
+    margin-top: --spacing(10);
+    font-size: var(--text-lg);
+    line-height: var(--text-lg--line-height);
+  }
+
+  & :is(h2, h3) + * {
+    margin-top: --spacing(3);
+  }
+
+  & a {
+    color: var(--color-accent-600);
+    text-decoration-line: underline;
+    text-decoration-color: var(--color-accent-200);
+    text-underline-offset: 4px;
+
+    @variant hover {
+      text-decoration-color: var(--color-accent-500);
+    }
+  }
+
+  & strong {
+    color: var(--color-base-900);
+    font-weight: var(--font-weight-medium);
+  }
+
+  /* --font-mono resolves on :root, above the body class where next/font sets
+     --font-geist-mono, so it comes out empty. Use the source variable. */
+  & :not(pre) > code {
+    border-radius: var(--radius-sm);
+    background-color: var(--color-sand-100);
+    padding: --spacing(0.5) --spacing(1.5);
+    color: var(--color-sand-950);
+    font-family: var(--font-geist-mono), monospace;
+    font-size: 0.875em;
+    overflow-wrap: anywhere;
+  }
+
+  & :is(h2, h3) code {
+    background-color: transparent;
+    padding: 0;
+    font-size: 0.9em;
+  }
+
+  & ul {
+    list-style-type: disc;
+    padding-left: --spacing(5);
+  }
+
+  & ol {
+    list-style-type: decimal;
+    padding-left: --spacing(5);
+  }
+
+  & li {
+    padding-left: --spacing(1);
+  }
+
+  & li + li {
+    margin-top: --spacing(2);
+  }
+
+  & li::marker {
+    color: var(--color-sand-500);
+  }
+
+  & blockquote {
+    border-radius: var(--radius-xl);
+    background-color: var(--color-sand-100);
+    padding: --spacing(5);
+    color: var(--color-sand-950);
+  }
+
+  & blockquote > * + * {
+    margin-top: --spacing(3);
+  }
+
+  & blockquote :not(pre) > code {
+    background-color: var(--color-white);
+  }
+
+  & table {
+    width: 100%;
+    min-width: 32rem;
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    text-align: left;
+  }
+
+  & th {
+    color: var(--color-base-900);
+    font-weight: var(--font-weight-medium);
+    white-space: nowrap;
+  }
+
+  & :is(th, td) {
+    padding: --spacing(3) --spacing(4) --spacing(3) 0;
+    vertical-align: top;
+  }
+
+  & :is(th, td):last-child {
+    padding-right: 0;
+  }
+
+  & tr {
+    border-bottom: 1px dashed var(--color-base-200);
+  }
+
+  & hr {
+    border-top: 1px dashed var(--color-base-200);
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -167,6 +313,7 @@
   html {
     @apply m-0 p-0;
     scrollbar-gutter: stable;
+    scroll-padding-top: --spacing(20);
   }
 
   body {

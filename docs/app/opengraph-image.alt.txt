@@ -1,0 +1,1 @@
+LogDeck: logs, alerts, and control for every container you run. Free and self-hosted, for Docker and Podman.
