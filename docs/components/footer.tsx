@@ -42,6 +42,7 @@ const footerLinks = [
     links: [
       { label: "Live demo", href: "/demo" },
       { label: "LogDeck vs Dozzle", href: "/compare/dozzle" },
+      { label: "Engineering blog", href: "/blog" },
     ],
   },
   {

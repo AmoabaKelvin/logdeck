@@ -13,11 +13,14 @@ const links = [
   { title: "Install", href: "/#install" },
   { title: "Compare", href: "/compare/dozzle" },
   { title: "Docs", href: "/docs/getting-started" },
+  { title: "Blog", href: "/blog" },
 ];
 
 // The landing page sits in a narrower dashed frame than the docs.
 export function frameClass(pathname: string) {
-  return pathname === "/" ? "max-w-5xl 2xl:max-w-6xl 2xl:px-12" : "max-w-7xl";
+  return pathname === "/" || pathname.startsWith("/blog")
+    ? "max-w-5xl 2xl:max-w-6xl 2xl:px-12"
+    : "max-w-7xl";
 }
 
 export function Navbar() {
