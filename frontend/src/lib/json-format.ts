@@ -1,13 +1,13 @@
 const JSON_CACHE_LIMIT = 1000;
-const jsonFormatCache = new Map<
-	string,
-	{ formatted: string; isJson: boolean }
->();
 
-function setCachedValue(
-	text: string,
-	value: { formatted: string; isJson: boolean },
-) {
+interface FormattedJson {
+	formatted: string;
+	isJson: boolean;
+}
+
+const jsonFormatCache = new Map<string, FormattedJson>();
+
+function setCachedValue(text: string, value: FormattedJson) {
 	if (jsonFormatCache.size >= JSON_CACHE_LIMIT) {
 		const oldestKey = jsonFormatCache.keys().next().value;
 		if (oldestKey) {
@@ -20,10 +20,7 @@ function setCachedValue(
 // Only objects and arrays count as JSON here; primitives like numbers or
 // booleans are technically valid JSON too, but formatting them would turn
 // plain log lines that happen to be a bare number into "JSON".
-export function formatJson(text: string): {
-	formatted: string;
-	isJson: boolean;
-} {
+export function formatJson(text: string): FormattedJson {
 	const cached = jsonFormatCache.get(text);
 	if (cached) return cached;
 
@@ -34,16 +31,14 @@ export function formatJson(text: string): {
 		return result;
 	}
 
+	// Text starting with "{" or "[" can only parse to an object or array.
 	try {
-		const parsed = JSON.parse(trimmed);
-		if (typeof parsed === "object" && parsed !== null) {
-			const result = {
-				formatted: JSON.stringify(parsed, null, 2),
-				isJson: true,
-			};
-			setCachedValue(text, result);
-			return result;
-		}
+		const result = {
+			formatted: JSON.stringify(JSON.parse(trimmed), null, 2),
+			isJson: true,
+		};
+		setCachedValue(text, result);
+		return result;
 	} catch {}
 
 	const result = { formatted: text, isJson: false };

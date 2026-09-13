@@ -1,5 +1,5 @@
 import type { HostError } from "@/features/containers/types";
-import { authenticatedFetch } from "@/lib/api-client";
+import { authenticatedFetch, readJson } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 import type { ImageInfo, NetworkInfo, VolumeInfo } from "../types";
 
@@ -8,9 +8,11 @@ export interface ResourceResponse<T> {
 	hostErrors: HostError[];
 }
 
+type ResourceKey = "images" | "volumes" | "networks";
+
 async function getResource<T>(
 	path: string,
-	key: string,
+	key: ResourceKey,
 ): Promise<ResourceResponse<T>> {
 	const response = await authenticatedFetch(`${API_BASE_URL}/api/v1/${path}`);
 
@@ -19,7 +21,9 @@ async function getResource<T>(
 		throw new Error(message || `Request failed with status ${response.status}`);
 	}
 
-	const data = (await response.json()) as Record<string, unknown> | null;
+	const data = await readJson<
+		(Partial<Record<ResourceKey, T[]>> & { hostErrors?: HostError[] }) | null
+	>(response);
 	const items = data?.[key];
 
 	if (!Array.isArray(items)) {
@@ -29,8 +33,8 @@ async function getResource<T>(
 	const hostErrors = data?.hostErrors;
 
 	return {
-		items: items as T[],
-		hostErrors: Array.isArray(hostErrors) ? (hostErrors as HostError[]) : [],
+		items,
+		hostErrors: Array.isArray(hostErrors) ? hostErrors : [],
 	};
 }
 

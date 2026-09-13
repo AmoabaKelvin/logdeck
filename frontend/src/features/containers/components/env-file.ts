@@ -1,5 +1,5 @@
 /** Parses a .env file body into key/value pairs, ignoring blanks and comments. */
-export function parseEnvFile(content: string): Record<string, string> {
+export function parseEnvFile(content: string) {
 	const env: Record<string, string> = {};
 	const lines = content.split("\n");
 

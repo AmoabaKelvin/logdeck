@@ -1,4 +1,4 @@
-import { authenticatedFetch } from "@/lib/api-client";
+import { authenticatedFetch, readJson } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 
 import type { TestConnectionResult } from "../types";
@@ -20,5 +20,5 @@ export async function testDockerHost(
 		throw new Error(message || "Failed to test Docker host");
 	}
 
-	return (await response.json()) as TestConnectionResult;
+	return readJson<TestConnectionResult>(response);
 }

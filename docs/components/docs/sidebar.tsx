@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { SidebarNav } from "./sidebar-nav"
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { SidebarNav } from "./sidebar-nav";
 
 export function DocsSidebar() {
   return (
@@ -10,5 +10,5 @@ export function DocsSidebar() {
         <SidebarNav />
       </ScrollArea>
     </aside>
-  )
+  );
 }

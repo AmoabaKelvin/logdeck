@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 import { seedStatsHistory, seedSystemHistory } from "@/lib/logdeck-demo/store";
 
@@ -15,7 +15,7 @@ export type StatsHistoryMap = Record<string, number[]>;
 export function appendSamples(
   history: StatsHistoryMap,
   stats: ContainerStats[],
-): StatsHistoryMap {
+) {
   const next: StatsHistoryMap = {};
   for (const stat of stats) {
     next[stat.id] = [...(history[stat.id] ?? []), stat.cpu_percent].slice(
@@ -31,22 +31,37 @@ export function appendSamples(
 let containerHistory: StatsHistoryMap = seedStatsHistory();
 let lastContainerStats: ContainerStats[] | undefined;
 
+// Hooks read the buffers through useSyncExternalStore; appending notifies them.
+const listeners = new Set<() => void>();
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function notify() {
+  for (const listener of listeners) {
+    listener();
+  }
+}
+
 export function useContainerStatsHistory(
   stats: ContainerStats[] | undefined,
 ): StatsHistoryMap {
-  const [history, setHistory] = useState<StatsHistoryMap>(
+  const history = useSyncExternalStore(
+    subscribe,
+    () => containerHistory,
     () => containerHistory,
   );
 
   useEffect(() => {
     if (stats && stats !== lastContainerStats) {
       lastContainerStats = stats;
-      const appended = appendSamples(containerHistory, stats);
-      // Keep the seeded trail for containers appendSamples evicted only if
-      // they are genuinely gone; appendSamples already handles that.
-      containerHistory = appended;
+      containerHistory = appendSamples(containerHistory, stats);
+      notify();
     }
-    setHistory(containerHistory);
   }, [stats]);
 
   return history;
@@ -67,7 +82,9 @@ let lastSystemSample: SystemUsageSample | undefined;
 export function useSystemUsageHistory(
   sample: SystemUsageSample | undefined,
 ): SystemUsageSample[] {
-  const [history, setHistory] = useState<SystemUsageSample[]>(
+  const history = useSyncExternalStore(
+    subscribe,
+    () => systemHistory,
     () => systemHistory,
   );
 
@@ -75,8 +92,8 @@ export function useSystemUsageHistory(
     if (sample && sample !== lastSystemSample) {
       lastSystemSample = sample;
       systemHistory = [...systemHistory, sample].slice(-MAX_SAMPLES);
+      notify();
     }
-    setHistory(systemHistory);
   }, [sample]);
 
   return history;

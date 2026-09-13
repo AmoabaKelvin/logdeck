@@ -33,7 +33,7 @@ interface EnvironmentVariablesProps {
   onContainerIdChange?: (newContainerId: string) => void;
 }
 
-export function parseEnvFile(content: string): Record<string, string> {
+export function parseEnvFile(content: string) {
   const env: Record<string, string> = {};
   const lines = content.split("\n");
 
@@ -264,7 +264,11 @@ export function EnvironmentVariables({
     const reader = new FileReader();
     reader.onload = (e) => {
       const content = e.target?.result;
-      if (typeof content !== "string") {
+      if (
+        content === null ||
+        content === undefined ||
+        content instanceof ArrayBuffer
+      ) {
         toast.error("Failed to parse .env file");
         return;
       }

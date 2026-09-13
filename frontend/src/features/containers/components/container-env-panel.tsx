@@ -226,9 +226,9 @@ export function ContainerEnvPanel({
 		if (!file) return;
 
 		const reader = new FileReader();
-		reader.onload = (e) => {
-			const content = e.target?.result;
-			if (typeof content !== "string") {
+		reader.onload = () => {
+			const content = reader.result;
+			if (content === null || content instanceof ArrayBuffer) {
 				toast.error("Failed to parse .env file");
 				return;
 			}
@@ -433,6 +433,7 @@ export function ContainerEnvPanel({
 				(isAdding ? (
 					<div className="mt-3 flex animate-in items-center gap-2 fade-in pl-2 duration-200 slide-in-from-top-1">
 						<Input
+							// oxlint-disable-next-line jsx-a11y/no-autofocus -- the field only appears after the user clicks Add, so focus follows their action
 							autoFocus
 							value={draftEntry}
 							onChange={(e) => setDraftEntry(e.target.value)}

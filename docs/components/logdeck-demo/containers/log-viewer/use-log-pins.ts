@@ -77,13 +77,12 @@ export function useLogPins({
     return next;
   }, [filteredToOriginalIndex, pinnedLogIndices]);
 
-  useEffect(() => {
-    if (sortedPinnedIndices.length === 0) {
-      setCurrentPinnedIndex(0);
-    } else if (currentPinnedIndex >= sortedPinnedIndices.length) {
-      setCurrentPinnedIndex(sortedPinnedIndices.length - 1);
-    }
-  }, [sortedPinnedIndices, currentPinnedIndex]);
+  // Keep the current pin in range as pins go away.
+  if (sortedPinnedIndices.length === 0) {
+    if (currentPinnedIndex !== 0) setCurrentPinnedIndex(0);
+  } else if (currentPinnedIndex >= sortedPinnedIndices.length) {
+    setCurrentPinnedIndex(sortedPinnedIndices.length - 1);
+  }
 
   const resetPins = useCallback(() => {
     setPinnedLogIndices(new Set());

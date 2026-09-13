@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { useEnvDraft } from "./use-env-draft";
+import { type EnvDraft, useEnvDraft } from "./use-env-draft";
 
 const ORIGINAL = { PORT: "8080", LOG_LEVEL: "info" };
 
@@ -93,15 +93,12 @@ describe("useEnvDraft", () => {
 	});
 
 	it("holds edits made before the original arrives", () => {
-		const { result, rerender } = renderHook(
-			({ original }: { original: Record<string, string> | undefined }) =>
-				useEnvDraft(original),
-			{
-				initialProps: {
-					original: undefined as Record<string, string> | undefined,
-				},
-			},
-		);
+		const { result, rerender } = renderHook<
+			EnvDraft,
+			{ original: Record<string, string> | undefined }
+		>(({ original }) => useEnvDraft(original), {
+			initialProps: { original: undefined },
+		});
 
 		act(() => result.current.add({ APP_MODE: "debug" }));
 		rerender({ original: ORIGINAL });

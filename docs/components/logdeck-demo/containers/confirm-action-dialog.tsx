@@ -13,10 +13,7 @@ import { Spinner } from "@/components/logdeck-demo/ui/spinner";
 import type { ConfirmableAction } from "../hooks/use-container-actions";
 import { formatContainerName } from "./container-utils";
 
-const CONFIRM_COPY: Record<
-  ConfirmableAction["type"],
-  { title: string; description: string; confirmLabel: string }
-> = {
+const CONFIRM_COPY = {
   stop: {
     title: "Stop container?",
     description: "Stopping a container will terminate its running processes.",
@@ -28,7 +25,10 @@ const CONFIRM_COPY: Record<
       "Removing a container will permanently delete it and its resources. This action cannot be undone.",
     confirmLabel: "Remove Container",
   },
-};
+} satisfies Record<
+  ConfirmableAction["type"],
+  { title: string; description: string; confirmLabel: string }
+>;
 
 interface ConfirmActionDialogProps {
   action: ConfirmableAction | null;

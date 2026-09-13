@@ -1,8 +1,10 @@
+import type { QueryObserverResult } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import type { ComposeAction } from "../api/compose-actions";
 import { performComposeAction } from "../api/compose-actions";
+import type { GetContainersResponse } from "../api/get-containers";
 import {
   removeContainer,
   restartContainer,
@@ -20,15 +22,15 @@ export interface ConfirmableAction {
   container: ContainerInfo;
 }
 
-const containerActionFns: Record<
-  ContainerActionType,
-  (id: string, host: string) => Promise<string>
-> = {
+const containerActionFns = {
   start: startContainer,
   stop: stopContainer,
   restart: restartContainer,
   remove: removeContainer,
-};
+} satisfies Record<
+  ContainerActionType,
+  (id: string, host: string) => Promise<string>
+>;
 
 /**
  * Container and compose lifecycle actions with pending state and a
@@ -39,7 +41,9 @@ const containerActionFns: Record<
  * pending state: an action settling on row B must not clear row A's
  * spinner while A is still running.
  */
-export function useContainerActions(refetch: () => Promise<unknown>) {
+export function useContainerActions(
+  refetch: () => Promise<QueryObserverResult<GetContainersResponse>>,
+) {
   const [pendingActions, setPendingActions] = useState<
     ReadonlyMap<string, ContainerActionType>
   >(new Map());

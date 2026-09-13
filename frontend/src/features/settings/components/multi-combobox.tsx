@@ -109,6 +109,7 @@ export function MultiCombobox({
 			<div className="relative">
 				<Input
 					id={id}
+					// oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- free-text multi-select; a native select/datalist can't do tokens or arbitrary values
 					role="combobox"
 					aria-expanded={showList}
 					aria-controls={listId}
@@ -131,16 +132,18 @@ export function MultiCombobox({
 				/>
 				{showList && (
 					<div
+						// oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- ARIA combobox popup; a native datalist can't be styled or filtered like this
 						role="listbox"
 						id={listId}
 						aria-label={placeholder}
 						className="absolute top-full left-0 z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
 					>
 						{items.map((item, index) => (
-							// biome-ignore lint/a11y/useKeyWithClickEvents: keyboard handled on the input via aria-activedescendant
+							// oxlint-disable-next-line jsx-a11y/click-events-have-key-events -- keyboard handled on the input via aria-activedescendant
 							<div
 								key={item.value}
 								id={`${listId}-${index}`}
+								// oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- option of the ARIA listbox above
 								role="option"
 								tabIndex={-1}
 								aria-selected={index === activeIndex}

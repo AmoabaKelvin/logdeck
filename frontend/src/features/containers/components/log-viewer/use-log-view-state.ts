@@ -90,12 +90,8 @@ export const LOG_LEVELS: readonly LogLevel[] = [
 // Comma-separated log levels, e.g. ?levels=ERROR,WARN
 const parseAsLogLevels = createParser<Set<LogLevel>>({
 	parse: (value) => {
-		const levels = value
-			.split(",")
-			.filter((level): level is LogLevel =>
-				LOG_LEVELS.includes(level as LogLevel),
-			);
-		return new Set(levels);
+		const requested = value.split(",");
+		return new Set(LOG_LEVELS.filter((level) => requested.includes(level)));
 	},
 	serialize: (value) => Array.from(value).sort().join(","),
 	eq: (a, b) =>

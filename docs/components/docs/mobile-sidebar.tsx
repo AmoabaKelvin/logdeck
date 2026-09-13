@@ -1,21 +1,21 @@
-"use client"
+"use client";
 
-import { Menu } from "lucide-react"
-import { useState } from "react"
+import { Menu } from "lucide-react";
+import { useState } from "react";
 
-import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
-} from "@/components/ui/sheet"
-import { SidebarNav } from "./sidebar-nav"
+} from "@/components/ui/sheet";
+import { SidebarNav } from "./sidebar-nav";
 
 export function MobileSidebar() {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(false);
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -34,5 +34,5 @@ export function MobileSidebar() {
         </ScrollArea>
       </SheetContent>
     </Sheet>
-  )
+  );
 }

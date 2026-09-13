@@ -1,5 +1,3 @@
-import { useEffect, useState } from "react";
-
 import type { ContainerStats } from "../types";
 
 export const MAX_SAMPLES = 60;
@@ -13,7 +11,7 @@ export type StatsHistoryMap = Record<string, number[]>;
 export function appendSamples(
 	history: StatsHistoryMap,
 	stats: ContainerStats[],
-): StatsHistoryMap {
+) {
 	const next: StatsHistoryMap = {};
 	for (const stat of stats) {
 		next[stat.id] = [...(history[stat.id] ?? []), stat.cpu_percent].slice(
@@ -26,26 +24,18 @@ export function appendSamples(
 // Buffers live at module scope so history survives route changes (component
 // unmounts) within one page load; only a reload resets them. The last-appended
 // reference guards against double-appending when several mounted components
-// receive the same react-query data.
+// (or repeat renders) receive the same react-query data.
 let containerHistory: StatsHistoryMap = {};
 let lastContainerStats: ContainerStats[] | undefined;
 
 export function useContainerStatsHistory(
 	stats: ContainerStats[] | undefined,
 ): StatsHistoryMap {
-	const [history, setHistory] = useState<StatsHistoryMap>(
-		() => containerHistory,
-	);
-
-	useEffect(() => {
-		if (stats && stats !== lastContainerStats) {
-			lastContainerStats = stats;
-			containerHistory = appendSamples(containerHistory, stats);
-		}
-		setHistory(containerHistory);
-	}, [stats]);
-
-	return history;
+	if (stats && stats !== lastContainerStats) {
+		lastContainerStats = stats;
+		containerHistory = appendSamples(containerHistory, stats);
+	}
+	return containerHistory;
 }
 
 export interface SystemUsageSample {
@@ -63,17 +53,9 @@ let lastSystemSample: SystemUsageSample | undefined;
 export function useSystemUsageHistory(
 	sample: SystemUsageSample | undefined,
 ): SystemUsageSample[] {
-	const [history, setHistory] = useState<SystemUsageSample[]>(
-		() => systemHistory,
-	);
-
-	useEffect(() => {
-		if (sample && sample !== lastSystemSample) {
-			lastSystemSample = sample;
-			systemHistory = [...systemHistory, sample].slice(-MAX_SAMPLES);
-		}
-		setHistory(systemHistory);
-	}, [sample]);
-
-	return history;
+	if (sample && sample !== lastSystemSample) {
+		lastSystemSample = sample;
+		systemHistory = [...systemHistory, sample].slice(-MAX_SAMPLES);
+	}
+	return systemHistory;
 }

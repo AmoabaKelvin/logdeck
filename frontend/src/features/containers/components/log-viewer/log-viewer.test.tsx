@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { LogEntry } from "@/features/containers/api/get-container-logs-parsed";
@@ -11,69 +12,61 @@ import type {
 import { LogViewer } from "./log-viewer";
 import { useLocalLogViewState } from "./use-log-view-state";
 
-const historyMocks = vi.hoisted(() => ({
-	getHistoryStatus: vi.fn<() => Promise<{ enabled: boolean }>>(),
-	getHistoryLogs: vi.fn<(params: { cursor?: string }) => Promise<unknown>>(),
-}));
+// The API modules run for real; only fetch underneath them is faked. Each
+// endpoint the viewer reads answers from one of these.
+const server = {
+	historyStatus: vi.fn<() => HistoryStatus>(),
+	// An Error becomes the store's JSON error response.
+	historyLogs: vi.fn<(cursor: string | null) => HistoryLogsPage | Error>(),
+	logs: vi.fn<() => LogEntry[]>(),
+	stream:
+		vi.fn<(signal: AbortSignal | undefined) => ReadableStream<Uint8Array>>(),
+};
 
-vi.mock("@/features/containers/api/get-history", () => ({
-	getHistoryStatus: historyMocks.getHistoryStatus,
-	getHistoryContainers: vi.fn().mockResolvedValue([]),
-	getHistoryLogs: historyMocks.getHistoryLogs,
-}));
-
-const toastMocks = vi.hoisted(() => ({
-	error: vi.fn(),
-	success: vi.fn(),
-	info: vi.fn(),
-}));
-
-vi.mock("sonner", () => ({ toast: toastMocks }));
+function respond(input: RequestInfo | URL, init?: RequestInit): Response {
+	const url = new URL(
+		input instanceof Request ? input.url : input,
+		"http://localhost",
+	);
+	if (url.pathname.endsWith("/history/status")) {
+		return Response.json(server.historyStatus());
+	}
+	if (url.pathname.endsWith("/history/logs")) {
+		const page = server.historyLogs(url.searchParams.get("cursor"));
+		return page instanceof Error
+			? Response.json({ error: page.message }, { status: 500 })
+			: Response.json(page);
+	}
+	if (url.pathname.endsWith("/logs/parsed")) {
+		if (url.searchParams.get("follow") === "true") {
+			return new Response(server.stream(init?.signal ?? undefined));
+		}
+		const logs = server.logs();
+		return Response.json({ logs, count: logs.length });
+	}
+	return new Response("not found", { status: 404 });
+}
 
 // Persistence off by default: the viewer never leaves the live path and the
 // source toggle stays hidden. The history suite overrides these.
 beforeEach(() => {
-	historyMocks.getHistoryStatus
-		.mockReset()
-		.mockResolvedValue({ enabled: false } satisfies HistoryStatus);
-	historyMocks.getHistoryLogs
-		.mockReset()
-		.mockResolvedValue({ logs: [], count: 0 } satisfies HistoryLogsPage);
-	toastMocks.error.mockReset();
-	toastMocks.success.mockReset();
-	toastMocks.info.mockReset();
+	server.historyStatus.mockReset().mockReturnValue({ enabled: false });
+	server.historyLogs.mockReset().mockReturnValue({ logs: [], count: 0 });
+	server.logs.mockReset().mockReturnValue([]);
+	server.stream.mockReset();
+	vi.stubGlobal(
+		"fetch",
+		vi.fn<typeof fetch>(async (input, init) => respond(input, init)),
+	);
+	vi.spyOn(toast, "error").mockReturnValue("");
+	vi.spyOn(toast, "success").mockReturnValue("");
+	vi.spyOn(toast, "info").mockReturnValue("");
 });
 
-const mocks = vi.hoisted(() => ({
-	getLogs: vi.fn<() => Promise<LogEntry[]>>(),
-	streamLogs:
-		vi.fn<
-			(
-				id: string,
-				host: string,
-				options: unknown,
-				signal?: AbortSignal,
-			) => AsyncGenerator<LogEntry, void, unknown>
-		>(),
-}));
-
-vi.mock(
-	"@/features/containers/api/get-container-logs-parsed",
-	async (importOriginal) => {
-		const actual =
-			await importOriginal<
-				typeof import("@/features/containers/api/get-container-logs-parsed")
-			>();
-		return {
-			...actual,
-			getContainerLogsParsed: (...args: Parameters<typeof mocks.getLogs>) =>
-				mocks.getLogs(...args),
-			streamContainerLogsParsed: (
-				...args: Parameters<typeof mocks.streamLogs>
-			) => mocks.streamLogs(...args),
-		};
-	},
-);
+afterEach(() => {
+	vi.unstubAllGlobals();
+	vi.restoreAllMocks();
+});
 
 const entry = (id: number): LogEntry => ({
 	level: "INFO",
@@ -81,37 +74,25 @@ const entry = (id: number): LogEntry => ({
 	timestamp: new Date(1700000000000 + id * 1000).toISOString(),
 });
 
-// A push-controlled async generator standing in for the NDJSON stream (same
-// shape as the use-container-log-stream tests).
+// A push-controlled NDJSON body standing in for the live log stream.
 function createControlledStream() {
-	const queue: LogEntry[] = [];
-	let notify: (() => void) | null = null;
-	let ended = false;
+	const encoder = new TextEncoder();
+	let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+	const stream = new ReadableStream<Uint8Array>({
+		start(streamController) {
+			controller = streamController;
+		},
+	});
 
 	const push = (...entries: LogEntry[]) => {
-		queue.push(...entries);
-		notify?.();
-		notify = null;
+		for (const next of entries) {
+			controller?.enqueue(encoder.encode(`${JSON.stringify(next)}\n`));
+		}
 	};
 
 	const end = () => {
-		ended = true;
-		notify?.();
-		notify = null;
+		controller?.close();
 	};
-
-	async function* stream(): AsyncGenerator<LogEntry, void, unknown> {
-		while (true) {
-			while (queue.length > 0) {
-				const next = queue.shift();
-				if (next) yield next;
-			}
-			if (ended) return;
-			await new Promise<void>((resolve) => {
-				notify = resolve;
-			});
-		}
-	}
 
 	return { push, end, stream };
 }
@@ -145,8 +126,6 @@ function Harness() {
 describe("LogViewer streaming lifecycle", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
-		mocks.getLogs.mockReset().mockResolvedValue([]);
-		mocks.streamLogs.mockReset();
 	});
 
 	afterEach(() => {
@@ -156,16 +135,16 @@ describe("LogViewer streaming lifecycle", () => {
 	it("keeps a started stream alive across the isStreaming state transition", async () => {
 		const controlled = createControlledStream();
 		let streamSignal: AbortSignal | undefined;
-		mocks.streamLogs.mockImplementation((_id, _host, _options, signal) => {
+		server.stream.mockImplementation((signal) => {
 			streamSignal = signal;
-			return controlled.stream();
+			return controlled.stream;
 		});
 
 		await act(async () => {
 			render(<Harness />);
 			await drainMicrotasks();
 		});
-		expect(mocks.getLogs).toHaveBeenCalledTimes(1);
+		expect(server.logs).toHaveBeenCalledTimes(1);
 
 		await act(async () => {
 			fireEvent.click(screen.getByRole("button", { name: "Stream" }));
@@ -177,7 +156,7 @@ describe("LogViewer streaming lifecycle", () => {
 		// silently degrading Stream into a one-shot fetch.
 		expect(streamSignal?.aborted).toBe(false);
 		expect(screen.getByRole("button", { name: "Stop" })).toBeTruthy();
-		expect(mocks.getLogs).toHaveBeenCalledTimes(1);
+		expect(server.logs).toHaveBeenCalledTimes(1);
 
 		// The live stream still lands entries after the transition settles
 		// (both empty states disappear once logs.length > 0).
@@ -200,9 +179,9 @@ describe("LogViewer streaming lifecycle", () => {
 	it("stops the stream when the viewer unmounts", async () => {
 		const controlled = createControlledStream();
 		let streamSignal: AbortSignal | undefined;
-		mocks.streamLogs.mockImplementation((_id, _host, _options, signal) => {
+		server.stream.mockImplementation((signal) => {
 			streamSignal = signal;
-			return controlled.stream();
+			return controlled.stream;
 		});
 
 		let view: ReturnType<typeof render> | undefined;
@@ -227,8 +206,6 @@ describe("LogViewer streaming lifecycle", () => {
 describe("LogViewer shortcut help overlay", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
-		mocks.getLogs.mockReset().mockResolvedValue([]);
-		mocks.streamLogs.mockReset();
 	});
 
 	afterEach(() => {
@@ -295,9 +272,7 @@ describe("LogViewer history mode", () => {
 
 	beforeEach(() => {
 		vi.useFakeTimers();
-		mocks.getLogs.mockReset().mockResolvedValue([]);
-		mocks.streamLogs.mockReset();
-		historyMocks.getHistoryStatus.mockResolvedValue({ enabled: true });
+		server.historyStatus.mockReturnValue({ enabled: true });
 		Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
 			configurable: true,
 			get: () => ROW_HEIGHT,
@@ -356,13 +331,13 @@ describe("LogViewer history mode", () => {
 	}
 
 	it("shows the source toggle and renders stored entries in history mode", async () => {
-		historyMocks.getHistoryLogs.mockResolvedValue(
+		server.historyLogs.mockReturnValue(
 			storedPage(["stored one", "stored two"]),
 		);
 
 		await switchToHistory();
 
-		expect(historyMocks.getHistoryLogs).toHaveBeenCalledTimes(1);
+		expect(server.historyLogs).toHaveBeenCalledTimes(1);
 		expect(screen.getByText("stored one")).toBeTruthy();
 		expect(screen.getByText("stored two")).toBeTruthy();
 		// Nothing older to fetch, so the list says so instead of offering a button.
@@ -370,7 +345,7 @@ describe("LogViewer history mode", () => {
 	});
 
 	it("appends an older page when Load older is clicked", async () => {
-		historyMocks.getHistoryLogs.mockImplementation(async ({ cursor }) =>
+		server.historyLogs.mockImplementation((cursor) =>
 			cursor
 				? storedPage(["older one", "older two"])
 				: storedPage(["newer one", "newer two"], "cursor-1"),
@@ -391,13 +366,14 @@ describe("LogViewer history mode", () => {
 	});
 
 	it("toasts when loading an older page fails", async () => {
-		historyMocks.getHistoryLogs.mockImplementation(async ({ cursor }) => {
-			if (cursor) throw new Error("store unavailable");
-			return storedPage(["newer one"], "cursor-1");
-		});
+		server.historyLogs.mockImplementation((cursor) =>
+			cursor
+				? new Error("store unavailable")
+				: storedPage(["newer one"], "cursor-1"),
+		);
 
 		await switchToHistory();
-		expect(toastMocks.error).not.toHaveBeenCalled();
+		expect(toast.error).not.toHaveBeenCalled();
 
 		await act(async () => {
 			fireEvent.click(screen.getByRole("button", { name: "Load older" }));
@@ -407,18 +383,18 @@ describe("LogViewer history mode", () => {
 		// The loaded page is still on screen, so the empty state cannot explain
 		// the failure: without the toast the spinner would just vanish.
 		expect(screen.getByText("newer one")).toBeTruthy();
-		expect(toastMocks.error).toHaveBeenCalledTimes(1);
-		expect(toastMocks.error).toHaveBeenCalledWith(
+		expect(toast.error).toHaveBeenCalledTimes(1);
+		expect(toast.error).toHaveBeenCalledWith(
 			"Failed to load stored logs: store unavailable",
 		);
 	});
 
 	it("explains an empty store through the empty state", async () => {
-		historyMocks.getHistoryLogs.mockResolvedValue(storedPage([]));
+		server.historyLogs.mockReturnValue(storedPage([]));
 
 		await switchToHistory();
 
 		expect(screen.getByText("No stored logs match these filters")).toBeTruthy();
-		expect(toastMocks.error).not.toHaveBeenCalled();
+		expect(toast.error).not.toHaveBeenCalled();
 	});
 });

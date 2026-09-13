@@ -9,6 +9,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { AlertTriangle } from "lucide-react";
 import type { Metadata } from "next";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Installation",
@@ -99,13 +100,18 @@ volumes:
             </CardHeader>
             <CardContent className="text-sm text-amber-900 dark:text-amber-200">
               <p>
-                LogDeck keeps its config file (hosts, API tokens, alert rules), its{" "}
-                <a href="/docs/log-history" className="underline underline-offset-2">
+                LogDeck keeps its config file (hosts, API tokens, alert rules),
+                its{" "}
+                <Link
+                  href="/docs/log-history"
+                  className="underline underline-offset-2"
+                >
                   stored log history
-                </a>
-                , and its alert history in <code>/data</code>. Without a volume, all of it is written
-                inside the container and lost the moment you recreate it — including every log line
-                you were counting on being able to read back.
+                </Link>
+                , and its alert history in <code>/data</code>. Without a volume,
+                all of it is written inside the container and lost the moment
+                you recreate it — including every log line you were counting on
+                being able to read back.
               </p>
             </CardContent>
           </Card>
@@ -165,8 +171,10 @@ volumes:
         <h3 className="mb-4 mt-8 text-xl font-semibold">With Authentication</h3>
         <p className="mb-4 text-sm">
           <code>ADMIN_PASSWORD</code> takes a bcrypt hash — generate one with{" "}
-          <code>htpasswd -bnBC 10 &apos;&apos; yourPassword | tr -d &apos;:&apos;</code>. See the{" "}
-          <a href="/docs/configuration">configuration guide</a>.
+          <code>
+            htpasswd -bnBC 10 &apos;&apos; yourPassword | tr -d &apos;:&apos;
+          </code>
+          . See the <Link href="/docs/configuration">configuration guide</Link>.
         </p>
         <div className="mb-8">
           <CodeBlock
@@ -189,7 +197,9 @@ volumes:
           Configure Multiple Docker Hosts
         </h3>
         <p className="mb-4 text-sm">
-          Manage more than one Docker daemon by setting <code>DOCKER_HOSTS</code> with comma-separated <code>name=host</code> entries.
+          Manage more than one Docker daemon by setting{" "}
+          <code>DOCKER_HOSTS</code> with comma-separated <code>name=host</code>{" "}
+          entries.
         </p>
         <div className="mb-4">
           <CodeBlock
@@ -200,7 +210,9 @@ export DOCKER_HOSTS="local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.ex
           />
         </div>
         <p className="mb-8 text-sm">
-          For <code>ssh://</code> targets, mount your SSH keys (e.g., <code>~/.ssh</code>) or forward your SSH agent socket into the container.
+          For <code>ssh://</code> targets, mount your SSH keys (e.g.,{" "}
+          <code>~/.ssh</code>) or forward your SSH agent socket into the
+          container.
         </p>
 
         <Separator className="my-12" />
@@ -210,8 +222,9 @@ export DOCKER_HOSTS="local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.ex
         </h2>
         <p className="mb-6 text-base">
           Every variable is optional — LogDeck runs with none of them set. The{" "}
-          <a href="/docs/configuration">configuration guide</a> covers each one in full, including
-          the config file that the Settings page writes.
+          <Link href="/docs/configuration">configuration guide</Link> covers
+          each one in full, including the config file that the Settings page
+          writes.
         </p>
 
         <div className="not-prose">
@@ -225,8 +238,10 @@ export DOCKER_HOSTS="local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.ex
                   DOCKER_HOSTS
                 </code>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Comma-separated Docker hosts using <code>name=host</code> format (supports <code>unix://</code>, <code>tcp://</code>, and <code>ssh://</code>).
-                  When unset, LogDeck auto-detects a local Docker or Podman socket.
+                  Comma-separated Docker hosts using <code>name=host</code>{" "}
+                  format (supports <code>unix://</code>, <code>tcp://</code>,
+                  and <code>ssh://</code>). When unset, LogDeck auto-detects a
+                  local Docker or Podman socket.
                 </p>
               </div>
               <div>
@@ -234,8 +249,9 @@ export DOCKER_HOSTS="local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.ex
                   CONFIG_PATH
                 </code>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Path to the JSON config file. Its directory also holds the log store and alert
-                  history. Defaults to <code>/data/config.json</code>.
+                  Path to the JSON config file. Its directory also holds the log
+                  store and alert history. Defaults to{" "}
+                  <code>/data/config.json</code>.
                 </p>
               </div>
               <div>
@@ -243,8 +259,8 @@ export DOCKER_HOSTS="local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.ex
                   READONLY_MODE
                 </code>
                 <p className="text-sm text-muted-foreground mt-1">
-                  <code>true</code> blocks container actions, stack actions, environment and resource
-                  edits, and the web terminal.
+                  <code>true</code> blocks container actions, stack actions,
+                  environment and resource edits, and the web terminal.
                 </p>
               </div>
             </CardContent>
@@ -265,8 +281,8 @@ export DOCKER_HOSTS="local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.ex
                   LOG_STORE_ENABLED
                 </code>
                 <p className="text-sm text-muted-foreground mt-1">
-                  <code>false</code> turns off log persistence and History mode. Default{" "}
-                  <code>true</code>.
+                  <code>false</code> turns off log persistence and History mode.
+                  Default <code>true</code>.
                 </p>
               </div>
               <div>
@@ -282,7 +298,8 @@ export DOCKER_HOSTS="local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.ex
                   LOG_STORE_TOTAL_MB
                 </code>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Retention cap for the whole store, in MB. Default <code>1024</code>.
+                  Retention cap for the whole store, in MB. Default{" "}
+                  <code>1024</code>.
                 </p>
               </div>
             </CardContent>
@@ -294,8 +311,8 @@ export DOCKER_HOSTS="local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.ex
                 Authentication (Optional)
               </CardTitle>
               <CardDescription>
-                Leave these unset to run without authentication, or to enable it from the Settings
-                page instead
+                Leave these unset to run without authentication, or to enable it
+                from the Settings page instead
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -320,8 +337,9 @@ export DOCKER_HOSTS="local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.ex
                   ADMIN_PASSWORD
                 </code>
                 <p className="text-sm text-muted-foreground mt-1">
-                  A bcrypt hash of the admin password — never plain text. LogDeck refuses to start if
-                  it is malformed. See the configuration guide for how to generate one.
+                  A bcrypt hash of the admin password — never plain text.
+                  LogDeck refuses to start if it is malformed. See the
+                  configuration guide for how to generate one.
                 </p>
               </div>
             </CardContent>
@@ -342,11 +360,13 @@ export DOCKER_HOSTS="local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.ex
                   COOLIFY_CONFIGS
                 </code>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Per-host Coolify configuration. Format: <code>hostName|apiURL|apiToken,...</code>
+                  Per-host Coolify configuration. Format:{" "}
+                  <code>hostName|apiURL|apiToken,...</code>
                 </p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Host names must match those in <code>DOCKER_HOSTS</code>. Generate API tokens from
-                  your Coolify dashboard under Settings &rarr; API Tokens.
+                  Host names must match those in <code>DOCKER_HOSTS</code>.
+                  Generate API tokens from your Coolify dashboard under Settings
+                  &rarr; API Tokens.
                 </p>
               </div>
             </CardContent>
@@ -381,9 +401,10 @@ export DOCKER_HOSTS="local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.ex
                 networks or enable authentication to protect access.
               </p>
               <p className="mt-2">
-                LogDeck needs write access to the Docker socket for container management features
-                (start, stop, restart). If you only need log viewing, you can mount it
-                read-only (<code>:ro</code>) and enable read-only mode in LogDeck.
+                LogDeck needs write access to the Docker socket for container
+                management features (start, stop, restart). If you only need log
+                viewing, you can mount it read-only (<code>:ro</code>) and
+                enable read-only mode in LogDeck.
               </p>
             </CardContent>
           </Card>
@@ -436,8 +457,8 @@ docker pull amoabakelvin/logdeck:latest
         </div>
         <p className="mb-8 text-base">
           It installs a single binary for macOS or Linux (amd64/arm64). See the{" "}
-          <a href="/docs/cli">CLI guide</a> for connecting to your server and
-          the full command reference.
+          <Link href="/docs/cli">CLI guide</Link> for connecting to your server
+          and the full command reference.
         </p>
 
         <Separator className="my-12" />

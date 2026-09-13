@@ -239,8 +239,7 @@ describe("sortStoredContainersBySize", () => {
 });
 
 describe("splitContainerStatus", () => {
-	const make = (state: string, status: string) =>
-		({ state, status }) as Parameters<typeof splitContainerStatus>[0];
+	const make = (state: string, status: string) => live({ state, status });
 
 	// Every string here came off a real daemon while reviewing the dashboard.
 	it.each([

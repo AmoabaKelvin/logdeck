@@ -1,11 +1,5 @@
 import type React from "react";
-import {
-	createContext,
-	useCallback,
-	useContext,
-	useEffect,
-	useState,
-} from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 
 import { getAuthToken, removeAuthToken, setAuthToken } from "@/lib/api-client";
 import { isAuthEnabled as fetchIsAuthEnabled } from "@/lib/auth-config";
@@ -30,64 +24,63 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
 	const [user, setUser] = useState<User | null>(null);
-	const [token, setToken] = useState<string | null>(null);
+	const [token, setToken] = useState<string | null>(getAuthToken);
 	const [isLoading, setIsLoading] = useState(true);
 	const [isAuthEnabled, setIsAuthEnabled] = useState(true);
 
-	const checkIfAuthEnabled = useCallback(async () => {
-		try {
-			setIsAuthEnabled(await fetchIsAuthEnabled());
-		} catch (error) {
-			// Status unknown - keep the default (enabled) to fail closed
-			console.error("Failed to check auth status:", error);
-		} finally {
-			setIsLoading(false);
-		}
-	}, []);
-
-	const verifyToken = useCallback(async (tokenToVerify: string) => {
-		try {
-			const response = await fetch(`${API_BASE_URL}/api/v1/auth/me`, {
-				headers: {
-					Authorization: `Bearer ${tokenToVerify}`,
-				},
-			});
-
-			if (response.ok) {
-				const data = await response.json();
-				setUser(data.user);
-				setToken(tokenToVerify);
-				setIsAuthEnabled(true);
-			} else if (response.status === 404) {
-				// Auth endpoint doesn't exist - auth is disabled
-				setIsAuthEnabled(false);
-				removeAuthToken();
-				setToken(null);
-				setUser(null);
-			} else {
-				removeAuthToken();
-				setToken(null);
-				setUser(null);
-			}
-		} catch (error) {
-			console.error("Failed to verify token:", error);
-			removeAuthToken();
-			setToken(null);
-			setUser(null);
-		} finally {
-			setIsLoading(false);
-		}
-	}, []);
-
 	useEffect(() => {
+		async function checkIfAuthEnabled() {
+			try {
+				setIsAuthEnabled(await fetchIsAuthEnabled());
+			} catch (error) {
+				// Status unknown - keep the default (enabled) to fail closed
+				console.error("Failed to check auth status:", error);
+			} finally {
+				setIsLoading(false);
+			}
+		}
+
+		async function verifyToken(tokenToVerify: string) {
+			try {
+				const response = await fetch(`${API_BASE_URL}/api/v1/auth/me`, {
+					headers: {
+						Authorization: `Bearer ${tokenToVerify}`,
+					},
+				});
+
+				if (response.ok) {
+					const data = await response.json();
+					setUser(data.user);
+					setToken(tokenToVerify);
+					setIsAuthEnabled(true);
+				} else if (response.status === 404) {
+					// Auth endpoint doesn't exist - auth is disabled
+					setIsAuthEnabled(false);
+					removeAuthToken();
+					setToken(null);
+					setUser(null);
+				} else {
+					removeAuthToken();
+					setToken(null);
+					setUser(null);
+				}
+			} catch (error) {
+				console.error("Failed to verify token:", error);
+				removeAuthToken();
+				setToken(null);
+				setUser(null);
+			} finally {
+				setIsLoading(false);
+			}
+		}
+
 		const storedToken = getAuthToken();
 		if (storedToken) {
-			setToken(storedToken);
 			verifyToken(storedToken);
 		} else {
 			checkIfAuthEnabled();
 		}
-	}, [verifyToken, checkIfAuthEnabled]);
+	}, []);
 
 	const login = async (username: string, password: string) => {
 		try {

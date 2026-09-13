@@ -154,6 +154,7 @@ export function ContainersTable({
         return (
           <Fragment key={group.project}>
             <tr className="border-b border-border/60 bg-muted/40">
+              {/* oxlint-disable-next-line jsx-a11y/control-has-associated-label -- a layout cell, not a control; its project name sits deeper than the rule looks */}
               <td colSpan={COLUMN_COUNT} className="h-10 px-0">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex min-w-0 items-baseline gap-2">

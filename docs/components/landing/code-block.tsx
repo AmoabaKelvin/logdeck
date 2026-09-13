@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,8 @@ import {
   oneLight,
 } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { useTheme } from "next-themes";
+
+const subscribeNoop = () => () => {};
 
 interface CodeBlockProps {
   code: string;
@@ -28,8 +30,11 @@ export function CodeBlock({
   // Render the light style until mounted so the first client render matches
   // the prerendered HTML; the post-mount re-render applies the real theme
   // (hydration never patches mismatched inline style attributes).
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useSyncExternalStore(
+    subscribeNoop,
+    () => true,
+    () => false,
+  );
   const isDark = mounted && resolvedTheme === "dark";
 
   const handleCopy = () => {

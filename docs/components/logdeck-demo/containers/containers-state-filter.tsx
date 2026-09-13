@@ -19,7 +19,11 @@ interface ContainersStateFilterProps {
   className?: string;
 }
 
-const STATES: { state: string; label: string; countClass?: string }[] = [
+const STATES: {
+  state: keyof StateCounts;
+  label: string;
+  countClass?: string;
+}[] = [
   { state: "running", label: "Running" },
   { state: "exited", label: "Exited" },
   { state: "paused", label: "Paused" },
@@ -49,7 +53,9 @@ export function ContainersStateFilter({
   const isAll = stateFilter === "all";
   const activeCount = isAll
     ? total
-    : (stateCounts[stateFilter as keyof StateCounts] ?? 0);
+    : (Object.entries(stateCounts).find(
+        ([state]) => state === stateFilter,
+      )?.[1] ?? 0);
 
   return (
     <DropdownMenu>
@@ -75,7 +81,7 @@ export function ContainersStateFilter({
           <DropdownMenuSeparator />
 
           {STATES.map((entry) => {
-            const count = stateCounts[entry.state as keyof StateCounts];
+            const count = stateCounts[entry.state];
             // An empty state is not worth an entry, unless it is the one
             // currently filtered on.
             if (count === 0 && stateFilter !== entry.state) {

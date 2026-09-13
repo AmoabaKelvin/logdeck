@@ -22,31 +22,33 @@ export const ALL_TIME_RANGE: TimeRange = {
   until: null,
 };
 
-export const TIME_RANGE_PRESET_LABELS: Record<TimeRangePreset, string> = {
+export const TIME_RANGE_PRESET_LABELS = {
   all: "All time",
   "15m": "Last 15 min",
   "1h": "Last hour",
   "6h": "Last 6 hours",
   "24h": "Last 24 hours",
   custom: "Custom range",
-};
+} satisfies Record<TimeRangePreset, string>;
 
-const PRESET_DURATIONS_MS: Record<
-  Exclude<TimeRangePreset, "all" | "custom">,
-  number
-> = {
+const PRESET_DURATIONS_MS = {
   "15m": 15 * 60 * 1000,
   "1h": 60 * 60 * 1000,
   "6h": 6 * 60 * 60 * 1000,
   "24h": 24 * 60 * 60 * 1000,
-};
+} satisfies Record<Exclude<TimeRangePreset, "all" | "custom">, number>;
+
+export interface ResolvedTimeRange {
+  since?: string;
+  until?: string;
+}
 
 // Resolve a time range into the since/until values the logs API accepts
 // (RFC3339 timestamps). Relative presets are anchored to `now`.
 export function resolveTimeRange(
   timeRange: TimeRange,
   now: number = Date.now(),
-): { since?: string; until?: string } {
+): ResolvedTimeRange {
   if (timeRange.preset === "all") {
     return {};
   }

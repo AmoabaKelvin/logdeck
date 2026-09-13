@@ -1,4 +1,4 @@
-import { authenticatedFetch } from "@/lib/api-client";
+import { authenticatedFetch, readJson } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 
 const BASE_URL = `${API_BASE_URL}/api/v1/compose`;
@@ -36,6 +36,9 @@ export async function performComposeAction(
 		const text = await response.text();
 		let message = text || `Failed to ${action} compose project ${project}`;
 		try {
+			// SAFETY: compose_handlers.go writes non-OK bodies either as plain text
+			// via http.Error (JSON.parse throws into the catch) or as the
+			// ComposeActionResult JSON; every field here is optional.
 			const parsed = JSON.parse(text) as Partial<ComposeActionResult> & {
 				error?: string;
 			};
@@ -44,7 +47,7 @@ export async function performComposeAction(
 					.map((failure) => failure.name || failure.id.slice(0, 12))
 					.join(", ");
 				message = `Failed to ${action} ${parsed.failed.length} of ${parsed.total} container(s) in ${project}: ${names}`;
-			} else if (typeof parsed.error === "string") {
+			} else if (parsed.error) {
 				message = parsed.error;
 			}
 		} catch {
@@ -53,5 +56,5 @@ export async function performComposeAction(
 		throw new Error(message);
 	}
 
-	return (await response.json()) as ComposeActionResult;
+	return readJson<ComposeActionResult>(response);
 }

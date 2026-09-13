@@ -1,4 +1,4 @@
-import { authenticatedFetch } from "@/lib/api-client";
+import { authenticatedFetch, readJson } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 
 import type { APITokensResponse } from "../types";
@@ -13,5 +13,5 @@ export async function getApiTokens(): Promise<APITokensResponse> {
 		throw new Error(message || "Failed to load API tokens");
 	}
 
-	return (await response.json()) as APITokensResponse;
+	return readJson<APITokensResponse>(response);
 }

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -121,8 +121,10 @@ export function ContainerLimitsPanel({
 		enabled: !!containerId && !!containerHost,
 	});
 
-	useEffect(() => {
-		if (!resources) return;
+	// Reset the form to the server's values whenever they (re)load.
+	const [formResources, setFormResources] = useState<typeof resources>();
+	if (resources && resources !== formResources) {
+		setFormResources(resources);
 		setMemory(formatMemoryBytes(resources.memoryBytes));
 		setCpus(resources.nanoCPUs > 0 ? String(resources.nanoCPUs / 1e9) : "");
 		setRestartPolicy(resources.restartPolicy.name || "no");
@@ -131,7 +133,7 @@ export function ContainerLimitsPanel({
 				? String(resources.restartPolicy.maximumRetryCount)
 				: "",
 		);
-	}, [resources]);
+	}
 
 	const updateMutation = useMutation({
 		mutationFn: (request: UpdateResourcesRequest) =>

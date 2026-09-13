@@ -27,14 +27,16 @@ export function SelectionActionBar({
 	const [copied, setCopied] = useState(false);
 	const [isVisible, setIsVisible] = useState(false);
 
+	// Hide again once the selection clears, so the next one animates in.
+	if (selectedCount === 0 && isVisible) {
+		setIsVisible(false);
+	}
+
 	useEffect(() => {
-		if (selectedCount > 0) {
-			// Small delay for enter animation
-			const timer = setTimeout(() => setIsVisible(true), 10);
-			return () => clearTimeout(timer);
-		} else {
-			setIsVisible(false);
-		}
+		if (selectedCount === 0) return;
+		// Small delay for enter animation
+		const timer = setTimeout(() => setIsVisible(true), 10);
+		return () => clearTimeout(timer);
 	}, [selectedCount]);
 
 	const handleCopy = () => {
