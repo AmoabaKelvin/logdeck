@@ -27,3 +27,16 @@ jobs:
             set -a; . ./.env.ci; set +a
           fi
           bun run deploy
+      # Tell Bing, Yandex, and the other IndexNow engines what is on the site.
+      # The key is public by design; it is served at /<key>.txt.
+      - name: Ping IndexNow
+        continue-on-error: true
+        env:
+          INDEXNOW_KEY: 8983ce89cc7e616243489b295ad0136d
+        run: |
+          curl -fsS https://logdeck.dev/sitemap.xml \
+            | grep -o '<loc>[^<]*' | sed 's/<loc>//' \
+            | jq -R . | jq -s --arg key "$INDEXNOW_KEY" \
+              '{host: "logdeck.dev", key: $key, keyLocation: "https://logdeck.dev/\($key).txt", urlList: .}' \
+            | curl -fsS -X POST https://api.indexnow.org/indexnow \
+              -H 'Content-Type: application/json; charset=utf-8' --data-binary @-

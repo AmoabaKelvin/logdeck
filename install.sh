@@ -25,7 +25,8 @@ case "$arch" in
     ;;
 esac
 
-url="https://github.com/${REPO}/releases/latest/download/logdeck_${os}_${arch}.tar.gz"
+base="https://github.com/${REPO}/releases/latest/download"
+file="logdeck_${os}_${arch}.tar.gz"
 
 if [ -w /usr/local/bin ]; then
   install_dir="/usr/local/bin"
@@ -37,9 +38,22 @@ fi
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-echo "Downloading $url"
-curl -fsSL "$url" -o "$tmp/logdeck.tar.gz"
-tar -xzf "$tmp/logdeck.tar.gz" -C "$tmp"
+echo "Downloading $base/$file"
+curl -fsSL "$base/$file" -o "$tmp/$file"
+curl -fsSL "$base/checksums.txt" -o "$tmp/checksums.txt"
+
+expected=$(awk -v f="$file" '$2 == f { print $1 }' "$tmp/checksums.txt")
+if command -v sha256sum >/dev/null 2>&1; then
+  actual=$(sha256sum "$tmp/$file" | cut -d' ' -f1)
+else
+  actual=$(shasum -a 256 "$tmp/$file" | cut -d' ' -f1)
+fi
+if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then
+  echo "Checksum mismatch for $file; not installing" >&2
+  exit 1
+fi
+
+tar -xzf "$tmp/$file" -C "$tmp"
 install -m 0755 "$tmp/logdeck" "$install_dir/logdeck"
 
 echo "Installed $("$install_dir/logdeck" --version) to $install_dir/logdeck"

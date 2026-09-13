@@ -85,7 +85,7 @@ A scriptable `logdeck` CLI over the server's HTTP API, built for automation and 
 - Lifecycle actions, resource limits, Compose controls, and alert management (`logdeck alerts`)
 - Table output for humans, JSON/NDJSON (`-o json`) for machines
 
-See the [CLI Guide](./docs/cli.md).
+See the [CLI reference](https://logdeck.dev/docs/cli).
 
 ### Authentication & Security
 
