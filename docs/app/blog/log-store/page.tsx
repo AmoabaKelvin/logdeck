@@ -19,11 +19,17 @@ export const metadata: Metadata = {
   description:
     "How LogDeck's log store went from one row per line to sealed, columnar, zstd-compressed blocks without giving up instant queries, exact bytes, dedup, or stable cursors.",
   alternates: { canonical: "/blog/log-store" },
+  // Replaces the layout's openGraph object whole, including the share image
+  // from app/opengraph-image.png, so repeat both.
   openGraph: {
     type: "article",
+    siteName: "LogDeck",
+    images: [{ url: "/opengraph-image.png", width: 1200, height: 630 }],
+    url: "/blog/log-store",
     title: "Storing 10× more container logs in the same SQLite file",
     description:
       "One row per line cost more disk than the logs themselves. Sealing every 1,000 lines into a columnar zstd block fixed that. Most of the work went into the invariants around it.",
+    publishedTime: "2026-09-13",
   },
 };
 
