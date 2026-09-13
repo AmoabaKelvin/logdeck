@@ -207,7 +207,7 @@ services:
       # or enable it from the Settings page instead)
       JWT_SECRET: "your-super-secret-key-min-32-characters-long"
       ADMIN_USERNAME: "admin"
-      ADMIN_PASSWORD: "your-bcrypt-hash"   # $$ escapes the $ in a compose file
+      ADMIN_PASSWORD: "your-bcrypt-hash" # $$ escapes the $ in a compose file
 
       # Log persistence (optional - on by default)
       # LOG_STORE_PER_CONTAINER_MB: "50"

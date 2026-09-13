@@ -46,7 +46,12 @@ export function DocPage({ doc }: { doc: Doc }) {
             "@context": "https://schema.org",
             "@type": "BreadcrumbList",
             itemListElement: [
-              { "@type": "ListItem", position: 1, name: "LogDeck", item: siteUrl },
+              {
+                "@type": "ListItem",
+                position: 1,
+                name: "LogDeck",
+                item: siteUrl,
+              },
               { "@type": "ListItem", position: 2, name: doc.title, item: url },
             ],
           },

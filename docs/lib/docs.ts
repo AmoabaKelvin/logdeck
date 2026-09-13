@@ -13,24 +13,26 @@ import { docsNav, siteUrl } from "@/lib/docs-nav";
 export const summary =
   "LogDeck is a free, open-source (GPL-3.0), self-hosted log viewer, alerting tool, and control panel for Docker and Podman containers.";
 
-const bodies: Record<string, string> = {
-  "/docs/getting-started": gettingStarted,
-  "/docs/installation": installation,
-  "/docs/features": features,
-  "/docs/log-history": logHistory,
-  "/docs/alerting": alerting,
-  "/docs/cli": cli,
-  "/docs/mcp": mcp,
-  "/docs/configuration": configuration,
-  "/compare/dozzle": dozzle,
-};
+const bodies = new Map([
+  ["/docs/getting-started", gettingStarted],
+  ["/docs/installation", installation],
+  ["/docs/features", features],
+  ["/docs/log-history", logHistory],
+  ["/docs/alerting", alerting],
+  ["/docs/cli", cli],
+  ["/docs/mcp", mcp],
+  ["/docs/configuration", configuration],
+  ["/compare/dozzle", dozzle],
+]);
 
 export const docs = docsNav.flatMap((section) =>
-  section.items.map((item) => ({
-    ...item,
-    section: section.title,
-    body: bodies[item.href],
-  })),
+  section.items.map((item) => {
+    const body = bodies.get(item.href);
+    if (body === undefined) {
+      throw new Error(`No markdown imported for ${item.href} in lib/docs.ts`);
+    }
+    return { ...item, section: section.title, body };
+  }),
 );
 
 export type Doc = (typeof docs)[number];

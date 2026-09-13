@@ -1,18 +1,19 @@
+import type { ElementContent } from "hast";
 import Link from "next/link";
-import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { CodeBlock } from "@/components/docs/code-block";
 import { slugify } from "@/lib/docs";
 
-function textOf(node: ReactNode): string {
-  if (typeof node === "string" || typeof node === "number") return `${node}`;
-  if (Array.isArray(node)) return node.map(textOf).join("");
-  if (node && typeof node === "object" && "props" in node) {
-    return textOf((node.props as { children?: ReactNode }).children);
-  }
-  return "";
+function textOf(nodes: ElementContent[]): string {
+  return nodes
+    .map((node) => {
+      if (node.type === "text") return node.value;
+      if (node.type === "element") return textOf(node.children);
+      return "";
+    })
+    .join("");
 }
 
 export function Markdown({ children }: { children: string }) {
@@ -21,11 +22,11 @@ export function Markdown({ children }: { children: string }) {
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          h2: ({ children }) => (
-            <h2 id={slugify(textOf(children))}>{children}</h2>
+          h2: ({ node, children }) => (
+            <h2 id={slugify(textOf(node?.children ?? []))}>{children}</h2>
           ),
-          h3: ({ children }) => (
-            <h3 id={slugify(textOf(children))}>{children}</h3>
+          h3: ({ node, children }) => (
+            <h3 id={slugify(textOf(node?.children ?? []))}>{children}</h3>
           ),
           a: ({ href = "", children }) =>
             href.startsWith("http") ? (
@@ -38,15 +39,13 @@ export function Markdown({ children }: { children: string }) {
           pre: ({ node }) => {
             const code = node?.children[0];
             if (code?.type !== "element") return null;
-            const [className = ""] =
-              (code.properties.className as string[] | undefined) ?? [];
-            const text = code.children
-              .map((child) => (child.type === "text" ? child.value : ""))
-              .join("");
             return (
               <CodeBlock
-                code={text.replace(/\n$/, "")}
-                language={className.replace("language-", "")}
+                code={textOf(code.children).replace(/\n$/, "")}
+                language={String(code.properties.className ?? "").replace(
+                  "language-",
+                  "",
+                )}
               />
             );
           },

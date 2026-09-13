@@ -175,7 +175,7 @@ docker inspect logdeck | grep docker.sock
 If port 8123 is taken, publish a different host port in your `docker-compose.yml` or `docker run` command:
 
 ```yaml
-- "8124:8080"  # Use port 8124 instead
+- "8124:8080" # Use port 8124 instead
 ```
 
 Still stuck? [Open an issue on GitHub](https://github.com/AmoabaKelvin/logdeck/issues) with details about your setup and the error you see.

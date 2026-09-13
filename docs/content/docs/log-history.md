@@ -35,7 +35,7 @@ LogDeck keys a container's stored history by its host and its **name**, not by i
 
 > **Limits worth knowing.**
 >
-> - Backfill reads the logs the *engine* still holds. If you remove a container while LogDeck is down, the engine discards its logs with it, and whatever LogDeck had not already stored is gone for good.
+> - Backfill reads the logs the _engine_ still holds. If you remove a container while LogDeck is down, the engine discards its logs with it, and whatever LogDeck had not already stored is gone for good.
 > - LogDeck cannot read containers whose logging driver has no read API (`awslogs`, `syslog`, `none`, and so on). It leaves them out of the store and writes the reason to the server log.
 > - Renaming a container starts a new timeline, because the name is the identity.
 
@@ -54,7 +54,7 @@ History is available for single containers on the container log page. **Aggregat
 
 ### Removed containers
 
-When LogDeck holds stored logs for a container that no longer exists on any host, the dashboard's state summary grows a **Removed** chip. "All states" hides removed containers. Click the chip, or pick *Removed* in the state filter, to list them.
+When LogDeck holds stored logs for a container that no longer exists on any host, the dashboard's state summary grows a **Removed** chip. "All states" hides removed containers. Click the chip, or pick _Removed_ in the state filter, to list them.
 
 A removed container shows how much log data LogDeck stores for it instead of CPU and memory, and offers a single action: **View stored logs**. Its log page opens locked to History. There is no live stream, no terminal, and no environment or resources tab, because there is no container left to inspect.
 
@@ -87,7 +87,7 @@ Each environment variable overrides the matching config-file field:
 - `LOG_STORE_PER_CONTAINER_MB`: per-container retention cap in MB. Must be a positive integer. LogDeck ignores anything else with a warning. Default: `50`.
 - `LOG_STORE_TOTAL_MB`: total retention cap in MB across the whole store. Must be a positive integer. Default: `1024`.
 
-If LogDeck cannot open the database (a read-only volume, a missing mount), it logs a warning and keeps running *without* stored logs. Persistence never blocks startup. Look for `Log persistence is ENABLED` in the server log, with the path and the caps, to confirm it came up.
+If LogDeck cannot open the database (a read-only volume, a missing mount), it logs a warning and keeps running _without_ stored logs. Persistence never blocks startup. Look for `Log persistence is ENABLED` in the server log, with the path and the caps, to confirm it came up.
 
 ## API
 
@@ -99,17 +99,17 @@ The HTTP API exposes the store. These are read endpoints, so a `read`-scoped API
 
 `/history/logs` takes these query parameters:
 
-| Parameter | Meaning |
-| --- | --- |
-| `container` | Container name. Required. |
-| `host` | Host name. |
-| `search` | Text to search for. |
-| `regex` | Boolean. Treat `search` as a regex. |
-| `levels` | Comma-separated levels, including `UNKNOWN`. |
-| `since` | Start time, RFC3339. |
-| `until` | End time, RFC3339. |
-| `limit` | Lines per page. Default `500`, max `1000`. |
-| `cursor` | Page cursor from a previous response. |
+| Parameter   | Meaning                                      |
+| ----------- | -------------------------------------------- |
+| `container` | Container name. Required.                    |
+| `host`      | Host name.                                   |
+| `search`    | Text to search for.                          |
+| `regex`     | Boolean. Treat `search` as a regex.          |
+| `levels`    | Comma-separated levels, including `UNKNOWN`. |
+| `since`     | Start time, RFC3339.                         |
+| `until`     | End time, RFC3339.                           |
+| `limit`     | Lines per page. Default `500`, max `1000`.   |
+| `cursor`    | Page cursor from a previous response.        |
 
 Pages walk backwards through history. Follow the returned `nextCursor` for older lines.
 
