@@ -4,7 +4,8 @@ import { authenticatedFetch } from "./api-client";
 
 const TOKEN_KEY = "logdeck_auth_token";
 
-const fetchMock = vi.fn();
+const fetchMock =
+	vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>();
 const originalLocation = window.location;
 
 function stubLocation(pathname: string) {
@@ -38,7 +39,7 @@ describe("authenticatedFetch", () => {
 
 		await authenticatedFetch("/api/v1/containers");
 
-		const headers = fetchMock.mock.calls[0][1]?.headers as Headers;
+		const headers = new Headers(fetchMock.mock.calls[0][1]?.headers);
 		expect(headers.get("Authorization")).toBe("Bearer my-token");
 	});
 

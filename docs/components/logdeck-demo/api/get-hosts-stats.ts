@@ -20,15 +20,14 @@ export interface GetHostsStatsResponse {
   hosts: HostStats[];
 }
 
-const HOST_HARDWARE: Record<string, { ncpu: number; mem: number; os: string }> =
-  {
-    homelab: { ncpu: 10, mem: 16, os: "Docker Desktop" },
-  };
+const HOST_HARDWARE = new Map([
+  ["homelab", { ncpu: 10, mem: 16, os: "Docker Desktop" }],
+]);
 
 export async function getHostsStats(): Promise<GetHostsStatsResponse> {
   const hosts = demoHosts.map((host) => {
     const containers = state.containers.filter((c) => c.host === host.name);
-    const hardware = HOST_HARDWARE[host.name] ?? {
+    const hardware = HOST_HARDWARE.get(host.name) ?? {
       ncpu: 4,
       mem: 8,
       os: "Linux",

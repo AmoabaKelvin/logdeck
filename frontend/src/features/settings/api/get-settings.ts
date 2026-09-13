@@ -1,4 +1,4 @@
-import { authenticatedFetch } from "@/lib/api-client";
+import { authenticatedFetch, readJson } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 
 import type { SettingsResponse } from "../types";
@@ -13,5 +13,5 @@ export async function getSettings(): Promise<SettingsResponse> {
 		throw new Error(message || `Request failed with status ${response.status}`);
 	}
 
-	return (await response.json()) as SettingsResponse;
+	return readJson<SettingsResponse>(response);
 }

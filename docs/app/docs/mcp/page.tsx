@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { CodeBlock } from "@/components/landing/code-block";
 import { Separator } from "@/components/ui/separator";
 
@@ -121,8 +122,8 @@ export default function McpPage() {
         <h2 className="mb-4 mt-10 text-3xl font-bold tracking-tight">Setup</h2>
         <p className="mb-4 text-base">
           You need the <code>logdeck</code> CLI installed (see the{" "}
-          <a href="/docs/cli">CLI reference</a>) and a running LogDeck server.
-          Add one entry to your MCP client&apos;s configuration:
+          <Link href="/docs/cli">CLI reference</Link>) and a running LogDeck
+          server. Add one entry to your MCP client&apos;s configuration:
         </p>
       </div>
 
@@ -164,7 +165,7 @@ export default function McpPage() {
             Settings → API access) can read logs, stats, events, and container
             details, but every action tool returns a permission error. This is
             what you hand to an assistant by default — safe by construction. See{" "}
-            <a href="/docs/configuration">scoped API tokens</a>.
+            <Link href="/docs/configuration">scoped API tokens</Link>.
           </li>
           <li>
             An <strong>admin token</strong> can do everything an admin can do,

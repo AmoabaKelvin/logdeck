@@ -1,4 +1,4 @@
-import { authenticatedFetch } from "@/lib/api-client";
+import { authenticatedFetch, readJson } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 
 import type { AlertRuleType } from "./get-alert-rules";
@@ -42,5 +42,5 @@ export async function getAlertHistory(
 		throw new Error(message || "Failed to load alert history");
 	}
 
-	return (await response.json()) as AlertHistoryResponse;
+	return readJson<AlertHistoryResponse>(response);
 }

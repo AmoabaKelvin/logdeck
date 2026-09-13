@@ -223,7 +223,9 @@ export function ApiTokensSection() {
 							<Label htmlFor="new-token-scope">Scope</Label>
 							<Select
 								value={newScope}
-								onValueChange={(value) => setNewScope(value as APITokenScope)}
+								onValueChange={(value) => {
+									if (value === "admin" || value === "read") setNewScope(value);
+								}}
 							>
 								<SelectTrigger id="new-token-scope" className="h-8 w-32">
 									<SelectValue />

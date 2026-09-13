@@ -1,4 +1,4 @@
-import { authenticatedFetch } from "@/lib/api-client";
+import { authenticatedFetch, readJson } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 
 import type { ContainerInfo, DockerHost, HostError } from "../types";
@@ -21,18 +21,17 @@ export async function getContainers(): Promise<GetContainersResponse> {
 		throw new Error(message || `Request failed with status ${response.status}`);
 	}
 
-	const data = (await response.json()) as unknown;
+	const data = await readJson<Partial<GetContainersResponse> | null>(response);
 
-	if (!data || typeof data !== "object" || data === null) {
+	if (!data) {
 		throw new Error("Unexpected response format");
 	}
 
-	const containers = (data as { containers?: unknown }).containers;
-	const readOnly = (data as { readOnly?: boolean }).readOnly ?? false;
-	const hosts = (data as { hosts?: unknown }).hosts;
-	const hostErrors = (data as { hostErrors?: unknown }).hostErrors;
-	const coolifyConfigured =
-		(data as { coolifyConfigured?: boolean }).coolifyConfigured ?? false;
+	const containers = data.containers;
+	const readOnly = data.readOnly ?? false;
+	const hosts = data.hosts;
+	const hostErrors = data.hostErrors;
+	const coolifyConfigured = data.coolifyConfigured ?? false;
 
 	if (!Array.isArray(containers)) {
 		throw new Error("Unexpected response format");
@@ -43,10 +42,10 @@ export async function getContainers(): Promise<GetContainersResponse> {
 	}
 
 	return {
-		containers: containers as ContainerInfo[],
+		containers,
 		readOnly,
-		hosts: hosts as DockerHost[],
-		hostErrors: Array.isArray(hostErrors) ? (hostErrors as HostError[]) : [],
+		hosts,
+		hostErrors: Array.isArray(hostErrors) ? hostErrors : [],
 		coolifyConfigured,
 	};
 }

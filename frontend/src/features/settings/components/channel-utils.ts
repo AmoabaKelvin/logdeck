@@ -8,12 +8,12 @@ export const CHANNEL_TYPES: AlertChannelType[] = [
 	"telegram",
 ];
 
-const TYPE_LABELS: Record<AlertChannelType, string> = {
+const TYPE_LABELS = {
 	webhook: "Webhook",
 	ntfy: "ntfy",
 	gotify: "Gotify",
 	telegram: "Telegram",
-};
+} satisfies Record<AlertChannelType, string>;
 
 export function channelTypeLabel(type: AlertChannelType): string {
 	return TYPE_LABELS[type];

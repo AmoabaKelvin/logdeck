@@ -1,4 +1,4 @@
-import { authenticatedFetch } from "@/lib/api-client";
+import { authenticatedFetch, readJson } from "@/lib/api-client";
 import { iterateNDJSONStream } from "@/lib/ndjson";
 import { API_BASE_URL } from "@/types/api";
 
@@ -39,14 +39,11 @@ export interface LogStreamHeartbeat {
 	type: "heartbeat";
 }
 
-export function isLogStreamHeartbeat(
-	value: unknown,
+export function isLogStreamHeartbeat<TLogEntry>(
+	value: TLogEntry | LogStreamHeartbeat,
 ): value is LogStreamHeartbeat {
 	return (
-		typeof value === "object" &&
-		value !== null &&
-		"type" in value &&
-		value.type === "heartbeat"
+		value instanceof Object && "type" in value && value.type === "heartbeat"
 	);
 }
 
@@ -129,7 +126,7 @@ export async function getContainerLogsParsed(
 		throw new Error(message || `Failed to fetch logs for container ${id}`);
 	}
 
-	const data: ContainerLogsParsedResponse = await response.json();
+	const data = await readJson<ContainerLogsParsedResponse>(response);
 	return data.logs || [];
 }
 
@@ -260,22 +257,20 @@ function appendContinuationLogEntry<TLogEntry extends LogEntry>(
 ): TLogEntry {
 	const message = (continuation.message ?? continuation.raw ?? "").trim();
 	const raw = continuation.raw?.trim();
-	const fields = { ...(entry.fields ?? {}) };
+	const fields = { ...entry.fields };
 	const fieldMatch = message.match(STRUCTURED_FIELD_REGEX);
 
 	if (fieldMatch) {
 		fields[fieldMatch[1]] = fieldMatch[2].trim();
 	}
 
-	// Cast needed: spreading a generic and overriding base fields is not
-	// assignable back to TLogEntry as far as the compiler can prove.
 	return {
 		...entry,
 		message: [entry.message, message].filter(Boolean).join("\n"),
 		raw: [entry.raw, raw].filter(Boolean).join("\n"),
 		fields: Object.keys(fields).length > 0 ? fields : entry.fields,
 		continuationCount: (entry.continuationCount ?? 0) + 1,
-	} as TLogEntry;
+	};
 }
 
 function isProblemLevel(level: LogLevel | undefined): boolean {

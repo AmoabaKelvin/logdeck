@@ -1,4 +1,4 @@
-import { authenticatedFetch } from "@/lib/api-client";
+import { authenticatedFetch, readJson } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 
 import type { AlertRule } from "./get-alert-rules";
@@ -21,5 +21,5 @@ export async function createAlertRule(
 		throw new Error(message || "Failed to create alert rule");
 	}
 
-	return (await response.json()) as AlertRule;
+	return readJson<AlertRule>(response);
 }

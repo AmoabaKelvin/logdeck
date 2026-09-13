@@ -23,7 +23,6 @@ import {
   TIME_RANGE_PRESET_LABELS,
   TIME_RANGE_PRESETS,
   type TimeRange,
-  type TimeRangePreset,
 } from "./time-range";
 
 interface TimeRangeControlProps {
@@ -78,7 +77,8 @@ export function TimeRangeControl({
   };
 
   const handlePresetChange = (value: string) => {
-    const preset = value as TimeRangePreset;
+    const preset = TIME_RANGE_PRESETS.find((option) => option === value);
+    if (!preset) return;
     if (preset === "custom") {
       setTimeRange({ ...timeRange, preset: "custom" });
       openCustomEditor();

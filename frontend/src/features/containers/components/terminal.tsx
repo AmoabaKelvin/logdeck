@@ -136,7 +136,12 @@ export function Terminal({ containerId, host }: TerminalProps) {
 	const [isConnected, setIsConnected] = useState(false);
 	const [isReconnecting, setIsReconnecting] = useState(false);
 
+	// connect() reads the theme through this ref so a theme change never
+	// reconnects the session; the effect below restyles it in place.
+	const resolvedThemeRef = useRef(resolvedTheme);
+
 	useEffect(() => {
+		resolvedThemeRef.current = resolvedTheme;
 		if (xtermRef.current) {
 			xtermRef.current.options.theme = getTerminalTheme(resolvedTheme);
 		}
@@ -167,7 +172,6 @@ export function Terminal({ containerId, host }: TerminalProps) {
 		xtermRef.current.scrollToLine(buffer.baseY + buffer.cursorY);
 	};
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: resolvedTheme is intentionally excluded to avoid reconnecting on theme change; a separate useEffect updates the theme in-place
 	const connect = useCallback(() => {
 		if (!terminalRef.current) return;
 
@@ -182,7 +186,9 @@ export function Terminal({ containerId, host }: TerminalProps) {
 		let fitAddon = fitAddonRef.current;
 
 		if (!term || !fitAddon) {
-			const created = createTerminal(getTerminalTheme(resolvedTheme));
+			const created = createTerminal(
+				getTerminalTheme(resolvedThemeRef.current),
+			);
 			term = created.term;
 			fitAddon = created.fitAddon;
 
@@ -222,10 +228,11 @@ export function Terminal({ containerId, host }: TerminalProps) {
 			term.scrollToBottom();
 		};
 
-		ws.onmessage = (event) => {
+		// With binaryType "arraybuffer" a frame is either text or an ArrayBuffer.
+		ws.onmessage = (event: MessageEvent<ArrayBuffer | string>) => {
 			if (event.data instanceof ArrayBuffer) {
 				term.write(new Uint8Array(event.data));
-			} else if (typeof event.data === "string") {
+			} else {
 				term.write(event.data);
 			}
 			term.scrollToBottom();
@@ -253,7 +260,7 @@ export function Terminal({ containerId, host }: TerminalProps) {
 
 		window.addEventListener("resize", sendResize);
 		const resizeObserver =
-			typeof ResizeObserver !== "undefined"
+			"ResizeObserver" in window
 				? new ResizeObserver(() => {
 						sendResize();
 					})

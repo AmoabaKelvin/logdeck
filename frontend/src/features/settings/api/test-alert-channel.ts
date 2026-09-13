@@ -1,4 +1,4 @@
-import { authenticatedFetch } from "@/lib/api-client";
+import { authenticatedFetch, readJson } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 
 const ENDPOINT = `${API_BASE_URL}/api/v1/alerts/channels`;
@@ -20,5 +20,5 @@ export async function testAlertChannel(id: string): Promise<AlertTestResult> {
 		throw new Error(message || "Failed to send test alert");
 	}
 
-	return (await response.json()) as AlertTestResult;
+	return readJson<AlertTestResult>(response);
 }

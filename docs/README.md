@@ -99,7 +99,7 @@ When adding a docs page, wire it into `lib/docs-nav.ts` and `app/sitemap.ts`, an
 - **UI Components:** shadcn/ui
 - **Icons:** Lucide React
 - **Animations:** Framer Motion
-- **Code Quality:** Biome
+- **Code Quality:** oxlint + oxfmt
 - **Package Manager:** Bun
 
 ## 📝 Adding New Documentation
@@ -114,19 +114,15 @@ Example:
 
 ```tsx
 // app/docs/your-page/page.tsx
-import type { Metadata } from "next"
+import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Your Page Title",
   description: "Your page description",
-}
+};
 
 export default function YourPage() {
-  return (
-    <div className="space-y-6">
-      {/* Your content */}
-    </div>
-  )
+  return <div className="space-y-6">{/* Your content */}</div>;
 }
 ```
 

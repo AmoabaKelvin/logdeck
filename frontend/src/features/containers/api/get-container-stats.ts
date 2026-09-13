@@ -1,4 +1,4 @@
-import { authenticatedFetch } from "@/lib/api-client";
+import { authenticatedFetch, readJson } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 
 import type { ContainerStats } from "../types";
@@ -19,5 +19,5 @@ export async function getContainerStats(): Promise<GetContainerStatsResponse> {
 		);
 	}
 
-	return response.json();
+	return readJson<GetContainerStatsResponse>(response);
 }

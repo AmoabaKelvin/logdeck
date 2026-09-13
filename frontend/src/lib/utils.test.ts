@@ -4,7 +4,6 @@ import { cn, escapeRegExp } from "./utils";
 
 describe("escapeRegExp", () => {
 	it("escapes all regex metacharacters", () => {
-		// biome-ignore lint/suspicious/noTemplateCurlyInString: "${}" here are literal regex metacharacters under test, not a template placeholder
 		expect(escapeRegExp(".*+?^${}()|[]\\")).toBe(
 			"\\.\\*\\+\\?\\^\\$\\{\\}\\(\\)\\|\\[\\]\\\\",
 		);

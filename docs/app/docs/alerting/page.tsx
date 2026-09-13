@@ -1,5 +1,6 @@
 import { Info } from "lucide-react";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { CodeBlock } from "@/components/landing/code-block";
 import {
   Card,
@@ -37,9 +38,8 @@ export default function AlertingPage() {
           LogDeck already watches every container&apos;s events and log stream.
           Alert rules put that to use: they match on what LogDeck sees and
           deliver each fired alert to every enabled notification channel. Rules
-          and channels are managed under{" "}
-          <strong>Settings &rarr; Alerts</strong> in the UI, or with{" "}
-          <code>logdeck alerts</code> from the terminal.
+          and channels are managed under <strong>Settings &rarr; Alerts</strong>{" "}
+          in the UI, or with <code>logdeck alerts</code> from the terminal.
         </p>
 
         <Separator className="my-12" />
@@ -162,9 +162,7 @@ export default function AlertingPage() {
             a chat id.
           </li>
         </ul>
-        <p className="mb-4 text-base">
-          The webhook payload is:
-        </p>
+        <p className="mb-4 text-base">The webhook payload is:</p>
 
         <div className="not-prose mb-6">
           <CodeBlock
@@ -299,7 +297,7 @@ logdeck alerts history --limit 20`}
           <code>--project</code> are repeatable and narrow the rule.{" "}
           <code>--window</code> and <code>--cooldown</code> accept durations (
           <code>60s</code>, <code>5m</code>) or bare seconds. See the{" "}
-          <a href="/docs/cli#alerts">CLI reference</a> for every flag.
+          <Link href="/docs/cli#alerts">CLI reference</Link> for every flag.
         </p>
 
         <Separator className="my-12" />
@@ -319,11 +317,11 @@ logdeck alerts history --limit 20`}
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground space-y-2">
             <p>
-              Alert rules and channels are persisted to{" "}
-              <code>config.json</code> (<code>/data/config.json</code> by
-              default), and fired alerts to <code>alerts-history.json</code>{" "}
-              beside it. Mount <code>/data</code> as a volume, or both are lost
-              when the LogDeck container is recreated.
+              Alert rules and channels are persisted to <code>config.json</code>{" "}
+              (<code>/data/config.json</code> by default), and fired alerts to{" "}
+              <code>alerts-history.json</code> beside it. Mount{" "}
+              <code>/data</code> as a volume, or both are lost when the LogDeck
+              container is recreated.
             </p>
             <p>
               There are no alert-related environment variables: alerting is

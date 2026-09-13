@@ -16,12 +16,12 @@ import { isCoolifyManaged } from "./container-utils";
 const PANELS = ["overview", "network", "environment", "limits"] as const;
 type Panel = (typeof PANELS)[number];
 
-const PANEL_LABELS: Record<Panel, string> = {
+const PANEL_LABELS = {
 	overview: "Overview",
 	network: "Network",
 	environment: "Environment",
 	limits: "Limits",
-};
+} satisfies Record<Panel, string>;
 
 const PANEL_ID = "container-detail-panel";
 
