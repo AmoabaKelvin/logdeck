@@ -3,8 +3,6 @@ import { siteUrl } from "@/lib/docs-nav";
 
 type Context = { params: Promise<{ section: string; slug: string }> };
 
-export const dynamicParams = false;
-
 export function generateStaticParams() {
   return docs.map((doc) => {
     const [, section, slug] = doc.href.split("/");
