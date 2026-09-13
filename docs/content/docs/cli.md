@@ -10,7 +10,7 @@ Install the latest release binary (macOS and Linux, amd64/arm64):
 curl -fsSL https://raw.githubusercontent.com/AmoabaKelvin/logdeck/main/install.sh | sh
 ```
 
-Binaries ship on [GitHub Releases](https://github.com/AmoabaKelvin/logdeck/releases) with checksums. The installer picks the right one for your OS and architecture and installs it to `/usr/local/bin` or `~/.local/bin`. Check your version with `logdeck --version`.
+Binaries ship on [GitHub Releases](https://github.com/AmoabaKelvin/logdeck/releases) with checksums. The installer picks the right one for your OS and architecture, verifies it against the release's `checksums.txt`, and installs it to `/usr/local/bin` or `~/.local/bin`. Check your version with `logdeck --version`.
 
 Or build from source. The CLI lives in the same Go module as the server and builds to a single static binary:
 
