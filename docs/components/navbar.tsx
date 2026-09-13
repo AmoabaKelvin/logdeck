@@ -15,10 +15,12 @@ const links = [
   { title: "Install", href: "/#install" },
   { title: "Compare", href: "/#compare" },
   { title: "Docs", href: "/docs/getting-started" },
+  { title: "Blog", href: "/blog" },
 ];
 
 export function Navbar() {
-  const isLanding = usePathname() === "/";
+  const pathname = usePathname();
+  const isLanding = pathname === "/" || pathname.startsWith("/blog");
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-dashed border-base-200 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">

@@ -46,12 +46,14 @@ const footerLinks = [
     links: [
       { label: "Live demo", href: "/demo" },
       { label: "Compare with Dozzle", href: "/#compare" },
+      { label: "Engineering blog", href: "/blog" },
     ],
   },
 ];
 
 export function Footer() {
-  const isLanding = usePathname() === "/";
+  const pathname = usePathname();
+  const isLanding = pathname === "/" || pathname.startsWith("/blog");
 
   return (
     <footer className="border-t border-dashed border-base-200 bg-background">
