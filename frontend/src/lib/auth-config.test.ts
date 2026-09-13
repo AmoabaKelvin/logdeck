@@ -6,9 +6,13 @@ import {
 	resetAuthConfigCache,
 } from "./auth-config";
 
-const fetchMock = vi.fn();
+const fetchMock =
+	vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>();
 
-function jsonResponse(status: number, body: unknown): Response {
+function jsonResponse(
+	status: number,
+	body: { authEnabled: boolean } | string,
+): Response {
 	return new Response(JSON.stringify(body), {
 		status,
 		headers: { "Content-Type": "application/json" },

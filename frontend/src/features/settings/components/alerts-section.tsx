@@ -184,13 +184,11 @@ function AddChannelForm({ onDone }: { onDone: () => void }) {
 					<Label htmlFor="channel-type">Type</Label>
 					<Select
 						value={draft.type}
-						onValueChange={(value) =>
-							setDraft({
-								...EMPTY_CHANNEL_DRAFT,
-								type: value as ChannelDraft["type"],
-								name: draft.name,
-							})
-						}
+						onValueChange={(value) => {
+							const type = CHANNEL_TYPES.find((t) => t === value);
+							if (type)
+								setDraft({ ...EMPTY_CHANNEL_DRAFT, type, name: draft.name });
+						}}
 					>
 						<SelectTrigger id="channel-type" className="h-8 w-32">
 							<SelectValue />

@@ -1,32 +1,34 @@
 import { act, renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import type { ContainerInfo } from "../types";
 import { useContainerActions } from "./use-container-actions";
 
 // Deferred per-container promises so tests control when each action settles.
-const { resolvers, deferredAction } = vi.hoisted(() => {
-	const resolvers = new Map<string, (message: string) => void>();
-	const deferredAction = (id: string) =>
-		new Promise<string>((resolve) => {
-			resolvers.set(id, resolve);
-		});
-	return { resolvers, deferredAction };
-});
-
-vi.mock("../api/container-actions", () => ({
-	startContainer: (id: string) => deferredAction(id),
-	stopContainer: (id: string) => deferredAction(id),
-	restartContainer: (id: string) => deferredAction(id),
-	removeContainer: (id: string) => deferredAction(id),
-}));
-
-vi.mock("../api/compose-actions", () => ({
-	performComposeAction: () => Promise.resolve({ succeeded: 0 }),
-}));
+const resolvers = new Map<string, (message: string) => void>();
+const deferredAction = (id: string) =>
+	new Promise<string>((resolve) => {
+		resolvers.set(id, resolve);
+	});
+const actionFns = {
+	start: deferredAction,
+	stop: deferredAction,
+	restart: deferredAction,
+	remove: deferredAction,
+};
 
 function makeContainer(id: string): ContainerInfo {
-	return { id, host: "local" } as ContainerInfo;
+	return {
+		id,
+		names: [],
+		image: "",
+		image_id: "",
+		command: "",
+		created: 0,
+		state: "",
+		status: "",
+		host: "local",
+	};
 }
 
 describe("useContainerActions pending state", () => {
@@ -35,7 +37,9 @@ describe("useContainerActions pending state", () => {
 	});
 
 	it("tracks a pending action per container", () => {
-		const { result } = renderHook(() => useContainerActions(async () => {}));
+		const { result } = renderHook(() =>
+			useContainerActions(async () => {}, actionFns),
+		);
 
 		act(() => result.current.startContainerAction(makeContainer("a")));
 
@@ -44,7 +48,9 @@ describe("useContainerActions pending state", () => {
 	});
 
 	it("keeps other containers pending when one action settles", async () => {
-		const { result } = renderHook(() => useContainerActions(async () => {}));
+		const { result } = renderHook(() =>
+			useContainerActions(async () => {}, actionFns),
+		);
 
 		act(() => result.current.startContainerAction(makeContainer("a")));
 		act(() => result.current.restartContainerAction(makeContainer("b")));
@@ -61,7 +67,9 @@ describe("useContainerActions pending state", () => {
 	});
 
 	it("clears a container once its action settles", async () => {
-		const { result } = renderHook(() => useContainerActions(async () => {}));
+		const { result } = renderHook(() =>
+			useContainerActions(async () => {}, actionFns),
+		);
 
 		act(() => result.current.startContainerAction(makeContainer("a")));
 

@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 
+import type { UpdateAuthPayload } from "../api/update-auth";
 import { useUpdateAuth } from "../hooks/use-settings";
 import type { AuthConfig } from "../types";
 import { EnvBadge } from "./env-badge";
@@ -45,20 +46,16 @@ export function AuthSection({ config }: AuthSectionProps) {
 			return;
 		}
 
-		mutation.mutate(
-			{
-				enabled,
-				adminUsername: username,
-				...(password ? { newPassword: password } : {}),
+		const payload: UpdateAuthPayload = { enabled, adminUsername: username };
+		if (password) payload.newPassword = password;
+
+		mutation.mutate(payload, {
+			onSuccess: (msg) => {
+				toast.success(msg);
+				setPassword("");
 			},
-			{
-				onSuccess: (msg) => {
-					toast.success(msg);
-					setPassword("");
-				},
-				onError: (err) => toast.error(err.message),
-			},
-		);
+			onError: (err) => toast.error(err.message),
+		});
 	}
 
 	return (

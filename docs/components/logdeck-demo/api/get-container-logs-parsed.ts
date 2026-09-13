@@ -22,14 +22,9 @@ export interface LogStreamHeartbeat {
 }
 
 export function isLogStreamHeartbeat(
-  value: unknown,
+  value: LogEntry | LogStreamHeartbeat,
 ): value is LogStreamHeartbeat {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "type" in value &&
-    value.type === "heartbeat"
-  );
+  return "type" in value && value.type === "heartbeat";
 }
 
 export interface ContainerLogsOptions {
@@ -191,15 +186,16 @@ function appendContinuationLogEntry<TLogEntry extends LogEntry>(
 ): TLogEntry {
   const message = (continuation.message ?? continuation.raw ?? "").trim();
   const raw = continuation.raw?.trim();
-  const fields = { ...(entry.fields ?? {}) };
+  const fields = { ...entry.fields };
   const fieldMatch = message.match(STRUCTURED_FIELD_REGEX);
 
   if (fieldMatch) {
     fields[fieldMatch[1]] = fieldMatch[2].trim();
   }
 
-  // Cast needed: spreading a generic and overriding base fields is not
-  // assignable back to TLogEntry as far as the compiler can prove.
+  // SAFETY: the spread keeps every TLogEntry property and only base LogEntry
+  // fields are overridden, with values of their LogEntry types. TLogEntry only
+  // ever adds fields to LogEntry, so the result is still a TLogEntry.
   return {
     ...entry,
     message: [entry.message, message].filter(Boolean).join("\n"),

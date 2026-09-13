@@ -1,6 +1,17 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	type Mock,
+	vi,
+} from "vitest";
 
-import type { LogEntry } from "@/features/containers/api/get-container-logs-parsed";
+import {
+	getContainerLogsParsed,
+	type LogEntry,
+} from "@/features/containers/api/get-container-logs-parsed";
 
 import { downloadLogs, formatLogEntryLine } from "./log-export";
 
@@ -32,8 +43,16 @@ describe("formatLogEntryLine", () => {
 		expect(formatLogEntryLine(entry)).toBe("[] [DEBUG] no ts");
 	});
 
-	it("falls back to UNKNOWN when the level is empty", () => {
-		const entry = { level: "", message: "x" } as unknown as LogEntry;
+	it("falls back to UNKNOWN when the server sends an empty level", async () => {
+		// LogLevel has no empty member, so the row has to come off the wire.
+		const body = { logs: [{ level: "", message: "x" }], count: 1 };
+		vi.stubGlobal(
+			"fetch",
+			vi.fn<typeof fetch>().mockResolvedValue(Response.json(body)),
+		);
+		const [entry] = await getContainerLogsParsed("c1", "local");
+		vi.unstubAllGlobals();
+
 		expect(formatLogEntryLine(entry)).toBe("[] [UNKNOWN] x");
 	});
 
@@ -61,22 +80,22 @@ class FakeBlob {
 describe("downloadLogs", () => {
 	let capturedBlob: FakeBlob | null;
 	let anchor: HTMLAnchorElement;
-	let clickSpy: ReturnType<typeof vi.fn>;
+	let clickSpy: Mock<() => void>;
 
 	beforeEach(() => {
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2026-07-15T12:34:56.789Z"));
 
 		capturedBlob = null;
-		clickSpy = vi.fn();
+		clickSpy = vi.fn<() => void>();
 
 		vi.stubGlobal("Blob", FakeBlob);
 		vi.stubGlobal("URL", {
-			createObjectURL: vi.fn((blob: FakeBlob) => {
+			createObjectURL: vi.fn<(blob: FakeBlob) => string>((blob) => {
 				capturedBlob = blob;
 				return "blob:mock";
 			}),
-			revokeObjectURL: vi.fn(),
+			revokeObjectURL: vi.fn<(url: string) => void>(),
 		});
 
 		anchor = document.createElement("a");

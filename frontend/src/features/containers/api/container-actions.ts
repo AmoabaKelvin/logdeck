@@ -1,4 +1,4 @@
-import { authenticatedFetch } from "@/lib/api-client";
+import { authenticatedFetch, readJson } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 
 const BASE_URL = `${API_BASE_URL}/api/v1/containers`;
@@ -27,13 +27,8 @@ async function performContainerAction(
 		throw new Error(message || `Failed to ${action} container`);
 	}
 
-	const data = (await response.json()) as ActionResponse | undefined;
-
-	if (data && typeof data.message === "string") {
-		return data.message;
-	}
-
-	return "Action completed successfully";
+	const data = await readJson<ActionResponse>(response);
+	return data.message ?? "Action completed successfully";
 }
 
 export function startContainer(id: string, host: string) {

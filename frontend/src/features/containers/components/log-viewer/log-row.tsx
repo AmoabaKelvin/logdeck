@@ -125,10 +125,10 @@ export function LogRow(props: LogRowProps) {
 	const level = entry.level && entry.level !== "UNKNOWN" ? entry.level : null;
 
 	return (
-		// biome-ignore lint/a11y/useSemanticElements: div required for virtual scrolling absolute positioning
 		<div
 			data-index={index}
 			ref={measureRef}
+			// oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- the row holds its own copy button (and JSON toggles), which a <button> cannot nest
 			role="button"
 			tabIndex={0}
 			onClick={(e) => onClick(index, e)}

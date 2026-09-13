@@ -123,10 +123,10 @@ export function LogRow(props: LogRowProps) {
   if (!displayText.trim()) return null;
 
   return (
-    // biome-ignore lint/a11y/useSemanticElements: div required for virtual scrolling absolute positioning
     <div
       data-index={index}
       ref={measureRef}
+      // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- a <button> can't nest the row's copy button or let users select the log text
       role="button"
       tabIndex={0}
       onClick={(e) => onClick(index, e)}

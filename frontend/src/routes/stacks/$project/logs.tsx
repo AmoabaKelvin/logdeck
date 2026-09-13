@@ -15,7 +15,11 @@ import { StackMembersPanel } from "@/features/containers/components/stack-member
 import { useHistoryContainers } from "@/features/containers/hooks/use-history-containers";
 import { useHistoryStatus } from "@/features/containers/hooks/use-history-status";
 import { useLiveContainersQuery } from "@/features/containers/hooks/use-live-containers-query";
+import type { ContainerInfo } from "@/features/containers/types";
 import { requireAuthIfEnabled } from "@/lib/auth-guard";
+
+// Stable fallback so the memos below don't recompute every render.
+const EMPTY_CONTAINERS: ContainerInfo[] = [];
 
 export const Route = createFileRoute("/stacks/$project/logs")({
 	beforeLoad: async () => {
@@ -31,7 +35,7 @@ function StackLogsPage() {
 	const logViewState = useUrlLogViewState();
 
 	const { data: containersData } = useLiveContainersQuery();
-	const containers = containersData?.containers ?? [];
+	const containers = containersData?.containers ?? EMPTY_CONTAINERS;
 
 	// Members that were torn down keep their stored logs, so the stack still
 	// lists them — they just cannot join the live aggregated stream.

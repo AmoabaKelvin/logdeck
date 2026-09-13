@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import type { LogEntry } from "@/components/logdeck-demo/api/get-container-logs-parsed";
 import { escapeRegExp } from "@/lib/utils";
@@ -65,12 +65,16 @@ export function useLogSearch(searchText: string, useRegex: boolean) {
       if (!searchText || !text) return text;
 
       if (useRegex && searchParsed.regex) {
-        // Use matchAll for safe regex highlighting (handles zero-length matches)
-        searchParsed.regex.lastIndex = 0;
+        // Use matchAll for safe regex highlighting (handles zero-length matches).
+        // A copy starts at lastIndex 0 without touching the shared regex.
         const parts: React.ReactNode[] = [];
         let lastIndex = 0;
         let key = 0;
-        for (const match of text.matchAll(searchParsed.regex)) {
+        const regex = new RegExp(
+          searchParsed.regex.source,
+          searchParsed.regex.flags,
+        );
+        for (const match of text.matchAll(regex)) {
           if (match.index === undefined) continue;
           // Zero-length matches would render empty <mark> elements.
           if (match[0].length === 0) continue;
@@ -138,10 +142,15 @@ export function useSearchMatches({
   // Set view of searchMatches for O(1) per-row lookups during rendering
   const searchMatchSet = useMemo(() => new Set(searchMatches), [searchMatches]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally reset when searchText or useRegex changes
-  useEffect(() => {
+  // Back to the first match whenever the query changes.
+  const [matchQuery, setMatchQuery] = useState({ searchText, useRegex });
+  if (
+    matchQuery.searchText !== searchText ||
+    matchQuery.useRegex !== useRegex
+  ) {
+    setMatchQuery({ searchText, useRegex });
     setCurrentMatchIndex(0);
-  }, [searchText, useRegex]);
+  }
 
   return {
     searchMatches,

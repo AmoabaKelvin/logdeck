@@ -70,13 +70,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        {/* Google Sans Flex is not in next/font yet. */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
           rel="preconnect"
           href="https://fonts.gstatic.com"
           crossOrigin="anonymous"
         />
+        {/* oxlint-disable-next-line nextjs/no-page-custom-font -- root app-router layout, so this loads on every route; Google Sans Flex isn't in next/font */}
         <link
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,100..1000&display=swap"

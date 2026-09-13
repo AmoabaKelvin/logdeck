@@ -1,4 +1,4 @@
-import { authenticatedFetch } from "@/lib/api-client";
+import { authenticatedFetch, readJson } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 
 import type { APITokenScope, CreatedAPIToken } from "../types";
@@ -20,5 +20,5 @@ export async function createApiToken(
 		throw new Error(message || "Failed to create API token");
 	}
 
-	return (await response.json()) as CreatedAPIToken;
+	return readJson<CreatedAPIToken>(response);
 }

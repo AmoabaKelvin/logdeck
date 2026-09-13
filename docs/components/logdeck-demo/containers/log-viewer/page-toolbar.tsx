@@ -35,7 +35,7 @@ import {
   activeToggleButtonClass,
   type LogViewerToolbarProps,
 } from "./toolbar-shared";
-import type { LogSource } from "./use-log-view-state";
+import { LOG_SOURCES } from "./use-log-view-state";
 
 interface PageToolbarProps extends LogViewerToolbarProps {
   totalCount: number;
@@ -117,7 +117,7 @@ export function PageToolbar({
 
         {showSourceToggle && (
           <div className="flex shrink-0 items-center gap-0.5 rounded-md border p-0.5">
-            {(["live", "history"] as LogSource[]).map((value) => (
+            {LOG_SOURCES.map((value) => (
               <Button
                 key={value}
                 variant="ghost"

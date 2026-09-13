@@ -13,9 +13,11 @@ const Toaster = ({ ...props }: ToasterProps) => {
 
   return (
     <Sonner
-      theme={theme as ToasterProps["theme"]}
+      theme={theme === "dark" || theme === "system" ? theme : "light"}
       className="toaster group"
       style={
+        // SAFETY: every key is a CSS custom property (`--*`), which React
+        // applies via style.setProperty; CSSProperties just doesn't list them.
         {
           "--normal-bg": "var(--popover)",
           "--normal-text": "var(--popover-foreground)",

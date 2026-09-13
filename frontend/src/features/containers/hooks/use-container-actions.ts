@@ -20,15 +20,15 @@ export interface ConfirmableAction {
 	container: ContainerInfo;
 }
 
-const containerActionFns: Record<
-	ContainerActionType,
-	(id: string, host: string) => Promise<string>
-> = {
+const containerActionFns = {
 	start: startContainer,
 	stop: stopContainer,
 	restart: restartContainer,
 	remove: removeContainer,
-};
+} satisfies Record<
+	ContainerActionType,
+	(id: string, host: string) => Promise<string>
+>;
 
 /**
  * Container and compose lifecycle actions with pending state and a
@@ -39,7 +39,11 @@ const containerActionFns: Record<
  * pending state: an action settling on row B must not clear row A's
  * spinner while A is still running.
  */
-export function useContainerActions(refetch: () => Promise<unknown>) {
+export function useContainerActions<TRefetchResult>(
+	refetch: () => Promise<TRefetchResult>,
+	// Tests pass fakes here; the app always uses the real API calls.
+	actionFns = containerActionFns,
+) {
 	const [pendingActions, setPendingActions] = useState<
 		ReadonlyMap<string, ContainerActionType>
 	>(new Map());
@@ -80,10 +84,7 @@ export function useContainerActions(refetch: () => Promise<unknown>) {
 	) => {
 		beginPending(container.id, actionType);
 		try {
-			const message = await containerActionFns[actionType](
-				container.id,
-				container.host,
-			);
+			const message = await actionFns[actionType](container.id, container.host);
 			if (message) {
 				toast.success(message);
 			}

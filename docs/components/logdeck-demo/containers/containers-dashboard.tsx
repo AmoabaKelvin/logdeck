@@ -30,6 +30,9 @@ import { DashboardHeader } from "./dashboard-header";
 import type { PurgeHistoryTarget } from "./purge-history-dialog";
 import { PurgeHistoryDialog } from "./purge-history-dialog";
 
+// Stable fallback so the memos below don't recompute while data is loading.
+const EMPTY_CONTAINERS: ContainerInfo[] = [];
+
 export function ContainersDashboard() {
   const queryClient = useQueryClient();
   const { data, error, isError, isFetching, isLoading, refetch } =
@@ -38,7 +41,7 @@ export function ContainersDashboard() {
   const systemHistory = useSystemUsageHistory(systemStats?.usage);
   const { statsMap, statsHistory } = useContainerStats();
 
-  const containers = data?.containers ?? [];
+  const containers = data?.containers ?? EMPTY_CONTAINERS;
   const isReadOnly = data?.readOnly ?? false;
   const hosts = data?.hosts ?? [];
   const hostErrors = data?.hostErrors ?? [];

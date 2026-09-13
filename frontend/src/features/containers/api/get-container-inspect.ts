@@ -1,4 +1,4 @@
-import { authenticatedFetch } from "@/lib/api-client";
+import { authenticatedFetch, readJson } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 
 /**
@@ -52,7 +52,6 @@ export interface ContainerInspect {
 		WorkingDir?: string;
 		Entrypoint?: string[] | null;
 		Cmd?: string[] | null;
-		ExposedPorts?: Record<string, unknown>;
 		Healthcheck?: {
 			Test?: string[];
 			// Docker reports these in nanoseconds.
@@ -95,6 +94,6 @@ export async function getContainerInspect(
 		throw new Error("Failed to inspect container");
 	}
 
-	const body = (await response.json()) as { container: ContainerInspect };
+	const body = await readJson<{ container: ContainerInspect }>(response);
 	return body.container;
 }

@@ -1,4 +1,4 @@
-import { authenticatedFetch } from "@/lib/api-client";
+import { authenticatedFetch, readJson } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 
 export interface SystemStats {
@@ -27,5 +27,5 @@ export async function getSystemStats(): Promise<SystemStats> {
 		throw new Error("Failed to fetch system stats");
 	}
 
-	return response.json();
+	return readJson<SystemStats>(response);
 }

@@ -7,9 +7,13 @@ import {
 } from "./auth-config";
 import { requireAuthIfEnabled } from "./auth-guard";
 
-const fetchMock = vi.fn();
+const fetchMock =
+	vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>();
 
-function jsonResponse(status: number, body: unknown): Response {
+function jsonResponse(
+	status: number,
+	body: { authEnabled: boolean },
+): Response {
 	return new Response(JSON.stringify(body), {
 		status,
 		headers: { "Content-Type": "application/json" },

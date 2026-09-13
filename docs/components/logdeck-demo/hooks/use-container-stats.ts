@@ -16,16 +16,17 @@ export function useContainerStats() {
     staleTime: 4000,
   });
 
+  const stats = query.data?.stats;
   const statsMap = useMemo<ContainerStatsMap>(() => {
-    if (!query.data?.stats) return {};
+    if (!stats) return {};
 
-    return query.data.stats.reduce((acc, stat) => {
+    return stats.reduce<ContainerStatsMap>((acc, stat) => {
       acc[stat.id] = stat;
       return acc;
-    }, {} as ContainerStatsMap);
-  }, [query.data?.stats]);
+    }, {});
+  }, [stats]);
 
-  const statsHistory = useContainerStatsHistory(query.data?.stats);
+  const statsHistory = useContainerStatsHistory(stats);
 
   return {
     ...query,

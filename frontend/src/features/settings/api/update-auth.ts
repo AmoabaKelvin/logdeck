@@ -1,4 +1,4 @@
-import { authenticatedFetch } from "@/lib/api-client";
+import { authenticatedFetch, readJson } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 
 const ENDPOINT = `${API_BASE_URL}/api/v1/settings/auth`;
@@ -21,6 +21,6 @@ export async function updateAuth(payload: UpdateAuthPayload): Promise<string> {
 		throw new Error(message || "Failed to update auth settings");
 	}
 
-	const data = (await response.json()) as { message?: string };
+	const data = await readJson<{ message?: string }>(response);
 	return data.message ?? "Auth settings updated";
 }

@@ -98,12 +98,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Lint (Biome)
-        run: bun x biome lint .
+      - name: Lint (oxlint)
+        run: bun run lint
+
+      - name: Format (oxfmt)
+        run: bun run format:check
 
       - name: Type Check
         run: bun x tsc --noEmit
@@ -120,12 +126,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Lint (Biome)
+      - name: Lint (oxlint)
         run: bun run lint
+
+      - name: Format (oxfmt)
+        run: bun run format:check
 
       - name: Build
         run: bun run build

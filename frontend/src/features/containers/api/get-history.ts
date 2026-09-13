@@ -1,4 +1,4 @@
-import { authenticatedFetch } from "@/lib/api-client";
+import { authenticatedFetch, readJson } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 import type { LogEntry, LogLevel } from "./get-container-logs-parsed";
 
@@ -50,6 +50,8 @@ export interface HistoryLogsParams {
 async function readError(response: Response, fallback: string): Promise<Error> {
 	const body = await response.text();
 	try {
+		// SAFETY: history_handlers.go writes error bodies as {"error": string}
+		// JSON or as plain text via http.Error, which JSON.parse throws on.
 		const parsed = JSON.parse(body) as { error?: string };
 		if (parsed.error) return new Error(parsed.error);
 	} catch {
@@ -67,7 +69,7 @@ export async function getHistoryStatus(): Promise<HistoryStatus> {
 		throw await readError(response, "Failed to fetch history status");
 	}
 
-	return response.json();
+	return readJson<HistoryStatus>(response);
 }
 
 export async function getHistoryContainers(): Promise<StoredContainer[]> {
@@ -79,7 +81,7 @@ export async function getHistoryContainers(): Promise<StoredContainer[]> {
 		throw await readError(response, "Failed to fetch stored containers");
 	}
 
-	const data: { containers: StoredContainer[] } = await response.json();
+	const data = await readJson<{ containers: StoredContainer[] }>(response);
 	return data.containers ?? [];
 }
 
@@ -105,7 +107,7 @@ export async function deleteHistoryContainer(
 		throw await readError(response, `Failed to delete stored logs for ${name}`);
 	}
 
-	const data: Partial<DeleteHistoryResult> = await response.json();
+	const data = await readJson<Partial<DeleteHistoryResult>>(response);
 	return {
 		message: data.message ?? `Deleted stored logs for ${name}`,
 		linesDeleted: data.linesDeleted ?? 0,
@@ -150,6 +152,6 @@ export async function getHistoryLogs({
 		);
 	}
 
-	const data: HistoryLogsPage = await response.json();
+	const data = await readJson<HistoryLogsPage>(response);
 	return { ...data, logs: data.logs ?? [] };
 }
