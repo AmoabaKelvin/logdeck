@@ -1,49 +1,45 @@
-"use client"
+"use client";
 
-import { ChevronRight } from "lucide-react"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
-import { docsNav } from "@/lib/docs-nav"
-import { cn } from "@/lib/utils"
+import { docsNav } from "@/lib/docs-nav";
+import { cn } from "@/lib/utils";
 
-interface SidebarNavProps {
-  onNavigate?: () => void
-}
-
-export function SidebarNav({ onNavigate }: SidebarNavProps) {
-  const pathname = usePathname()
+export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
+  const pathname = usePathname();
 
   return (
-    <div className="w-full">
+    <nav aria-label="Documentation" className="flex flex-col gap-8">
       {docsNav.map((section) => (
-        <div key={section.title} className="pb-8">
-          <h4 className="mb-1 rounded-md px-2 py-1 text-sm font-semibold">
+        <div key={section.title}>
+          <p className="px-3 text-sm font-medium text-base-900">
             {section.title}
-          </h4>
-          <div className="grid grid-flow-row auto-rows-max text-sm">
+          </p>
+          <ul className="mt-2 flex flex-col gap-0.5">
             {section.items.map((item) => {
-              const Icon = item.icon
-              const isActive = pathname === item.href
+              const active = pathname === item.href;
               return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={onNavigate}
-                  className={cn(
-                    "group flex w-full items-center gap-2 rounded-md border border-transparent px-2 py-1.5 hover:bg-muted",
-                    isActive && "bg-muted font-medium"
-                  )}
-                >
-                  <Icon className="h-4 w-4 text-muted-foreground" />
-                  <span>{item.title}</span>
-                  {isActive && <ChevronRight className="ml-auto h-4 w-4" />}
-                </Link>
-              )
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    onClick={onNavigate}
+                    aria-current={active ? "page" : undefined}
+                    className={cn(
+                      "flex rounded-full px-3 py-2 text-base/6 sm:py-1.5 sm:text-sm/6",
+                      active
+                        ? "bg-sand-100 text-accent-600"
+                        : "text-base-500 hover:text-base-900",
+                    )}
+                  >
+                    {item.title}
+                  </Link>
+                </li>
+              );
             })}
-          </div>
+          </ul>
         </div>
       ))}
-    </div>
-  )
+    </nav>
+  );
 }

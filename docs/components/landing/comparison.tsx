@@ -1,57 +1,21 @@
-import { Wrapper, h2Class } from "./ui";
+import Link from "next/link";
 
-const rows = [
-  [
-    "Stored log history",
-    "On disk, searchable, survives rebuild and removal",
-    "None: live only, history via Dozzle Cloud",
-  ],
-  [
-    "Search",
-    "Regex, level, and time range on the server, across history",
-    "Regex on the live view, SQL over JSON logs in the browser",
-  ],
-  [
-    "Alerts",
-    "Event and log rules, rate windows, cooldowns, delivery history",
-    "Event, log, and metric rules with an expression language",
-  ],
-  [
-    "Alert channels",
-    "Webhook (Slack and Discord as-is), ntfy, Gotify, Telegram",
-    "Webhook, Slack, Discord, ntfy; Telegram and email via Cloud",
-  ],
-  [
-    "Edit env vars and resource limits",
-    "Yes, with .env import and Coolify sync",
-    "No",
-  ],
-  [
-    "Compose stacks",
-    "Start, stop, restart a whole stack; merged logs",
-    "Merged group logs",
-  ],
-  [
-    "Multi-host",
-    "Local, TCP, or SSH; no agents",
-    "TCP, or an agent container on each host",
-  ],
-  ["Web terminal", "Yes", "Yes"],
-  ["Split-screen log view", "No", "Yes"],
-  ["Swarm and Kubernetes", "No", "Yes"],
-  [
-    "CLI and MCP",
-    "logdeck CLI on the server API; MCP with read and action tools",
-    "No API CLI; read-only MCP",
-  ],
-  [
-    "Users and auth",
-    "Single admin, scoped API tokens, read-only mode",
-    "Multiple users, OIDC, forward proxy, per-user roles",
-  ],
-  ["Hosted tier", "None", "Dozzle Cloud (paid tiers)"],
-  ["License", "GPL-3.0", "MIT"],
-];
+import dozzle from "@/content/compare/dozzle.md";
+
+import { Wrapper, h2Class, pill } from "./ui";
+
+// The table lives in content/compare/dozzle.md, so this section, the compare
+// page, and its markdown copy never disagree. Keep its cells plain text.
+const rows = dozzle
+  .split("\n")
+  .filter((line) => line.startsWith("|"))
+  .slice(2)
+  .map((line) =>
+    line
+      .split("|")
+      .slice(1, -1)
+      .map((cell) => cell.trim()),
+  );
 
 export function Comparison() {
   return (
@@ -97,19 +61,24 @@ export function Comparison() {
             </tbody>
           </table>
         </div>
-        <p className="mt-4 max-w-xl text-pretty text-sm text-base-500">
-          Checked against the Dozzle v11 docs, September 2026. Spot something
-          stale?{" "}
-          <a
-            href="https://github.com/AmoabaKelvin/logdeck/issues"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-base-900 hover:text-accent-500"
-          >
-            Open an issue
-          </a>
-          .
-        </p>
+        <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-4">
+          <Link href="/compare/dozzle" className={pill.accent}>
+            Read the full comparison
+          </Link>
+          <p className="max-w-xl text-pretty text-sm text-base-500">
+            Checked against the Dozzle v11 docs, September 2026. Spot something
+            stale?{" "}
+            <a
+              href="https://github.com/AmoabaKelvin/logdeck/issues"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-base-900 hover:text-accent-500"
+            >
+              Open an issue
+            </a>
+            .
+          </p>
+        </div>
       </Wrapper>
     </section>
   );

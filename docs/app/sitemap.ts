@@ -1,63 +1,16 @@
 import type { MetadataRoute } from "next";
 
-export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = "https://logdeck.dev";
-  const currentDate = new Date();
+import { docsNav, siteUrl } from "@/lib/docs-nav";
 
+export default function sitemap(): MetadataRoute.Sitemap {
   return [
-    {
-      url: baseUrl,
-      lastModified: currentDate,
-      changeFrequency: "monthly",
-      priority: 1,
-    },
-    {
-      url: `${baseUrl}/demo`,
-      lastModified: currentDate,
-      changeFrequency: "monthly",
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/docs/getting-started`,
-      lastModified: currentDate,
-      changeFrequency: "monthly",
-      priority: 0.9,
-    },
-    {
-      url: `${baseUrl}/docs/installation`,
-      lastModified: currentDate,
-      changeFrequency: "monthly",
-      priority: 0.9,
-    },
-    {
-      url: `${baseUrl}/docs/features`,
-      lastModified: currentDate,
-      changeFrequency: "monthly",
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/docs/log-history`,
-      lastModified: currentDate,
-      changeFrequency: "monthly",
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/docs/alerting`,
-      lastModified: currentDate,
-      changeFrequency: "monthly",
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/docs/cli`,
-      lastModified: currentDate,
-      changeFrequency: "monthly",
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/docs/configuration`,
-      lastModified: currentDate,
-      changeFrequency: "monthly",
-      priority: 0.8,
-    },
+    { url: siteUrl },
+    { url: `${siteUrl}/demo` },
+    ...docsNav.flatMap((section) =>
+      section.items.map((item) => ({
+        url: `${siteUrl}${item.href}`,
+        lastModified: item.updated,
+      })),
+    ),
   ];
 }

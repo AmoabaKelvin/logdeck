@@ -5,7 +5,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 
 import { Footer } from "@/components/footer";
 import { Navbar } from "@/components/navbar";
-import { ThemeProvider } from "@/components/theme-provider";
+import { siteUrl } from "@/lib/docs-nav";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -17,33 +17,18 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const title =
+  "LogDeck: self-hosted logs, alerts, and control for Docker and Podman";
+const description =
+  "Free, open-source log viewer, alerting, and container control for Docker and Podman. Stored log history, alert rules with cooldowns, live limit edits, a CLI, and an MCP server.";
+
 export const metadata: Metadata = {
-  metadataBase: new URL("https://logdeck.dev"),
+  metadataBase: new URL(siteUrl),
   title: {
-    default: "LogDeck – Logs, alerts, and control for every container you run",
+    default: title,
     template: "%s | LogDeck",
   },
-  description:
-    "Free, self-hosted logs, alerts, and control for Docker and Podman. Stored history, alert rules with cooldowns, live limit edits, a CLI, and an MCP server.",
-  keywords: [
-    "docker",
-    "podman",
-    "container",
-    "logs",
-    "log viewer",
-    "docker logs",
-    "container management",
-    "docker ui",
-    "docker cli",
-    "open source",
-    "docker compose",
-    "log monitoring",
-    "multi-host",
-    "dozzle alternative",
-    "log history",
-    "container alerts",
-    "mcp server",
-  ],
+  description,
   authors: [{ name: "Amoaba Kelvin", url: "https://github.com/AmoabaKelvin" }],
   creator: "Amoaba Kelvin",
   applicationName: "LogDeck",
@@ -51,30 +36,18 @@ export const metadata: Metadata = {
   alternates: {
     canonical: "./",
   },
+  // The share image comes from app/opengraph-image.png.
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: "https://logdeck.dev",
-    title: "LogDeck – Logs, alerts, and control for every container you run",
-    description:
-      "Free, self-hosted logs, alerts, and control for Docker and Podman. Stored history, alert rules with cooldowns, live limit edits, a CLI, and an MCP server.",
+    url: "/",
     siteName: "LogDeck",
-    images: [
-      {
-        url: "/dashboard.png",
-        width: 3850,
-        height: 2188,
-        alt: "LogDeck containers dashboard with health, ports, and live CPU and memory sparklines",
-      },
-    ],
+    title,
+    description,
   },
   twitter: {
     card: "summary_large_image",
-    title: "LogDeck – Logs, alerts, and control for every container you run",
-    description:
-      "Free, self-hosted logs, alerts, and control for Docker and Podman. Stored history, alert rules with cooldowns, live limit edits, a CLI, and an MCP server.",
     creator: "@amoabakelvin",
-    images: ["/dashboard.png"],
   },
   robots: {
     index: true,
@@ -89,50 +62,15 @@ export const metadata: Metadata = {
   },
 };
 
-const structuredData = [
-  {
-    "@context": "https://schema.org",
-    "@type": "WebSite",
-    name: "LogDeck",
-    url: "https://logdeck.dev",
-  },
-  {
-    "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    name: "LogDeck",
-    description:
-      "Free, self-hosted logs, alerts, and control for Docker and Podman. Stored history, alert rules with cooldowns, live limit edits, a CLI, and an MCP server.",
-    url: "https://logdeck.dev",
-    applicationCategory: "DeveloperApplication",
-    operatingSystem: "Linux, macOS",
-    license: "https://www.gnu.org/licenses/gpl-3.0.html",
-    offers: {
-      "@type": "Offer",
-      price: "0",
-      priceCurrency: "USD",
-    },
-    author: {
-      "@type": "Person",
-      name: "Amoaba Kelvin",
-      url: "https://github.com/AmoabaKelvin",
-    },
-    sameAs: [
-      "https://github.com/AmoabaKelvin/logdeck",
-      "https://hub.docker.com/r/amoabakelvin/logdeck",
-    ],
-    screenshot: "https://logdeck.dev/dashboard.png",
-  },
-];
-
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en">
       <head>
-        {/* Google Sans Flex is not in next/font yet. Used for the landing page. */}
+        {/* Google Sans Flex is not in next/font yet. */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
           rel="preconnect"
@@ -145,24 +83,13 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${geistSans.className} ${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} bg-white font-display text-base-900 antialiased`}
       >
-        <script
-          type="application/ld+json"
-          // biome-ignore lint/security/noDangerouslySetInnerHtml: static JSON-LD literal defined above, no user input
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
-        />
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="light"
-          disableTransitionOnChange
-        >
-          <div className="relative flex min-h-screen flex-col">
-            <Navbar />
-            <main className="flex-1">{children}</main>
-            <Footer />
-          </div>
-        </ThemeProvider>
+        <div className="relative isolate flex min-h-dvh flex-col">
+          <Navbar />
+          <main className="flex-1">{children}</main>
+          <Footer />
+        </div>
         {process.env.NODE_ENV === "production" && (
           <script
             defer

@@ -1,173 +1,39 @@
-# LogDeck Documentation & Landing Page
+# logdeck.dev
 
-This is the official documentation and landing page for LogDeck, built with Next.js 16, Tailwind CSS v4, and shadcn/ui.
-
-## 🚀 Quick Start
+The LogDeck landing page and docs. Next.js 16 and Tailwind CSS v4, deployed to Cloudflare Workers with OpenNext.
 
 ```bash
-# Install dependencies
 bun install
-
-# Run development server
-bun run dev
-
-# Build for production
+bun run dev      # http://localhost:3000
 bun run build
-
-# Start production server
-bun run start
+bun run preview  # the Workers build, locally
 ```
 
-The site will be available at [http://localhost:3000](http://localhost:3000)
-
-## 📁 Project Structure
+## Layout
 
 ```
-docs/
-├── app/                      # Next.js app directory
-│   ├── layout.tsx           # Root layout with metadata
-│   ├── page.tsx             # Landing page
-│   ├── globals.css          # Global styles and Tailwind config
-│   ├── demo/                # Interactive demo
-│   ├── sitemap.ts           # Sitemap (add new docs pages here)
-│   └── docs/                # Documentation pages
-│       ├── layout.tsx       # Docs layout with sidebar
-│       ├── getting-started/
-│       ├── installation/
-│       ├── features/
-│       ├── log-history/
-│       ├── alerting/
-│       ├── cli/
-│       ├── configuration/
-│       └── demo/
-├── components/
-│   ├── landing/             # Landing page components
-│   │   ├── hero.tsx        # Hero section with GitHub stars
-│   │   ├── features.tsx    # Feature cards
-│   │   ├── screenshots.tsx # Screenshot showcase
-│   │   ├── installation.tsx # Installation guide
-│   │   └── code-block.tsx  # Code block with copy
-│   ├── docs/               # Documentation components
-│   │   └── sidebar.tsx     # Docs sidebar navigation
-│   ├── ui/                 # shadcn/ui components
-│   ├── navbar.tsx          # Main navigation
-│   ├── footer.tsx          # Site footer
-│   ├── theme-provider.tsx  # Theme provider
-│   └── theme-toggle.tsx    # Dark/light mode toggle
-├── lib/
-│   ├── docs-nav.ts         # Docs sidebar nav (add new docs pages here)
-│   └── utils.ts            # Utility functions
-└── public/                 # Static assets
-    ├── llms-full.txt       # Full-text docs for LLMs (keep in sync with the pages)
-    ├── landing.png         # Landing page screenshot
-    └── logs.png            # Logs viewer screenshot
+app/
+├── page.tsx                   # Landing page
+├── (docs)/[section]/[slug]/   # Every docs page and /compare/dozzle
+├── md/[section]/[slug]/       # The same pages as markdown (/docs/cli.md)
+├── llms.txt/, llms-full.txt/  # Agent indexes, built from the docs
+├── sitemap.ts, robots.ts
+└── opengraph-image.png        # Share image for every page
+content/
+├── docs/*.md                  # Docs page bodies
+└── compare/dozzle.md          # Also feeds the landing page comparison table
+lib/
+├── docs-nav.ts                # Page list: titles, descriptions, dates, order
+└── docs.ts                    # Loads the markdown
+components/
+├── landing/                   # Landing page sections
+└── docs/                      # Docs shell, markdown renderer, code blocks
 ```
 
-When adding a docs page, wire it into `lib/docs-nav.ts` and `app/sitemap.ts`, and mirror the content into `public/llms-full.txt`.
+## Adding a docs page
 
-## 🎨 Features
+1. Write `content/docs/<slug>.md`. No front matter and no H1; start with an intro paragraph and use `##` and `###` headings.
+2. Add an entry to `lib/docs-nav.ts`.
+3. Import the file in `lib/docs.ts`.
 
-- **Modern Landing Page**
-  - Animated hero section with Framer Motion
-  - GitHub stars integration
-  - Feature cards with icons
-  - Screenshot showcase with tabs
-  - Installation guide with code blocks
-
-- **Documentation Site**
-  - Sidebar navigation
-  - Multiple documentation pages
-  - Code blocks with copy-to-clipboard
-  - Responsive design
-
-- **SEO Optimized**
-  - Comprehensive metadata
-  - Open Graph tags
-  - Twitter cards
-  - Structured data
-
-- **UI/UX**
-  - Dark/light mode support
-  - Responsive design
-  - Smooth animations
-  - Accessible components
-
-## 🛠️ Tech Stack
-
-- **Framework:** Next.js 16.0.3
-- **Styling:** Tailwind CSS v4
-- **UI Components:** shadcn/ui
-- **Icons:** Lucide React
-- **Animations:** Framer Motion
-- **Code Quality:** Biome
-- **Package Manager:** Bun
-
-## 📝 Adding New Documentation
-
-To add a new documentation page:
-
-1. Create a new folder in `app/docs/`
-2. Add a `page.tsx` file with your content
-3. Update the sidebar navigation in `components/docs/sidebar.tsx`
-
-Example:
-
-```tsx
-// app/docs/your-page/page.tsx
-import type { Metadata } from "next"
-
-export const metadata: Metadata = {
-  title: "Your Page Title",
-  description: "Your page description",
-}
-
-export default function YourPage() {
-  return (
-    <div className="space-y-6">
-      {/* Your content */}
-    </div>
-  )
-}
-```
-
-## 🎨 Customization
-
-### Colors
-
-The color scheme is defined in `app/globals.css` using CSS variables with OKLCH color space:
-
-```css
-@theme {
-  --color-primary: oklch(var(--primary));
-  /* ... other colors */
-}
-```
-
-### Components
-
-shadcn/ui components can be added using:
-
-```bash
-bunx shadcn@latest add [component-name]
-```
-
-## 🚢 Deployment
-
-The site is ready to deploy on Vercel, Netlify, or any platform that supports Next.js.
-
-### Vercel
-
-```bash
-vercel deploy
-```
-
-### Build Locally
-
-```bash
-bun run build
-bun run start
-```
-
-## 📄 License
-
-This documentation site is part of the LogDeck project, licensed under GPL-3.0.
+The sidebar, sitemap, llms.txt, llms-full.txt, and the `.md` URL all pick it up from there. When you edit a page, bump its `updated` date in `lib/docs-nav.ts`.
