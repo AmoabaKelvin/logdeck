@@ -4,7 +4,7 @@
 
 Point it at your $5 VPS, or a whole fleet of hosts, and manage everything running on it from one place. One tool in place of the usual "logs + metrics + management" stack, on Docker *and* Podman.
 
-![LogDeck Dashboard](./docs/landing.png)
+![LogDeck containers dashboard](./docs/containers.png)
 ![LogDeck Container View and Logs](./docs/logs.png)
 
 ## Quick start
