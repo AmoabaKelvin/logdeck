@@ -21,9 +21,7 @@ export function FigPipeline() {
   const [run, setRun] = useState(0);
 
   // Every replay restarts the tick; run is the dependency on purpose.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: run restarts the animation
   useEffect(() => {
-    setStep(0);
     const id = setInterval(() => {
       setStep((s) => {
         if (s >= lastStep) {
@@ -177,7 +175,10 @@ export function FigPipeline() {
         </figcaption>
         <button
           type="button"
-          onClick={() => setRun((r) => r + 1)}
+          onClick={() => {
+            setStep(0);
+            setRun((r) => r + 1);
+          }}
           className="shrink-0 border border-base-400 bg-white px-3 py-1.5 font-mono text-[11px] tracking-[0.1em] text-base-700 hover:border-accent-500 hover:text-accent-600"
         >
           {done ? "REPLAY ↻" : "PLAYING…"}

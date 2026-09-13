@@ -121,7 +121,8 @@ export function Box({
   children?: ReactNode;
 }) {
   const c = box[tone];
-  const subs = typeof sub === "string" ? [sub] : (sub ?? []);
+  const empty: string[] = [];
+  const subs = empty.concat(sub ?? []);
   const lines = (title ? 1 : 0) + subs.length;
   const lineH = 15;
   const top = y + h / 2 - ((lines - 1) * lineH) / 2;
