@@ -7,6 +7,14 @@ export const metadata: Metadata = {
   title: "Blog",
   description: "Engineering notes from building LogDeck.",
   alternates: { canonical: "/blog" },
+  openGraph: {
+    type: "website",
+    siteName: "LogDeck",
+    images: [{ url: "/opengraph-image.png", width: 1200, height: 630 }],
+    url: "/blog",
+    title: "LogDeck engineering notes",
+    description: "Engineering notes from building LogDeck.",
+  },
 };
 
 const posts = [
