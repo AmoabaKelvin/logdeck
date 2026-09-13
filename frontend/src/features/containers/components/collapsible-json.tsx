@@ -74,7 +74,6 @@ function colorizeJson(jsonStr: string): React.ReactNode {
 		}
 
 		return (
-			// biome-ignore lint/suspicious/noArrayIndexKey: lines from JSON.stringify have stable order
 			<span key={lineIdx}>
 				{parts}
 				{lineIdx < lines.length - 1 ? "\n" : ""}

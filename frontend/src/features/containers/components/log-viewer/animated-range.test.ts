@@ -3,11 +3,13 @@ import { describe, expect, it } from "vitest";
 import type { LogEntry } from "@/features/containers/api/get-container-logs-parsed";
 import { mapRawRangeToGroupedRange } from "./animated-range";
 
-const grouped = (continuationCount?: number): LogEntry => ({
-	level: "INFO",
-	message: "entry",
-	...(continuationCount !== undefined ? { continuationCount } : {}),
-});
+const grouped = (continuationCount?: number): LogEntry => {
+	const entry: LogEntry = { level: "INFO", message: "entry" };
+	if (continuationCount !== undefined) {
+		entry.continuationCount = continuationCount;
+	}
+	return entry;
+};
 
 describe("mapRawRangeToGroupedRange", () => {
 	// Grouped rows spanning raw indices [0..2], [3], [4..5].

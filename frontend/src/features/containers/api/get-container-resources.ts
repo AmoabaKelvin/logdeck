@@ -1,4 +1,4 @@
-import { authenticatedFetch } from "@/lib/api-client";
+import { authenticatedFetch, readJson } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 
 export interface RestartPolicy {
@@ -24,5 +24,5 @@ export async function getContainerResources(
 		throw new Error("Failed to fetch container resources");
 	}
 
-	return response.json();
+	return readJson<ContainerResources>(response);
 }

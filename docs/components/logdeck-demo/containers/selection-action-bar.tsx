@@ -29,13 +29,10 @@ export function SelectionActionBar({
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    if (selectedCount > 0) {
-      // Small delay for enter animation
-      const timer = setTimeout(() => setIsVisible(true), 10);
-      return () => clearTimeout(timer);
-    } else {
-      setIsVisible(false);
-    }
+    if (selectedCount === 0) return;
+    // Small delay for enter animation
+    const timer = setTimeout(() => setIsVisible(true), 10);
+    return () => clearTimeout(timer);
   }, [selectedCount]);
 
   const handleCopy = () => {
@@ -44,7 +41,11 @@ export function SelectionActionBar({
     setTimeout(() => setCopied(false), 1500);
   };
 
-  if (selectedCount === 0) return null;
+  if (selectedCount === 0) {
+    // Hidden again so the next selection replays the enter animation.
+    if (isVisible) setIsVisible(false);
+    return null;
+  }
 
   return (
     <div

@@ -77,13 +77,11 @@ export function useLogPins({
 		return next;
 	}, [filteredToOriginalIndex, pinnedLogIndices]);
 
-	useEffect(() => {
-		if (sortedPinnedIndices.length === 0) {
-			setCurrentPinnedIndex(0);
-		} else if (currentPinnedIndex >= sortedPinnedIndices.length) {
-			setCurrentPinnedIndex(sortedPinnedIndices.length - 1);
-		}
-	}, [sortedPinnedIndices, currentPinnedIndex]);
+	// Keep the pin cursor on a pin as pins are removed.
+	const lastPinnedIndex = Math.max(sortedPinnedIndices.length - 1, 0);
+	if (currentPinnedIndex > lastPinnedIndex) {
+		setCurrentPinnedIndex(lastPinnedIndex);
+	}
 
 	const resetPins = useCallback(() => {
 		setPinnedLogIndices(new Set());

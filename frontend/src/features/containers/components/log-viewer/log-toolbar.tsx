@@ -32,7 +32,7 @@ import type { LogLevel } from "@/features/containers/api/get-container-logs-pars
 import { LevelFilterPopover } from "./level-filter-popover";
 import { TimeRangeControl } from "./time-range-control";
 import type { SearchParsed } from "./use-log-search";
-import type { LogSource, LogViewState } from "./use-log-view-state";
+import { LOG_SOURCES, type LogViewState } from "./use-log-view-state";
 
 // What LogViewer hands the toolbar, from its view state and the stream hook.
 interface StreamControls {
@@ -186,7 +186,7 @@ export function LogToolbar({
 		<div className="flex flex-wrap items-center gap-2">
 			{showSourceToggle && (
 				<div className="flex shrink-0 items-center gap-0.5 rounded-md bg-muted p-0.5">
-					{(["live", "history"] as LogSource[]).map((value) => (
+					{LOG_SOURCES.map((value) => (
 						<Button
 							key={value}
 							variant="ghost"

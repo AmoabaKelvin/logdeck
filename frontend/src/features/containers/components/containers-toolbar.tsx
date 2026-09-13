@@ -146,7 +146,11 @@ export function ContainersToolbar({
 					<DropdownMenuContent align="end">
 						<DropdownMenuRadioGroup
 							value={groupBy}
-							onValueChange={(value) => onGroupByChange(value as GroupByOption)}
+							onValueChange={(value) => {
+								if (value === "none" || value === "compose") {
+									onGroupByChange(value);
+								}
+							}}
 						>
 							<DropdownMenuRadioItem value="none">
 								No grouping

@@ -38,6 +38,12 @@ export async function authenticatedFetch(
 	return response;
 }
 
+export async function readJson<T>(response: Response): Promise<T> {
+	// SAFETY: server/Dockerfile bundles this frontend with the API, so a response
+	// body always matches the Go handler struct the caller names as T.
+	return (await response.json()) as T;
+}
+
 export function getAuthToken(): string | null {
 	return localStorage.getItem(TOKEN_KEY);
 }

@@ -8,7 +8,7 @@ import Link from "next/link";
 
 import { Icon, Wrapper, h2Class, pill } from "./ui";
 
-const level: Record<string, string> = {
+const level = {
   ERROR: "bg-[#ff421e]",
   WARN: "bg-[#e3962d]",
   INFO: "bg-[#60beff]",
@@ -27,7 +27,7 @@ const historyLines = [
     msg: "upstream timeout after 30s (attempt 1/3)",
   },
   { ts: "00:02:20", level: "INFO", msg: "listening on :8080" },
-];
+] satisfies { ts: string; level: keyof typeof level; msg: string }[];
 
 function LogLine({ ts, level: lvl, msg }: (typeof historyLines)[number]) {
   return (

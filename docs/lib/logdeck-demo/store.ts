@@ -87,17 +87,19 @@ const HTTP_ROUTES = [
   "/healthz",
 ];
 
+interface SeedLogLine {
+  level: LogLevel;
+  message: string;
+  stream: "stdout" | "stderr";
+  fields?: Record<string, string>;
+}
+
 function makeLine(
   kind: SeedContainer["kind"],
   _name: string,
   rand: () => number,
   index: number,
-): {
-  level: LogLevel;
-  message: string;
-  stream: "stdout" | "stderr";
-  fields?: Record<string, string>;
-} {
+): SeedLogLine {
   const pick = <T>(arr: T[]) => arr[Math.floor(rand() * arr.length)];
   const roll = rand();
 
@@ -573,7 +575,7 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 // ---------------------------------------------------------------------------
 // Static resource seeds
 
-export function seedStatsHistory(): Record<string, number[]> {
+export function seedStatsHistory() {
   const history: Record<string, number[]> = {};
   for (const stat of state.stats) {
     const container = getContainerById(stat.id);

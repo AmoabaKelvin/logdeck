@@ -1,4 +1,4 @@
-import { authenticatedFetch } from "@/lib/api-client";
+import { authenticatedFetch, readJson } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 
 interface EnvVariablesResponse {
@@ -17,6 +17,6 @@ export async function getContainerEnvVariables(
 		throw new Error("Failed to fetch container environment variables");
 	}
 
-	const data: EnvVariablesResponse = await response.json();
+	const data = await readJson<EnvVariablesResponse>(response);
 	return data.env || {};
 }

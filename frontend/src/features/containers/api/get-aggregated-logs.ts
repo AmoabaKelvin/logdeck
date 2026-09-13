@@ -1,4 +1,4 @@
-import { authenticatedFetch } from "@/lib/api-client";
+import { authenticatedFetch, readJson } from "@/lib/api-client";
 import { iterateNDJSONStream } from "@/lib/ndjson";
 import { API_BASE_URL } from "@/types/api";
 
@@ -89,7 +89,7 @@ export async function getAggregatedLogs(
 		throw new Error(message || "Failed to fetch aggregated logs");
 	}
 
-	const data: ContainerLogsParsedResponse = await response.json();
+	const data = await readJson<ContainerLogsParsedResponse>(response);
 	return data.logs || [];
 }
 

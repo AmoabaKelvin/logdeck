@@ -391,6 +391,7 @@ function PresetGrid({ onPick }: { onPick: (preset: Preset) => void }) {
 					key={preset.id}
 					type="button"
 					onClick={() => onPick(preset)}
+					aria-label={`${preset.title} ${preset.description}`}
 					className="flex items-start gap-3 rounded-xl border p-3 text-left transition-colors hover:border-primary/40 hover:bg-accent/50"
 				>
 					<span className="flex size-9 shrink-0 items-center justify-center rounded-xs border bg-muted/50">
@@ -426,8 +427,12 @@ export function AlertRuleDialog({
 				onEscapeKeyDown={(e) => {
 					// Escape while a target combobox list is open should close the
 					// list (handled by the combobox itself), not dismiss the dialog.
-					const target = e.target as HTMLElement | null;
-					if (target?.closest("[data-combobox-open]")) e.preventDefault();
+					if (
+						e.target instanceof Element &&
+						e.target.closest("[data-combobox-open]")
+					) {
+						e.preventDefault();
+					}
 				}}
 			>
 				{open && <RuleEditor rule={rule} onClose={() => onOpenChange(false)} />}
@@ -632,6 +637,7 @@ function RuleEditor({
 									onChange={(e) => set("pattern", e.target.value)}
 									placeholder="connection refused"
 									className="h-8 font-mono"
+									// oxlint-disable-next-line jsx-a11y/no-autofocus -- moves focus to the field the picked preset needs; the dialog is already open, so Radix won't
 									autoFocus={initialFocus === "pattern"}
 								/>
 								<p className="text-xs text-muted-foreground">
@@ -789,6 +795,7 @@ function RuleEditor({
 						placeholder="api errors"
 						maxLength={64}
 						className="h-8"
+						// oxlint-disable-next-line jsx-a11y/no-autofocus -- moves focus to the field the picked preset needs; the dialog is already open, so Radix won't
 						autoFocus={initialFocus === "name"}
 					/>
 				</div>

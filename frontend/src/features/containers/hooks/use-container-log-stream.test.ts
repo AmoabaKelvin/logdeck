@@ -1,7 +1,10 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { LogStreamHeartbeat } from "@/features/containers/api/get-container-logs-parsed";
+import type {
+	ContainerLogsOptions,
+	LogStreamHeartbeat,
+} from "@/features/containers/api/get-container-logs-parsed";
 
 import { useContainerLogStream } from "./use-container-log-stream";
 
@@ -62,12 +65,16 @@ async function drainMicrotasks(iterations = 500) {
 
 function setup(options?: { maxLogLines?: number }) {
 	const controlled = createControlledStream();
-	const scrollToBottom = vi.fn();
+	const scrollToBottom = vi.fn<(behavior?: ScrollBehavior) => void>();
 	const renderCount = { current: 0 };
-	const streamLogs = vi.fn(
-		(_id: string, _host: string, _options: unknown, signal: AbortSignal) =>
-			controlled.stream(signal),
-	);
+	const streamLogs = vi.fn<
+		(
+			id: string,
+			host: string,
+			options: ContainerLogsOptions,
+			signal: AbortSignal,
+		) => ReturnType<typeof controlled.stream>
+	>((_id, _host, _options, signal) => controlled.stream(signal));
 
 	const hook = renderHook(() => {
 		renderCount.current += 1;
@@ -76,7 +83,7 @@ function setup(options?: { maxLogLines?: number }) {
 			host: "host-1",
 			tail: 100,
 			maxLogLines: options?.maxLogLines,
-			getLogs: vi.fn().mockResolvedValue([]),
+			getLogs: vi.fn<() => Promise<TestEntry[]>>().mockResolvedValue([]),
 			streamLogs,
 			scrollToBottom,
 		});

@@ -55,9 +55,10 @@ export function SettingsPage() {
 
 			<Tabs
 				value={tab}
-				onValueChange={(value) =>
-					setTab(value as (typeof SETTINGS_TABS)[number])
-				}
+				onValueChange={(value) => {
+					const next = SETTINGS_TABS.find((t) => t === value);
+					if (next) void setTab(next);
+				}}
 			>
 				<TabsList className="w-full sm:w-fit">
 					<TabsTrigger value="connections">Connections</TabsTrigger>

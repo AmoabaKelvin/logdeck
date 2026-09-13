@@ -1,9 +1,9 @@
-const UNIT_MULTIPLIERS: Record<string, number> = {
-	b: 1,
-	k: 1024,
-	m: 1024 ** 2,
-	g: 1024 ** 3,
-};
+const UNIT_MULTIPLIERS = new Map([
+	["b", 1],
+	["k", 1024],
+	["m", 1024 ** 2],
+	["g", 1024 ** 3],
+]);
 
 // Parses a human memory value like "512m", "1.5g", "1073741824" into bytes.
 // Empty input means unlimited (0). Returns null when the input is invalid.
@@ -20,7 +20,8 @@ export function parseMemoryInput(input: string): number | null {
 
 	const value = Number.parseFloat(match[1]);
 	const unit = match[2]?.[0] ?? "b";
-	return Math.round(value * UNIT_MULTIPLIERS[unit]);
+	// The regex only lets b, k, m or g through, so the lookup always hits.
+	return Math.round(value * (UNIT_MULTIPLIERS.get(unit) ?? 1));
 }
 
 // Formats bytes back into the largest exact unit, e.g. 536870912 -> "512m".

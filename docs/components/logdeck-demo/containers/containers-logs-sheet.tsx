@@ -1,5 +1,5 @@
 import { ChevronDownIcon } from "@/components/logdeck-demo/ui/icons";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { Badge } from "@/components/logdeck-demo/ui/badge";
 import { Button } from "@/components/logdeck-demo/ui/button";
@@ -53,11 +53,12 @@ export function ContainersLogsSheet({
 
   // Collapse the detail sections whenever the sheet closes or the shown
   // container changes.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally reset on isOpen/container changes
-  useEffect(() => {
+  const [shownFor, setShownFor] = useState({ isOpen, container });
+  if (shownFor.isOpen !== isOpen || shownFor.container !== container) {
+    setShownFor({ isOpen, container });
     setShowLabels(false);
     setShowEnvVariables(false);
-  }, [isOpen, container]);
+  }
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>

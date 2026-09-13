@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type ContainerLogsOptions,
   isLogStreamHeartbeat,
+  type LogEntry,
   type LogStreamHeartbeat,
 } from "@/components/logdeck-demo/api/get-container-logs-parsed";
 
@@ -55,7 +56,7 @@ interface UseContainerLogStreamOptions<TLogEntry> {
   onStreamError?: (error: Error) => void;
 }
 
-export function useContainerLogStream<TLogEntry>({
+export function useContainerLogStream<TLogEntry extends LogEntry>({
   containerId,
   host,
   tail,

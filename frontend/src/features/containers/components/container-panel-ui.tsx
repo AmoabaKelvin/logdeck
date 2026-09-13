@@ -136,8 +136,8 @@ export function isZeroTime(value: string | undefined): boolean {
 }
 
 export function formatTimestamp(value: string | undefined): string {
-	if (isZeroTime(value)) return "—";
-	return new Date(value as string).toLocaleString(undefined, {
+	if (!value || isZeroTime(value)) return "—";
+	return new Date(value).toLocaleString(undefined, {
 		dateStyle: "medium",
 		timeStyle: "medium",
 	});

@@ -1,4 +1,4 @@
-import { authenticatedFetch } from "@/lib/api-client";
+import { authenticatedFetch, readJson } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 
 const ENDPOINT = `${API_BASE_URL}/api/v1/alerts/rules`;
@@ -35,5 +35,5 @@ export async function getAlertRules(): Promise<AlertRulesResponse> {
 		throw new Error(message || "Failed to load alert rules");
 	}
 
-	return (await response.json()) as AlertRulesResponse;
+	return readJson<AlertRulesResponse>(response);
 }

@@ -1,4 +1,4 @@
-import { authenticatedFetch } from "@/lib/api-client";
+import { authenticatedFetch, readJson } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 
 import type { AlertChannelPayload } from "./create-alert-channel";
@@ -24,5 +24,5 @@ export async function updateAlertChannel(
 		throw new Error(message || "Failed to update alert channel");
 	}
 
-	return (await response.json()) as AlertChannel;
+	return readJson<AlertChannel>(response);
 }

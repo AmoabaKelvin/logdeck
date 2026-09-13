@@ -314,15 +314,19 @@ export function LogViewer({
     resetPinsRef.current = resetPins;
   }, [resetPins]);
 
+  const clearSelection = useCallback(() => {
+    setSelectedIndices(new Set());
+    setLastClickedIndex(null);
+  }, []);
+
   // Pins and selection are row indices, and live rows and stored rows are
   // different data: carrying them across a source switch would highlight
   // arbitrary lines. "Exclude matches" goes too — it is hidden in history.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on source switch only
   useEffect(() => {
     resetPinsRef.current();
     clearSelection();
     setExcludeMatches(false);
-  }, [isHistory]);
+  }, [isHistory, clearSelection]);
 
   const {
     searchMatches,
@@ -402,11 +406,6 @@ export function LogViewer({
         toast.error("Failed to copy to clipboard");
       });
   };
-
-  const clearSelection = useCallback(() => {
-    setSelectedIndices(new Set());
-    setLastClickedIndex(null);
-  }, []);
 
   const toggleJsonExpanded = useCallback((index: number) => {
     setExpandedJsonRows((prev) => {
@@ -514,11 +513,11 @@ export function LogViewer({
       });
   }, [selectedIndices, filteredLogs, clearSelection]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally clear selection on data changes
+  // Row indices shift when the filters change, so drop selection and expanded rows.
   useEffect(() => {
     clearSelection();
     setExpandedJsonRows(new Set());
-  }, [searchText, excludeMatches, selectedLevels, useRegex]);
+  }, [searchText, excludeMatches, selectedLevels, useRegex, clearSelection]);
 
   // The virtualizer must be created before the navigation callbacks that
   // scroll through it.

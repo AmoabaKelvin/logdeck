@@ -1,5 +1,7 @@
 import { API_BASE_URL } from "@/types/api";
 
+import { readJson } from "./api-client";
+
 /** Thrown when the server cannot be reached to determine the auth status. */
 export class AuthConfigUnavailableError extends Error {
 	constructor() {
@@ -43,7 +45,7 @@ async function fetchAuthEnabled(): Promise<boolean> {
 	}
 
 	try {
-		const config = await response.json();
+		const config = await readJson<{ authEnabled?: boolean }>(response);
 		return config.authEnabled === true;
 	} catch {
 		throw new AuthConfigUnavailableError();

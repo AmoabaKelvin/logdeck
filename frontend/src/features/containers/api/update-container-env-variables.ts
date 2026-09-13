@@ -1,4 +1,4 @@
-import { authenticatedFetch } from "@/lib/api-client";
+import { authenticatedFetch, readJson } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 
 interface UpdateEnvResponse {
@@ -34,7 +34,7 @@ export async function updateContainerEnvVariables(
 		throw new Error("Failed to update container environment variables");
 	}
 
-	const data: UpdateEnvResponse = await response.json();
+	const data = await readJson<UpdateEnvResponse>(response);
 	return {
 		newContainerId: data.new_container_id,
 		coolifySynced: data.coolify_synced,

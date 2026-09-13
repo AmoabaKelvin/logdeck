@@ -1,4 +1,4 @@
-import { authenticatedFetch } from "@/lib/api-client";
+import { authenticatedFetch, readJson } from "@/lib/api-client";
 import { API_BASE_URL } from "@/types/api";
 
 const ENDPOINT = `${API_BASE_URL}/api/v1/alerts/channels`;
@@ -27,5 +27,5 @@ export async function getAlertChannels(): Promise<AlertChannelsResponse> {
 		throw new Error(message || "Failed to load alert channels");
 	}
 
-	return (await response.json()) as AlertChannelsResponse;
+	return readJson<AlertChannelsResponse>(response);
 }
