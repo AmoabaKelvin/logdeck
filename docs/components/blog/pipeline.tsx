@@ -85,7 +85,13 @@ export function FigPipeline() {
             <Wire d="M440 92 H478" />
 
             <Box x={480} y={30} w={120} h={124} inset={false}>
-              <Label x={540} y={48} text="log_lines" anchor="middle" tone="dark" />
+              <Label
+                x={540}
+                y={48}
+                text="log_lines"
+                anchor="middle"
+                tone="dark"
+              />
               {rowSlots.map((y, i) => (
                 <rect
                   key={y}
@@ -116,7 +122,13 @@ export function FigPipeline() {
             />
 
             <Box x={640} y={30} w={120} h={124} inset={false}>
-              <Label x={700} y={48} text="log_blocks" anchor="middle" tone="dark" />
+              <Label
+                x={700}
+                y={48}
+                text="log_blocks"
+                anchor="middle"
+                tone="dark"
+              />
               {blockSlots.map((y, i) => (
                 <g key={y}>
                   <rect
@@ -169,9 +181,9 @@ export function FigPipeline() {
       </div>
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <figcaption className="max-w-xl text-pretty text-sm text-base-500">
-          One goroutine owns every write. Lines land in the hot table inside
-          the batch transaction that makes them queryable, and between batches
-          the writer folds each full run of 1,000 into a single compressed row.
+          One goroutine owns every write. Lines land in the hot table inside the
+          batch transaction that makes them queryable, and between batches the
+          writer folds each full run of 1,000 into a single compressed row.
         </figcaption>
         <button
           type="button"

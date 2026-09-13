@@ -97,8 +97,16 @@ const corpora = [
     plain: "6.7×",
     block: "8.4×",
   },
-  { name: "macOS install.log, real text with a synthetic Docker prefix", plain: "9.3×", block: "10.6×" },
-  { name: "Synthetic app logs, JSON and key=value", plain: "14.7×", block: "22.7×" },
+  {
+    name: "macOS install.log, real text with a synthetic Docker prefix",
+    plain: "9.3×",
+    block: "10.6×",
+  },
+  {
+    name: "Synthetic app logs, JSON and key=value",
+    plain: "14.7×",
+    block: "22.7×",
+  },
 ];
 
 export default function LogStorePost() {
@@ -115,16 +123,15 @@ export default function LogStorePost() {
           </h1>
           <p className="mt-4 max-w-2xl text-pretty text-base/7 text-base-500 sm:text-lg/8">
             LogDeck keeps container logs after the container is gone. The first
-            version stored them as one SQLite row per line, and when we
-            measured real log corpora the database came out 28% larger than
-            the text it held. Sealing every 1,000 lines into one compressed row
-            holds about 10× more history under the same cap on real Postgres
-            output, 16× on nginx access logs, and 12× in the stress harness.
-            The compression
+            version stored them as one SQLite row per line, and when we measured
+            real log corpora the database came out 28% larger than the text it
+            held. Sealing every 1,000 lines into one compressed row holds about
+            10× more history under the same cap on real Postgres output, 16× on
+            nginx access logs, and 12× in the stress harness. The compression
             itself was the smaller part of the change. Most of the work went
-            into keeping four promises the store had already made, about
-            instant queries, exact bytes, dedup, and stable cursors, and that
-            is most of what this post covers.
+            into keeping four promises the store had already made, about instant
+            queries, exact bytes, dedup, and stable cursors, and that is most of
+            what this post covers.
           </p>
         </Wrapper>
 
@@ -145,24 +152,24 @@ export default function LogStorePost() {
               raw text. Across five real log corpora, measured when the change
               was made, the database came out about 28% larger than the text it
               stored. A SQLite row carries a header, and the index the queries
-              need, on (container, timestamp), carries one entry per row. Together
-              those took more than a fifth of every cap.
+              need, on (container, timestamp), carries one entry per row.
+              Together those took more than a fifth of every cap.
             </P>
             <FigRowCost />
             <P>
-              Log lines compress well. A thousand lines from one container
-              share a format and a vocabulary, and each timestamp is mostly
-              the same as the one before it, so the fix was to stop storing
-              them one at a time.
+              Log lines compress well. A thousand lines from one container share
+              a format and a vocabulary, and each timestamp is mostly the same
+              as the one before it, so the fix was to stop storing them one at a
+              time.
             </P>
 
             <H2 id="constraints">What could not change</H2>
             <P>
-              LogDeck is one Go binary on a small VPS. The SQLite driver is
-              pure Go, because every release builds with{" "}
-              <Mono>CGO_ENABLED=0</Mono>, so there is no extension to lean on and
-              no separate process to spin up. Within that, the store had four
-              promises that a compression scheme could easily break:
+              LogDeck is one Go binary on a small VPS. The SQLite driver is pure
+              Go, because every release builds with <Mono>CGO_ENABLED=0</Mono>,
+              so there is no extension to lean on and no separate process to
+              spin up. Within that, the store had four promises that a
+              compression scheme could easily break:
             </P>
             <ul className="mt-5 space-y-3 text-base/7 text-base-700">
               <li className="flex gap-3">
@@ -176,8 +183,8 @@ export default function LogStorePost() {
                 <span className="mt-2.5 size-1.5 shrink-0 rounded-full bg-accent-500" />
                 <span>
                   A stored line is byte-for-byte what the engine sent. History
-                  is parsed by the same function as Live, so level detection
-                  and multi-line grouping cannot drift between the two views.
+                  is parsed by the same function as Live, so level detection and
+                  multi-line grouping cannot drift between the two views.
                 </span>
               </li>
               <li className="flex gap-3">
@@ -205,33 +212,32 @@ export default function LogStorePost() {
               The shape that satisfied all four is a hot table in front of a
               cold one. Lines still land in <Mono>log_lines</Mono>, in the same
               batch transaction as before, so the first promise holds with no
-              extra work.
-              Between batches the single writer goroutine looks at each
-              container&apos;s hot count, and every time a container has 1,000
-              unsealed lines it packs the oldest 1,000 into one row of{" "}
+              extra work. Between batches the single writer goroutine looks at
+              each container&apos;s hot count, and every time a container has
+              1,000 unsealed lines it packs the oldest 1,000 into one row of{" "}
               <Mono>log_blocks</Mono> and deletes them from the hot table, in
               one transaction. After each batch a container holds fewer than a
               thousand unsealed lines, and everything older lives in blocks. A
               block is also full once it holds 8 MiB of text, so a container
               that prints very long lines cannot build one the decoder would
-              refuse to read back. A seal that fails leaves its lines hot and
-              is retried after the next batch.
+              refuse to read back. A seal that fails leaves its lines hot and is
+              retried after the next batch.
             </P>
             <FigPipeline />
             <P>
               Sealing runs on the writer goroutine rather than a background one,
               and that rule came from a bug. Retention used to run on its own
               goroutine as a deferred transaction: select the oldest rows, then
-              delete them. SQLite has one write lock, and a deferred
-              transaction only asks for it at its first write, so under a
-              firehose the janitor&apos;s delete lost the race to ingestion
-              every time and died with <Mono>SQLITE_BUSY</Mono>. The caps held
-              in tests, but in the stress run the file grew to 365 MB against a
-              5 MB cap. The fix routed eviction through the writer, which now
-              sweeps between batches, and opened every transaction with the
-              write lock up front. The same run then peaked at 13 MB. Sealing
-              follows the same rule and takes its turn on that goroutine,
-              between ingestion batches and retention sweeps.
+              delete them. SQLite has one write lock, and a deferred transaction
+              only asks for it at its first write, so under a firehose the
+              janitor&apos;s delete lost the race to ingestion every time and
+              died with <Mono>SQLITE_BUSY</Mono>. The caps held in tests, but in
+              the stress run the file grew to 365 MB against a 5 MB cap. The fix
+              routed eviction through the writer, which now sweeps between
+              batches, and opened every transaction with the write lock up
+              front. The same run then peaked at 13 MB. Sealing follows the same
+              rule and takes its turn on that goroutine, between ingestion
+              batches and retention sweeps.
             </P>
             <Code>{`CREATE TABLE log_blocks (
   container_ref INTEGER NOT NULL REFERENCES containers(id),
@@ -262,10 +268,10 @@ export default function LogStorePost() {
             <H2 id="block">Inside a block</H2>
             <P>
               The fields in a block are grouped into runs rather than stored
-              line by line. Compressors find repetition within a window,
-              and a run of a thousand near-identical values compresses far
-              better than the same values scattered between unrelated text.
-              The whole layout is one loop per field:
+              line by line. Compressors find repetition within a window, and a
+              run of a thousand near-identical values compresses far better than
+              the same values scattered between unrelated text. The whole layout
+              is one loop per field:
             </P>
             <Code>{`// block.go, pack(), trimmed
 buf = append(buf, blockFormatV1)
@@ -279,36 +285,36 @@ for _, b := range bodies { buf = binary.AppendUvarint(buf, uint64(len(b))) }
 for _, b := range bodies { buf = append(buf, b...) }
 payload := enc.EncodeAll(buf, nil)`}</Code>
             <P>
-              The timestamp run is where most of the gain is. Docker and Podman prefix
-              every line with an RFC 3339 timestamp at nanosecond precision, 30
-              bytes of mostly high-entropy digits. The store already holds the
-              parsed nanosecond value, so the block stores the delta from the
-              previous line as a varint. A gap under a millisecond is three
-              bytes, a few seconds is five, against 30 bytes of text either
-              way, and a run of small varints is nearly free after zstd. The
-              Postgres block below spans 201 hours of a mostly idle database,
-              so its gaps are uneven: 664 of the 1,000 deltas fit in two or
-              three bytes, and the 23 that need seven are the hours of quiet
-              between bursts. It still averages about three bytes per line.
+              The timestamp run is where most of the gain is. Docker and Podman
+              prefix every line with an RFC 3339 timestamp at nanosecond
+              precision, 30 bytes of mostly high-entropy digits. The store
+              already holds the parsed nanosecond value, so the block stores the
+              delta from the previous line as a varint. A gap under a
+              millisecond is three bytes, a few seconds is five, against 30
+              bytes of text either way, and a run of small varints is nearly
+              free after zstd. The Postgres block below spans 201 hours of a
+              mostly idle database, so its gaps are uneven: 664 of the 1,000
+              deltas fit in two or three bytes, and the 23 that need seven are
+              the hours of quiet between bursts. It still averages about three
+              bytes per line.
             </P>
             <FigBlockAnatomy />
             <P>
               The baseline is plain zstd over the same thousand lines joined
-              with newlines. The columnar layout beats it by 9% on Postgres,
-              25% on the mixed container set, and 1.5× on synthetic application
+              with newlines. The columnar layout beats it by 9% on Postgres, 25%
+              on the mixed container set, and 1.5× on synthetic application
               logs, where the bodies repeat and the timestamps were most of the
-              entropy. On nginx it barely does: access log lines repeat so
-              much that plain zstd already reaches 13.1×, the layout gains 2%
-              on top, and the dedup filter costs more than that, so the sealed
-              block lands at 12.5×. Part of that is the capture: 6,000
-              requests in four seconds gave every line an almost identical
-              Docker prefix, which is the best case for plain zstd. Re-timing
-              the same lines with realistic gaps of 100 ms to 10 s between
-              requests makes the prefixes cost plain zstd 7 to 9 bytes per line
-              instead of 5, the layout&apos;s edge grows to 4 to 7%, and the
-              sealed block ties plain zstd at about 11×. On nginx the ratio is
-              zstd&apos;s; the layout is worth its filter and no more. We
-              picked the block size
+              entropy. On nginx it barely does: access log lines repeat so much
+              that plain zstd already reaches 13.1×, the layout gains 2% on top,
+              and the dedup filter costs more than that, so the sealed block
+              lands at 12.5×. Part of that is the capture: 6,000 requests in
+              four seconds gave every line an almost identical Docker prefix,
+              which is the best case for plain zstd. Re-timing the same lines
+              with realistic gaps of 100 ms to 10 s between requests makes the
+              prefixes cost plain zstd 7 to 9 bytes per line instead of 5, the
+              layout&apos;s edge grows to 4 to 7%, and the sealed block ties
+              plain zstd at about 11×. On nginx the ratio is zstd&apos;s; the
+              layout is worth its filter and no more. We picked the block size
               by measuring too. 1,000 lines sits at the knee: 250 gives up about
               a fifth of the ratio, and 4,000 buys under a tenth more while
               quadrupling what a point read has to decompress.
@@ -317,7 +323,9 @@ payload := enc.EncodeAll(buf, nil)`}</Code>
               <table className="w-full min-w-[480px] text-sm">
                 <thead>
                   <tr className="text-left text-base-500">
-                    <th className="pb-3 font-medium">corpus, 1,000-line blocks</th>
+                    <th className="pb-3 font-medium">
+                      corpus, 1,000-line blocks
+                    </th>
                     <th className="pb-3 text-right font-medium">plain zstd</th>
                     <th className="pb-3 text-right font-medium">
                       sealed block, filter included
@@ -341,13 +349,13 @@ payload := enc.EncodeAll(buf, nil)`}</Code>
             </div>
             <P>
               zstd runs at its default level with a 1 MiB window, which is
-              enough to see an entire block. Both the encoder and decoder in
-              the Go library size their internal state by GOMAXPROCS by
-              default, which on a many-core host would reserve hundreds of
-              megabytes for a store whose whole point is a small VPS. The store
-              creates one encoder with concurrency 1, because only the writer
-              seals, and one decoder bounded to the size of the database
-              connection pool, since that already bounds concurrent readers.
+              enough to see an entire block. Both the encoder and decoder in the
+              Go library size their internal state by GOMAXPROCS by default,
+              which on a many-core host would reserve hundreds of megabytes for
+              a store whose whole point is a small VPS. The store creates one
+              encoder with concurrency 1, because only the writer seals, and one
+              decoder bounded to the size of the database connection pool, since
+              that already bounds concurrent readers.
             </P>
 
             <H2 id="timestamps">The one-in-ten timestamp</H2>
@@ -371,9 +379,9 @@ payload := enc.EncodeAll(buf, nil)`}</Code>
               on the original line, and only strips the prefix when the two
               match. A line that would not survive the round trip is stored
               whole, with a one-byte verbatim flag, so the worst an odd engine
-              prefix can cost is a few bytes of compression on that line.
-              The verbatim run is all zeros on every real Docker corpus so far,
-              and the test suite feeds it lines it knows will fail.
+              prefix can cost is a few bytes of compression on that line. The
+              verbatim run is all zeros on every real Docker corpus so far, and
+              the test suite feeds it lines it knows will fail.
             </P>
 
             <H2 id="dedup">Dedup without an index</H2>
@@ -381,18 +389,18 @@ payload := enc.EncodeAll(buf, nil)`}</Code>
               The insert path rejects a line when an identical one, same
               timestamp, same stream, same bytes, is already stored for that
               container. In the hot table that is an index seek on the B-tree
-              the insert is already touching. Once a line is inside a
-              compressed blob there is nothing to seek, and decompressing a
-              block to answer &quot;is this line in here?&quot; for every line of
-              a backfill re-read would turn a cheap overlap into a slow one.
+              the insert is already touching. Once a line is inside a compressed
+              blob there is nothing to seek, and decompressing a block to answer
+              &quot;is this line in here?&quot; for every line of a backfill
+              re-read would turn a cheap overlap into a slow one.
             </P>
             <P>
-              So each block carries a bloom filter over its line keys, built
-              at seal time and stored next to the payload. It is sized for a 2%
-              false-positive rate, which works out to about 8 bits per line
-              and six hash positions, roughly a kilobyte per block. A negative
-              is proof the line is absent. A positive costs one decompression
-              and an exact comparison, and the writer caches the last block it
+              So each block carries a bloom filter over its line keys, built at
+              seal time and stored next to the payload. It is sized for a 2%
+              false-positive rate, which works out to about 8 bits per line and
+              six hash positions, roughly a kilobyte per block. A negative is
+              proof the line is absent. A positive costs one decompression and
+              an exact comparison, and the writer caches the last block it
               unpacked, because a re-read walks forward through time and
               consecutive lines usually land in the same block.
             </P>
@@ -431,22 +439,21 @@ payload := enc.EncodeAll(buf, nil)`}</Code>
             <P>
               The caps are enforced against <Mono>stored_bytes</Mono>, one
               counter per container generation, and it now counts what the
-              generation occupies rather than its raw text. Sealing and
-              eviction move exactly the same number in opposite directions, so
-              repeated seal-and-evict cycles cannot drift the counter away
-              from the disk.
+              generation occupies rather than its raw text. Sealing and eviction
+              move exactly the same number in opposite directions, so repeated
+              seal-and-evict cycles cannot drift the counter away from the disk.
             </P>
             <FigRetention />
             <P>
               Eviction is oldest-first per logical container, every generation
               of a (host, name) pair, so a container rebuilt ten times cannot
-              hold ten times the cap. Deleting a block frees a thousand lines
-              in one row, so a sweep under a firehose touches a handful of rows
-              where it used to touch thousands. <Mono>logs.db</Mono> itself
-              does not shrink: SQLite reuses freed pages rather than returning
-              them, so the main file plateaus at its high-water mark, and only
-              the write-ahead log is truncated, by a checkpoint the writer
-              runs after a sweep that evicted something.
+              hold ten times the cap. Deleting a block frees a thousand lines in
+              one row, so a sweep under a firehose touches a handful of rows
+              where it used to touch thousands. <Mono>logs.db</Mono> itself does
+              not shrink: SQLite reuses freed pages rather than returning them,
+              so the main file plateaus at its high-water mark, and only the
+              write-ahead log is truncated, by a checkpoint the writer runs
+              after a sweep that evicted something.
             </P>
 
             <H2 id="results">What it measures at</H2>
@@ -454,22 +461,24 @@ payload := enc.EncodeAll(buf, nil)`}</Code>
               The store ships with a stress harness that drives the real
               ingestion path, batching, dedup, sealing, and retention, and
               reports what survived. The retention-churn scenario is the one to
-              look at: tiny caps and a high rate, so the janitor is evicting
-              the whole time. Both columns below are the same command, run
-              before and after the change:
+              look at: tiny caps and a high rate, so the janitor is evicting the
+              whole time. Both columns below are the same command, run before
+              and after the change:
             </P>
             <Code>{`go run ./cmd/logstore-stress -scenario retention-churn -duration 60s`}</Code>
-            <P>
-              Every number in the table is what that command prints.
-            </P>
+            <P>Every number in the table is what that command prints.</P>
             <FigResults />
             <div className="not-prose my-8 overflow-x-auto rounded-xl bg-sand-100 p-4 sm:p-6">
               <table className="w-full min-w-[420px] text-sm">
                 <thead>
                   <tr className="text-left text-base-500">
                     <th className="pb-3 font-medium">retention-churn, 60 s</th>
-                    <th className="pb-3 text-right font-medium">row per line</th>
-                    <th className="pb-3 text-right font-medium">sealed blocks</th>
+                    <th className="pb-3 text-right font-medium">
+                      row per line
+                    </th>
+                    <th className="pb-3 text-right font-medium">
+                      sealed blocks
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="text-base-900">
@@ -495,17 +504,17 @@ payload := enc.EncodeAll(buf, nil)`}</Code>
             <P>
               The throughput ceiling did not move. It comes from the single
               writer and SQLite&apos;s write lock, which compression does not
-              change. The price is a heap peak that roughly doubles, from 7.9
-              MB to 15.3 MB: the zstd encoder and decoder state plus one
-              unpacked block at a time. The synthetic corpus is also the least favourable case
-              for the format, because its lines are short and the dedup filter
-              is a large share of each block. The corpora in the table above
-              sit between 7.5× and 22.7× against their raw text, and since the
-              old layout cost 1.28× raw text, that is 9.6× more history per
+              change. The price is a heap peak that roughly doubles, from 7.9 MB
+              to 15.3 MB: the zstd encoder and decoder state plus one unpacked
+              block at a time. The synthetic corpus is also the least favourable
+              case for the format, because its lines are short and the dedup
+              filter is a large share of each block. The corpora in the table
+              above sit between 7.5× and 22.7× against their raw text, and since
+              the old layout cost 1.28× raw text, that is 9.6× more history per
               byte of cap on Postgres, 16× on nginx as captured and about 14×
               with realistic request timing, and up to 29× on synthetic
-              application logs. Postgres and nginx are the two fully real
-              Docker corpora, and the title uses the lower of the two.
+              application logs. Postgres and nginx are the two fully real Docker
+              corpora, and the title uses the lower of the two.
             </P>
             <P>
               Search over the full history got faster as a side effect. When the
@@ -549,47 +558,46 @@ payload := enc.EncodeAll(buf, nil)`}</Code>
               None of this is new at scale. Loki keeps each log stream as a
               series of compressed chunks with a small label index in front of
               them, and answers a query by picking chunks by label and time and
-              decompressing only those. Columnar formats like Parquet store
-              each field as its own run and can delta-encode a timestamp column
-              for the same reason this block does. What is different here is
-              the scale and the host: one process, one SQLite file, no object
-              store, no index service, on a machine that is also running the
-              containers being logged. The block is a Loki chunk small enough
-              to be a row.
+              decompressing only those. Columnar formats like Parquet store each
+              field as its own run and can delta-encode a timestamp column for
+              the same reason this block does. What is different here is the
+              scale and the host: one process, one SQLite file, no object store,
+              no index service, on a machine that is also running the containers
+              being logged. The block is a Loki chunk small enough to be a row.
             </P>
             <P>
-              That difference sets the limits. LogDeck is a container tool,
-              and this store exists so that History mode has something to show
-              for a container that restarted an hour ago, on any host LogDeck
-              watches. It keeps what fits under the caps and no more. Search is
-              a full scan of decompressed blocks, so a search across a 1 GB
-              store reads all of it, and there is no inverted index. It lives
-              on the LogDeck host&apos;s disk, with no replication. The engine
-              keeps writing its own log files exactly as before; nothing here
-              changes where your logs go, it only keeps a bounded copy you can
-              scroll back through after the container is gone.
+              That difference sets the limits. LogDeck is a container tool, and
+              this store exists so that History mode has something to show for a
+              container that restarted an hour ago, on any host LogDeck watches.
+              It keeps what fits under the caps and no more. Search is a full
+              scan of decompressed blocks, so a search across a 1 GB store reads
+              all of it, and there is no inverted index. It lives on the LogDeck
+              host&apos;s disk, with no replication. The engine keeps writing
+              its own log files exactly as before; nothing here changes where
+              your logs go, it only keeps a bounded copy you can scroll back
+              through after the container is gone.
             </P>
 
             <H2 id="not-done">What we did not do</H2>
             <P>
-              There is no custom file format. SQLite page compression exists
-              as extensions, but they need cgo, and a separate segment file
-              would need its own crash safety and its own backup story. Blocks
-              are rows in the same database, covered by the same WAL and the
-              same backups, and an existing database upgrades in place: old
-              rows seal as the writer gets to them, in the first batches after
-              the upgrade. We also skipped an index over block contents; the
-              summary columns plus the filter answer every question the store
-              asks. A shared zstd dictionary is still missing, even though one
-              trained per container would likely help the short-line corpora
-              most. It is the obvious next step, and it can be added as a new
-              block format byte without touching anything written so far.
+              There is no custom file format. SQLite page compression exists as
+              extensions, but they need cgo, and a separate segment file would
+              need its own crash safety and its own backup story. Blocks are
+              rows in the same database, covered by the same WAL and the same
+              backups, and an existing database upgrades in place: old rows seal
+              as the writer gets to them, in the first batches after the
+              upgrade. We also skipped an index over block contents; the summary
+              columns plus the filter answer every question the store asks. A
+              shared zstd dictionary is still missing, even though one trained
+              per container would likely help the short-line corpora most. It is
+              the obvious next step, and it can be added as a new block format
+              byte without touching anything written so far.
             </P>
             <P>
-              The proportions in the intro held up. The block codec is one
-              file. The sequence number, the verbatim flag, the bloom filter,
-              and the two-source eviction are the rest, and each exists because
-              a promise the store had already made would otherwise have broken
+              The proportions in the intro held up. The block codec is one file.
+              The sequence number, the verbatim flag, the bloom filter, and the
+              two-source eviction are the rest, and each exists because a
+              promise the store had already made would otherwise have broken
               without anyone noticing. The store lives in{" "}
               <Mono>server/internal/logstore</Mono>. The{" "}
               <Link

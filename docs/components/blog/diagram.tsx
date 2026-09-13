@@ -135,7 +135,9 @@ export function Box({
         height={h}
         className={c.outer}
         strokeWidth="1.2"
-        strokeDasharray={tone === "ghost" || tone === "outline" ? "4 3" : undefined}
+        strokeDasharray={
+          tone === "ghost" || tone === "outline" ? "4 3" : undefined
+        }
       />
       {inset && tone !== "ghost" && tone !== "outline" && (
         <rect
@@ -191,7 +193,11 @@ export function Wire({
       className={`fill-none ${tone === "accent" ? "stroke-accent-500" : "stroke-base-400"}`}
       strokeWidth="1.2"
       strokeDasharray="4 4"
-      markerEnd={arrow ? `url(#${tone === "accent" ? "chev-accent" : "chev"})` : undefined}
+      markerEnd={
+        arrow
+          ? `url(#${tone === "accent" ? "chev-accent" : "chev"})`
+          : undefined
+      }
     />
   );
 }
