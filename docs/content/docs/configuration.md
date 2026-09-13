@@ -33,14 +33,16 @@ Optional. A comma-separated list of hosts to manage. Each entry uses `name=host`
 # Local only
 DOCKER_HOSTS=local=unix:///var/run/docker.sock
 
-# Mix of local and remote TCP
-DOCKER_HOSTS=local=unix:///var/run/docker.sock,staging=tcp://192.168.1.100:2375
-
 # SSH connection (mount your SSH keys or forward agent)
 DOCKER_HOSTS=local=unix:///var/run/docker.sock,prod=ssh://deploy@prod.example.com
+
+# Plain TCP: unencrypted, trusted private networks only
+DOCKER_HOSTS=local=unix:///var/run/docker.sock,staging=tcp://192.168.1.100:2375
 ```
 
 Host names appear in the UI and the container list, so you always know which daemon you are working with. Hosts defined here can't be edited or removed from the Settings page, and hosts added in Settings are merged with them. For `ssh://` targets, mount your SSH keys or forward an SSH agent into the container.
+
+> **Plain `tcp://` is unencrypted and has no authentication.** Anyone who can reach a Docker daemon on port 2375 controls that host. Use `ssh://` for remote hosts where you can. If you need TCP, expose the daemon with TLS (usually port 2376) and give LogDeck the client certificates through Docker's standard `DOCKER_TLS_VERIFY=1` and `DOCKER_CERT_PATH` variables. They apply to every `tcp://` host.
 
 When `DOCKER_HOSTS` is unset, LogDeck probes for a local socket in this order: Docker (`/var/run/docker.sock`), rootless Podman (`$XDG_RUNTIME_DIR/podman/podman.sock`), then rootful Podman (`/run/podman/podman.sock`). Podman works through its Docker-compatible API socket.
 

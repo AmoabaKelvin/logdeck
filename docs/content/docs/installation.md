@@ -60,6 +60,8 @@ docker compose ps
 
 Open [http://localhost:8123](http://localhost:8123) in your browser.
 
+> **LogDeck starts without a login.** Anyone who can reach port 8123 can control your containers through the Docker socket. Before other machines can reach it, turn on authentication in Settings or with the [environment variables](#with-authentication), or publish the port on this machine only with `"127.0.0.1:8123:8080"`.
+
 ## Docker run
 
 To run LogDeck without Compose, use `docker run`.

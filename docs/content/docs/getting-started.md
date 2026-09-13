@@ -56,6 +56,8 @@ Then open [http://localhost:8123](http://localhost:8123) in your browser.
 
 > **Keep the `logdeck-data` volume.** It is where LogDeck keeps its config file, its stored log history, and its alert history. Leave it out and all three are lost the next time the container is recreated.
 
+> **LogDeck starts without a login.** Anyone who can reach port 8123 can control your containers through the Docker socket. Before other machines can reach it, turn on authentication in Settings, or publish the port on this machine only with `"127.0.0.1:8123:8080"`.
+
 ## Next steps
 
 - [Installation](/docs/installation): Docker Compose and `docker run` setups, more hosts, updating, and troubleshooting
