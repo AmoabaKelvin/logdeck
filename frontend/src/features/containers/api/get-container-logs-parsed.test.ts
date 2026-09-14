@@ -44,16 +44,32 @@ describe("groupRelatedLogEntries", () => {
 
 	it("never folds across containers on an aggregate stream", () => {
 		const grouped = groupRelatedLogEntries<LogEntry>([
-			{ timestamp: t, level: "ERROR", message: "boom", containerName: "api" },
+			{
+				timestamp: t,
+				level: "ERROR",
+				message: "boom",
+				containerId: "a1",
+				containerName: "api",
+			},
 			{
 				timestamp: t,
 				level: "UNKNOWN",
 				message: "at x",
 				continuation: true,
+				containerId: "b2",
+				containerName: "worker",
+			},
+			// Same name on another host is still a different container.
+			{
+				timestamp: t,
+				level: "UNKNOWN",
+				message: "at y",
+				continuation: true,
+				containerId: "c3",
 				containerName: "worker",
 			},
 		]);
 
-		expect(grouped).toHaveLength(2);
+		expect(grouped).toHaveLength(3);
 	});
 });
