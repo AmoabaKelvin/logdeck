@@ -233,9 +233,10 @@ export function groupRelatedLogEntries<TLogEntry extends LogEntry>(
 
 function isContinuationLogEntry(entry: LogEntry, previous: LogEntry): boolean {
 	// Aggregate streams interleave containers; never fold a line into another
-	// container's entry.
+	// container's entry. Names alone can collide across hosts.
 	return (
 		entry.continuation === true &&
+		entry.containerId === previous.containerId &&
 		entry.containerName === previous.containerName
 	);
 }
