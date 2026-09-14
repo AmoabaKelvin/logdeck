@@ -120,6 +120,7 @@ func TestStreamingLogWriterLineBufferCap(t *testing.T) {
 				encoderMu:  &mu,
 				pipeWriter: pipeWriter,
 				wroteEntry: new(atomic.Bool),
+				head:       &streamHead{},
 			}
 			for _, chunk := range tt.writes {
 				if _, err := w.Write([]byte(chunk)); err != nil {
@@ -232,5 +233,34 @@ func TestFollowMonitorHeartbeatsOnlyWhenIdleAndStopsAfterClose(t *testing.T) {
 	}
 	if consumed == 2 {
 		t.Fatal("follow monitor kept running after the stream ended")
+	}
+}
+
+func TestParsedLogStreamFlagsContinuationsAndKeepsFilteredTraceBodies(t *testing.T) {
+	var raw bytes.Buffer
+	stderr := stdcopy.NewStdWriter(&raw, stdcopy.Stderr)
+	stdout := stdcopy.NewStdWriter(&raw, stdcopy.Stdout)
+	_, _ = stderr.Write([]byte("2026-09-14T13:51:09.817Z ERROR Request failed\n2026-09-14T13:51:09.817Z \tat com.example.Main.run(Main.java:42)\n"))
+	_, _ = stdout.Write([]byte("2026-09-14T13:51:09.818Z INFO next request\n2026-09-14T13:51:09.818Z \tindented under a dropped head\n"))
+
+	stream := newParsedLogStream(context.Background(), io.NopCloser(&raw), models.LogOptions{Level: "ERROR"}, nil, nil)
+	var entries []models.LogEntry
+	decoder := json.NewDecoder(stream)
+	for {
+		var entry models.LogEntry
+		if err := decoder.Decode(&entry); err != nil {
+			break
+		}
+		entries = append(entries, entry)
+	}
+
+	if len(entries) != 2 {
+		t.Fatalf("expected the ERROR line and its frame only, got %d: %#v", len(entries), entries)
+	}
+	if entries[0].Continuation || entries[0].Level != models.LogLevelError {
+		t.Fatalf("expected an unflagged ERROR head, got %#v", entries[0])
+	}
+	if !entries[1].Continuation || entries[1].Message != "at com.example.Main.run(Main.java:42)" {
+		t.Fatalf("expected the frame flagged as a continuation of the kept head, got %#v", entries[1])
 	}
 }

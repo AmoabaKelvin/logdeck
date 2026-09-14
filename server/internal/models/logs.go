@@ -17,6 +17,9 @@ type LogEntry struct {
 	Raw               string            `json:"raw"`    // Original log line
 	Fields            map[string]string `json:"fields,omitempty"`
 	ContinuationCount int               `json:"continuationCount,omitempty"`
+	// Set on live streams, which are emitted line by line: the line folds
+	// into the entry emitted just before it. Grouped responses never set it.
+	Continuation bool `json:"continuation,omitempty"`
 	// Set only on aggregated multi-container streams; omitempty keeps the
 	// single-container payload unchanged.
 	ContainerID   string `json:"containerId,omitempty"`
@@ -43,7 +46,7 @@ var LogLevelRegexes = map[LogLevel]*regexp.Regexp{
 	LogLevelDebug: regexp.MustCompile(`(?i)\b(debug|dbg)\b`),
 	LogLevelInfo:  regexp.MustCompile(`(?i)\b(info|inf|notice|log)\b`),
 	LogLevelWarn:  regexp.MustCompile(`(?i)\b(warn|warning|wrn)\b`),
-	LogLevelError: regexp.MustCompile(`(?i)\b(error|err|fail|failed|exception)\b`),
+	LogLevelError: regexp.MustCompile(`(?i)\b(error|err|fail|failed|exception|traceback)\b`),
 	LogLevelFatal: regexp.MustCompile(`(?i)\b(fatal|critical|crit)\b`),
 	LogLevelPanic: regexp.MustCompile(`(?i)\b(panic|emergency)\b`),
 }
@@ -77,6 +80,19 @@ const (
 var tzOffsetNoColon = regexp.MustCompile(`([+-]\d{2})(\d{2})$`)
 var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 var structuredFieldRegex = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_.-]*)\s*[:=]\s*(.+)$`)
+
+// Continuation heuristics: a raw line indented after the engine timestamp
+// (Raw is "<RFC3339Nano> <line>" because logs are always requested with
+// timestamps; without one, the line itself starts the raw), a message the app
+// stamped itself ("2026-09-14 12:53:29.888 | WARN", "[2026-09-14 12:53:30]
+// INFO"), and a Go stack frame ("main.main()").
+var indentedRawRegex = regexp.MustCompile(`^(?:\d{4}-\d{2}-\d{2}T\S+ )?[ \t]`)
+var appStampedRegex = regexp.MustCompile(`^\W{0,2}\d{4}[-/]\d{2}[-/]\d{2}[T ]\d{2}:\d{2}:\d{2}`)
+var goFrameRegex = regexp.MustCompile(`^\S+\(.*\)$`)
+
+// How far an unstamped spill-over line may trail a stamped entry and still fold into it.
+const continuationWindow = 2 * time.Second
+
 var otelSeverityNumberRegex = regexp.MustCompile(`(?i)(?:^|[\s,{([])severity_?number\s*[:=]\s*"?([0-9]{1,3})"?`)
 var keyedLevelRegex = regexp.MustCompile(`(?i)(?:^|[\s,{([])(?:level|lvl|level_?name|severity|severity_?text|log[._-]?level)\s*[:=]\s*"?([A-Za-z]+|[0-9]{1,3})"?`)
 var prefixedLevelRegex = regexp.MustCompile(`(?i)^(?:\[|\(|<)?(trace|trc|debug|dbg|dbug|verbose|info|inf|information|notice|warn|warning|wrn|error|err|fatal|critical|crit|panic|emergency|emerg)(?:\]|\)|>|:|\s+-|\s+--|\s+)`)
@@ -299,6 +315,12 @@ func ParseTimestamp(logLine string) (time.Time, string) {
 
 // CleanMessage removes common log formatting artifacts
 func CleanMessage(message string) string {
+	// A terminal shows only what follows the last carriage return; progress
+	// bars (tqdm, pip, npm) rewrite their line that way.
+	message = strings.TrimRight(message, "\r")
+	if i := strings.LastIndexByte(message, '\r'); i >= 0 {
+		message = message[i+1:]
+	}
 	return strings.TrimSpace(ansiRegex.ReplaceAllString(message, ""))
 }
 
@@ -335,13 +357,33 @@ func GroupRelatedLogEntries(entries []LogEntry) []LogEntry {
 	return grouped
 }
 
+// IsContinuationLogEntry reports whether entry is a physical line of the same
+// logical event as previous. The rules run in this order, and the order is
+// load-bearing:
+//
+//  1. Blank or indented lines (stack frames, YAML/JSON dumps) always fold,
+//     whatever level keywords they contain.
+//  2. After a WARN+ entry, stack-shaped lines fold regardless of their own
+//     level: "Caused by: ... failed" classifies as ERROR and must still fold.
+//  3. Everything below applies to UNKNOWN lines only, so "ERROR: x" never
+//     folds into the entry before it.
+//  4. A "key: value" line folds (structured fields printed one per line).
+//  5. An unstamped line right behind an app-stamped one is spill-over from
+//     that event (progress bar, access log, bare print).
 func IsContinuationLogEntry(entry LogEntry, previous LogEntry) bool {
-	if entry.Level != LogLevelUnknown {
+	message := strings.TrimSpace(entry.Message)
+	if message == "" || indentedRawRegex.MatchString(entry.Raw) {
+		return true
+	}
+	if strings.TrimSpace(previous.Message) == "" {
 		return false
 	}
 
-	message := strings.TrimSpace(entry.Message)
-	if message == "" || strings.TrimSpace(previous.Message) == "" {
+	if isProblemLevel(previous.Level) && (isStackTraceContinuation(message) || goFrameRegex.MatchString(message)) {
+		return true
+	}
+
+	if entry.Level != LogLevelUnknown {
 		return false
 	}
 
@@ -349,7 +391,10 @@ func IsContinuationLogEntry(entry LogEntry, previous LogEntry) bool {
 		return true
 	}
 
-	return isStackTraceContinuation(message) && isProblemLevel(previous.Level)
+	return appStampedRegex.MatchString(previous.Message) &&
+		!appStampedRegex.MatchString(message) &&
+		!entry.Timestamp.IsZero() && !previous.Timestamp.IsZero() &&
+		entry.Timestamp.Sub(previous.Timestamp) <= continuationWindow
 }
 
 func appendContinuationLine(entry *LogEntry, continuation LogEntry) {
@@ -406,6 +451,7 @@ func isStackTraceContinuation(message string) bool {
 		"Caused by:",
 		"... ",
 		"goroutine ",
+		"created by ",
 	}
 
 	for _, prefix := range stackPrefixes {
