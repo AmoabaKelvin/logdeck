@@ -112,6 +112,17 @@ func (w *logWriter) Flush() {
 	w.buffer = nil
 }
 
+// streamHead is the entry that opened the current logical event on a follow
+// stream. Grouping happens client-side because lines are emitted as they
+// arrive, so each line is flagged as a continuation of the head or becomes the
+// new head. The level/search filter decides on the head; its continuation
+// lines follow it, which keeps a filtered stack trace whole.
+type streamHead struct {
+	entry models.LogEntry
+	ok    bool // an entry has been seen
+	kept  bool // the head passed the filter
+}
+
 type streamingLogWriter struct {
 	stream      string
 	buffer      []byte
@@ -121,6 +132,7 @@ type streamingLogWriter struct {
 	levelFilter string
 	searchRegex *regexp.Regexp
 	wroteEntry  *atomic.Bool // set on each encoded entry; monitor clears it per tick
+	head        *streamHead  // shared by the stdout and stderr writers of one stream
 }
 
 func (w *streamingLogWriter) Write(p []byte) (n int, err error) {
@@ -165,14 +177,27 @@ func (w *streamingLogWriter) Flush() {
 	w.buffer = nil
 }
 
+func (w *streamingLogWriter) passes(entry models.LogEntry) bool {
+	if w.levelFilter != "" && !strings.EqualFold(string(entry.Level), w.levelFilter) {
+		return false
+	}
+	return w.searchRegex == nil || w.searchRegex.MatchString(entry.Message) || w.searchRegex.MatchString(entry.Raw)
+}
+
 func (w *streamingLogWriter) emit(line string) error {
 	entry := models.ParseLogLine(line, w.stream)
 
-	if w.levelFilter != "" && !strings.EqualFold(string(entry.Level), w.levelFilter) {
-		return nil
+	var keep bool
+	if w.head.ok && models.IsContinuationLogEntry(entry, w.head.entry) {
+		// A continuation whose head was filtered out stands on its own if it
+		// passes by itself, exactly as it would have before it was recognised.
+		entry.Continuation = w.head.kept
+		keep = w.head.kept || w.passes(entry)
+	} else {
+		*w.head = streamHead{entry: entry, ok: true, kept: w.passes(entry)}
+		keep = w.head.kept
 	}
-
-	if w.searchRegex != nil && !w.searchRegex.MatchString(entry.Message) && !w.searchRegex.MatchString(entry.Raw) {
+	if !keep {
 		return nil
 	}
 
@@ -259,6 +284,7 @@ func newParsedLogStream(ctx context.Context, logs io.ReadCloser, options models.
 	encoder := json.NewEncoder(pipeWriter)
 	var mu sync.Mutex
 	var wroteEntry atomic.Bool
+	head := &streamHead{}
 
 	stdout := &streamingLogWriter{
 		stream:      "stdout",
@@ -268,6 +294,7 @@ func newParsedLogStream(ctx context.Context, logs io.ReadCloser, options models.
 		levelFilter: options.Level,
 		searchRegex: searchRegex,
 		wroteEntry:  &wroteEntry,
+		head:        head,
 	}
 	stderr := &streamingLogWriter{
 		stream:      "stderr",
@@ -277,6 +304,7 @@ func newParsedLogStream(ctx context.Context, logs io.ReadCloser, options models.
 		levelFilter: options.Level,
 		searchRegex: searchRegex,
 		wroteEntry:  &wroteEntry,
+		head:        head,
 	}
 
 	done := make(chan struct{})
