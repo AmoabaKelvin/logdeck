@@ -179,24 +179,14 @@ func (m *Manager) EnvCoolifyHostNames() map[string]bool {
 
 var ErrStaleRevision = errors.New("hosts changed since they were read; fetch settings again and retry")
 
-// revision is a content hash of a host list. Clients echo it back on writes
-// so a concurrent edit is rejected instead of silently overwritten.
-func revision(v any) string {
-	b, _ := json.Marshal(v)
+// HostsRevision is a content hash of a merged host list. Clients echo it back
+// on writes so a concurrent edit is rejected instead of silently overwritten.
+// Hashing the merged list lets the settings handler derive it from the same
+// Config it serves, so the list and revision in one response always agree.
+func HostsRevision[T any](hosts []T) string {
+	b, _ := json.Marshal(hosts)
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:8])
-}
-
-func (m *Manager) DockerHostsRevision() string {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return revision(m.fileConfig.DockerHosts)
-}
-
-func (m *Manager) CoolifyHostsRevision() string {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return revision(m.fileConfig.CoolifyHosts)
 }
 
 // UpdateDockerHosts updates the file-defined Docker hosts.
@@ -205,7 +195,7 @@ func (m *Manager) CoolifyHostsRevision() string {
 func (m *Manager) UpdateDockerHosts(hosts []DockerHost, ifRevision string) error {
 	m.mu.Lock()
 
-	if ifRevision != "" && ifRevision != revision(m.fileConfig.DockerHosts) {
+	if ifRevision != "" && ifRevision != HostsRevision(m.merged.DockerHosts) {
 		m.mu.Unlock()
 		return ErrStaleRevision
 	}
@@ -239,7 +229,7 @@ func (m *Manager) UpdateDockerHosts(hosts []DockerHost, ifRevision string) error
 func (m *Manager) UpdateCoolifyHosts(hosts []CoolifyHostConfig, ifRevision string) error {
 	m.mu.Lock()
 
-	if ifRevision != "" && ifRevision != revision(m.fileConfig.CoolifyHosts) {
+	if ifRevision != "" && ifRevision != HostsRevision(m.merged.CoolifyHosts) {
 		m.mu.Unlock()
 		return ErrStaleRevision
 	}

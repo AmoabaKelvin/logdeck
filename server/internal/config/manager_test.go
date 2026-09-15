@@ -145,7 +145,7 @@ func TestUpdateDockerHostsPersistsAndRemerges(t *testing.T) {
 
 func TestUpdateDockerHostsRejectsStaleRevision(t *testing.T) {
 	m := newManagerWithFile(t, FileConfig{})
-	rev := m.DockerHostsRevision()
+	rev := HostsRevision(m.Config().DockerHosts)
 
 	if err := m.UpdateDockerHosts([]DockerHost{{Name: "a", Host: "tcp://a:2375"}}, rev); err != nil {
 		t.Fatalf("first update: %v", err)
@@ -160,8 +160,39 @@ func TestUpdateDockerHostsRejectsStaleRevision(t *testing.T) {
 		t.Fatalf("stale write must not apply, got %+v", got)
 	}
 
-	if err := m.UpdateDockerHosts([]DockerHost{{Name: "b", Host: "tcp://b:2375"}}, m.DockerHostsRevision()); err != nil {
+	if err := m.UpdateDockerHosts([]DockerHost{{Name: "b", Host: "tcp://b:2375"}}, HostsRevision(m.Config().DockerHosts)); err != nil {
 		t.Fatalf("retry with fresh revision: %v", err)
+	}
+}
+
+func TestUpdateCoolifyHostsRejectsStaleRevision(t *testing.T) {
+	m := newManagerWithFile(t, FileConfig{})
+	rev := HostsRevision(m.Config().CoolifyHosts)
+
+	if err := m.UpdateCoolifyHosts([]CoolifyHostConfig{{HostName: "a", APIURL: "https://a", APIToken: "t"}}, rev); err != nil {
+		t.Fatalf("first update: %v", err)
+	}
+
+	err := m.UpdateCoolifyHosts([]CoolifyHostConfig{{HostName: "b", APIURL: "https://b", APIToken: "t"}}, rev)
+	if !errors.Is(err, ErrStaleRevision) {
+		t.Fatalf("expected ErrStaleRevision, got %v", err)
+	}
+	if got := m.Config().CoolifyHosts; len(got) != 1 || got[0].HostName != "a" {
+		t.Fatalf("stale write must not apply, got %+v", got)
+	}
+}
+
+// The revision must be identical before and after a restart, or every client
+// holding one from the previous process would be rejected once.
+func TestHostsRevisionSurvivesReload(t *testing.T) {
+	m := newManagerWithFile(t, FileConfig{})
+	if err := m.UpdateDockerHosts([]DockerHost{}, ""); err != nil {
+		t.Fatalf("UpdateDockerHosts: %v", err)
+	}
+	before := HostsRevision(m.Config().DockerHosts)
+	after := HostsRevision(NewManager().Config().DockerHosts)
+	if before != after {
+		t.Fatalf("revision changed across reload: %s != %s", before, after)
 	}
 }
 

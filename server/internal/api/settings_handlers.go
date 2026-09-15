@@ -78,7 +78,7 @@ func (ar *APIRouter) GetSettings(w http.ResponseWriter, r *http.Request) {
 		"dockerHosts": map[string]any{
 			"source":   sources.DockerHosts,
 			"hosts":    dockerHosts,
-			"revision": ar.manager.DockerHostsRevision(),
+			"revision": config.HostsRevision(cfg.DockerHosts),
 		},
 		"logStore": map[string]any{
 			"enabled":              logStore.Enabled,
@@ -91,7 +91,7 @@ func (ar *APIRouter) GetSettings(w http.ResponseWriter, r *http.Request) {
 		"coolifyHosts": map[string]any{
 			"source":   sources.CoolifyHosts,
 			"hosts":    coolifyHosts,
-			"revision": ar.manager.CoolifyHostsRevision(),
+			"revision": config.HostsRevision(cfg.CoolifyHosts),
 		},
 		"readOnly": map[string]any{
 			"source": sources.ReadOnly,
