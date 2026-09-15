@@ -110,12 +110,43 @@ var levelCheckOrder = []LogLevel{
 	LogLevelTrace,
 }
 
+// levelKeywords are the lowercase substrings the keyword regexes (prefixed and
+// LogLevelRegexes) need; levelKeyNames the ones the keyed and otel regexes
+// need. A message containing none of a group's substrings cannot match that
+// group, so its regexes are skipped: a few strings.Contains on one lowered
+// copy instead of a dozen backtracking (?i)\b regexes, which was most of the
+// per-line CPU. Shorter entries cover their longer forms (inf covers info and
+// information, err covers error, crit covers critical, emerg covers emergency).
+// ponytail: strings.ToLower is not regexp's simple case folding; the one
+// divergence is the long s (U+017F), which (?i) treats as "s" and this does not,
+// so "verboſe" would be skipped. Switch to a folding search if that ever matters.
+var levelKeywords = []string{
+	"trace", "trc", "debug", "dbg", "dbug", "verbose", "inf", "notice", "log",
+	"warn", "wrn", "err", "fail", "exception", "fatal", "crit", "panic", "emerg",
+}
+
+var levelKeyNames = []string{"level", "lvl", "severity"}
+
+func containsAny(s string, subs []string) bool {
+	for _, sub := range subs {
+		if strings.Contains(s, sub) {
+			return true
+		}
+	}
+	return false
+}
+
 // DetectLogLevel analyzes a log message to determine its severity level
 func DetectLogLevel(message string) LogLevel {
-	if level, ok := ExtractExplicitLogLevel(message); ok {
+	message = strings.TrimSpace(message)
+	lower := strings.ToLower(message)
+	if level, ok := extractExplicitLogLevel(message, lower); ok {
 		return level
 	}
 
+	if !containsAny(lower, levelKeywords) {
+		return LogLevelUnknown
+	}
 	for _, level := range levelCheckOrder {
 		if LogLevelRegexes[level].MatchString(message) {
 			return level
@@ -127,6 +158,12 @@ func DetectLogLevel(message string) LogLevel {
 
 func ExtractExplicitLogLevel(message string) (LogLevel, bool) {
 	message = strings.TrimSpace(message)
+	return extractExplicitLogLevel(message, strings.ToLower(message))
+}
+
+// extractExplicitLogLevel takes the trimmed message and its lowercase copy, so
+// DetectLogLevel lowers once for both the explicit and the keyword pass.
+func extractExplicitLogLevel(message, lower string) (LogLevel, bool) {
 	if message == "" {
 		return LogLevelUnknown, false
 	}
@@ -135,21 +172,25 @@ func ExtractExplicitLogLevel(message string) (LogLevel, bool) {
 		return level, true
 	}
 
-	if matches := otelSeverityNumberRegex.FindStringSubmatch(message); len(matches) == 2 {
-		if level, ok := normalizeOtelSeverityNumber(matches[1]); ok {
-			return level, true
+	if containsAny(lower, levelKeyNames) {
+		if matches := otelSeverityNumberRegex.FindStringSubmatch(message); len(matches) == 2 {
+			if level, ok := normalizeOtelSeverityNumber(matches[1]); ok {
+				return level, true
+			}
+		}
+
+		if matches := keyedLevelRegex.FindStringSubmatch(message); len(matches) == 2 {
+			if level, ok := normalizeLogLevel(matches[1]); ok {
+				return level, true
+			}
 		}
 	}
 
-	if matches := keyedLevelRegex.FindStringSubmatch(message); len(matches) == 2 {
-		if level, ok := normalizeLogLevel(matches[1]); ok {
-			return level, true
-		}
-	}
-
-	if matches := prefixedLevelRegex.FindStringSubmatch(message); len(matches) == 2 {
-		if level, ok := normalizeLogLevel(matches[1]); ok {
-			return level, true
+	if containsAny(lower, levelKeywords) {
+		if matches := prefixedLevelRegex.FindStringSubmatch(message); len(matches) == 2 {
+			if level, ok := normalizeLogLevel(matches[1]); ok {
+				return level, true
+			}
 		}
 	}
 

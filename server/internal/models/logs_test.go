@@ -289,9 +289,18 @@ func TestParseTimestampFastPathMatchesScan(t *testing.T) {
 }
 
 func BenchmarkParseLogLine(b *testing.B) {
-	line := "2026-09-15T12:55:38.123456789Z 10.0.0.1 - - [15/Sep/2026:12:55:38 +0000] \"GET /api/v1/containers HTTP/1.1\" 200 512"
-	b.ReportAllocs()
-	for range b.N {
-		ParseLogLine(line, "stdout")
+	lines := map[string]string{
+		"access":  "2026-09-15T12:55:38.123456789Z 10.0.0.1 - - [15/Sep/2026:12:55:38 +0000] \"GET /api/v1/containers HTTP/1.1\" 200 512",
+		"keyword": "2026-09-15T12:55:38.123456789Z Connection to upstream failed, retrying in 5s",
+		"keyed":   "2026-09-15T12:55:38.123456789Z time=2026-09-15T12:55:38Z level=info msg=\"listening on :8080\"",
+		"json":    "2026-09-15T12:55:38.123456789Z {\"level\":\"warn\",\"msg\":\"slow query\",\"ms\":812}",
+	}
+	for name, line := range lines {
+		b.Run(name, func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				ParseLogLine(line, "stdout")
+			}
+		})
 	}
 }
