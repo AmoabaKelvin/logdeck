@@ -297,6 +297,19 @@ func ParseTimestamp(logLine string) (time.Time, string) {
 	const maxPrefix = 96
 	searchLimit := min(len(line), maxPrefix)
 
+	// Fast path: the engine (logs are always requested with timestamps) and most
+	// loggers put the stamp first, so the leading token nearly always is it. A
+	// token that parses on its own is a complete space-free layout, and no
+	// layout begins with one of those, so it is also the longest parseable
+	// prefix: the scan below would return the same thing after failing
+	// time.Parse a hundred times, and each failure allocates a ParseError, which
+	// made this the process's dominant allocation.
+	if space := strings.IndexByte(line, ' '); space > 0 && space <= searchLimit {
+		if ts, ok := tryParseTimestampCandidate(line[:space]); ok {
+			return ts, strings.TrimLeft(strings.TrimSpace(line[space:]), ")]}> \t")
+		}
+	}
+
 	// The timestamp is the longest leading prefix that parses, so scan from the
 	// longest candidate down and stop at the first hit: the result is identical
 	// to keeping the last hit of an ascending scan, but a line whose prefix is a
@@ -479,6 +492,11 @@ func tryParseTimestampCandidate(candidate string) (time.Time, bool) {
 	if n := len(sanitized); n < minTimestampLen || n > maxTimestampLen {
 		return time.Time{}, false
 	}
+	// Every layout starts with a digit or a weekday name; anything else cannot
+	// parse, and a failed time.Parse is not free.
+	if c := sanitized[0]; (c < '0' || c > '9') && !startsWithWeekday(sanitized) {
+		return time.Time{}, false
+	}
 
 	sanitized = normalizeFractionSeparator(sanitized)
 
@@ -498,6 +516,15 @@ func tryParseTimestampCandidate(candidate string) (time.Time, bool) {
 	}
 
 	return time.Time{}, false
+}
+
+func startsWithWeekday(value string) bool {
+	for _, day := range []string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"} {
+		if strings.HasPrefix(value, day) {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeFractionSeparator(value string) string {

@@ -3,7 +3,10 @@ package main
 import (
 	"context"
 	"log"
+	"net"
 	"net/http"
+	_ "net/http/pprof"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -135,6 +138,17 @@ func main() {
 	alertEngine.Start(ctx)
 	if logStore != nil {
 		logStore.Start(ctx, logHub, registry)
+	}
+
+	// PPROF_ADDR=127.0.0.1:6060 exposes Go runtime profiles (heap, goroutines)
+	// on a separate listener. Off unless set. The profiles are unauthenticated,
+	// so anything but a loopback address is refused.
+	if addr := os.Getenv("PPROF_ADDR"); addr != "" {
+		if host, _, err := net.SplitHostPort(addr); err != nil || !net.ParseIP(host).IsLoopback() {
+			log.Printf("PPROF_ADDR %q ignored: profiles are unauthenticated, bind to a loopback address such as 127.0.0.1:6060", addr)
+		} else {
+			go func() { log.Printf("pprof: %v", http.ListenAndServe(addr, nil)) }()
+		}
 	}
 
 	go func() {

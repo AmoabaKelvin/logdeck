@@ -34,7 +34,7 @@ COPY --from=frontend-builder /frontend/dist ./internal/static/dist
 # Build Go binary with embedded frontend
 ARG TARGETARCH
 ARG VERSION=dev
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -ldflags "-X main.version=${VERSION}" -o logdeck-server ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o logdeck-server ./cmd/server
 
 # Stage 3: Final runtime image with SSH client for remote Docker hosts
 FROM debian:bookworm-slim
