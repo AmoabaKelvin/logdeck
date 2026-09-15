@@ -110,16 +110,8 @@ var levelCheckOrder = []LogLevel{
 	LogLevelTrace,
 }
 
-// levelKeywords are the lowercase substrings the keyword regexes (prefixed and
-// LogLevelRegexes) need; levelKeyNames the ones the keyed and otel regexes
-// need. A message containing none of a group's substrings cannot match that
-// group, so its regexes are skipped: a few strings.Contains on one lowered
-// copy instead of a dozen backtracking (?i)\b regexes, which was most of the
-// per-line CPU. Shorter entries cover their longer forms (inf covers info and
-// information, err covers error, crit covers critical, emerg covers emergency).
-// ponytail: strings.ToLower is not regexp's simple case folding; the one
-// divergence is the long s (U+017F), which (?i) treats as "s" and this does not,
-// so "verboſe" would be skipped. Switch to a folding search if that ever matters.
+// levelKeywords and levelKeyNames are the substrings the level regexes need.
+// A message without them cannot match, so the regexes are skipped.
 var levelKeywords = []string{
 	"trace", "trc", "debug", "dbg", "dbug", "verbose", "inf", "notice", "log",
 	"warn", "wrn", "err", "fail", "exception", "fatal", "crit", "panic", "emerg",
@@ -161,8 +153,6 @@ func ExtractExplicitLogLevel(message string) (LogLevel, bool) {
 	return extractExplicitLogLevel(message, strings.ToLower(message))
 }
 
-// extractExplicitLogLevel takes the trimmed message and its lowercase copy, so
-// DetectLogLevel lowers once for both the explicit and the keyword pass.
 func extractExplicitLogLevel(message, lower string) (LogLevel, bool) {
 	if message == "" {
 		return LogLevelUnknown, false
