@@ -456,11 +456,15 @@ func registerSettingsTools(s *mcp.Server, a *app, register func(*mcp.Tool)) {
 		Host string `json:"host" jsonschema:"engine address, e.g. unix:///var/run/docker.sock or ssh://user@box"`
 	}
 	type dockerHostsInput struct {
-		Hosts []dockerHost `json:"hosts" jsonschema:"the complete host list; it replaces the configured hosts, so read get_settings first. Hosts pinned by environment variables are rejected"`
+		Hosts    []dockerHost `json:"hosts" jsonschema:"the complete host list; it replaces the configured hosts, so read get_settings first. Hosts pinned by environment variables are rejected"`
+		Revision string       `json:"revision" jsonschema:"dockerHosts.revision from get_settings; the write is rejected if the hosts changed since that read"`
 	}
-	tool = &mcp.Tool{Name: "set_docker_hosts", Description: "Replace the configured Docker/Podman hosts. This is the whole list, not a merge.", Annotations: destructiveAnnot()}
+	tool = &mcp.Tool{Name: "set_docker_hosts", Description: "Replace the configured Docker/Podman hosts. This is the whole list, not a merge. Requires the revision from get_settings so a concurrent edit is not overwritten.", Annotations: destructiveAnnot()}
 	mcp.AddTool(s, tool, func(ctx context.Context, _ *mcp.CallToolRequest, in dockerHostsInput) (*mcp.CallToolResult, any, error) {
-		return putJSON(ctx, a, "/settings/docker-hosts", map[string]any{"hosts": in.Hosts})
+		if in.Revision == "" {
+			return nil, nil, fmt.Errorf("revision is required; call get_settings first")
+		}
+		return putJSON(ctx, a, "/settings/docker-hosts", map[string]any{"hosts": in.Hosts, "revision": in.Revision})
 	})
 	register(tool)
 
@@ -470,11 +474,15 @@ func registerSettingsTools(s *mcp.Server, a *app, register func(*mcp.Tool)) {
 		APIToken string `json:"apiToken" jsonschema:"Coolify API token"`
 	}
 	type coolifyHostsInput struct {
-		Hosts []coolifyHost `json:"hosts" jsonschema:"the complete Coolify host list; it replaces the configured entries"`
+		Hosts    []coolifyHost `json:"hosts" jsonschema:"the complete Coolify host list; it replaces the configured entries"`
+		Revision string        `json:"revision" jsonschema:"coolifyHosts.revision from get_settings; the write is rejected if the hosts changed since that read"`
 	}
-	tool = &mcp.Tool{Name: "set_coolify_hosts", Description: "Replace the Coolify host configuration. This is the whole list, not a merge.", Annotations: destructiveAnnot()}
+	tool = &mcp.Tool{Name: "set_coolify_hosts", Description: "Replace the Coolify host configuration. This is the whole list, not a merge. Requires the revision from get_settings so a concurrent edit is not overwritten.", Annotations: destructiveAnnot()}
 	mcp.AddTool(s, tool, func(ctx context.Context, _ *mcp.CallToolRequest, in coolifyHostsInput) (*mcp.CallToolResult, any, error) {
-		return putJSON(ctx, a, "/settings/coolify-hosts", map[string]any{"hosts": in.Hosts})
+		if in.Revision == "" {
+			return nil, nil, fmt.Errorf("revision is required; call get_settings first")
+		}
+		return putJSON(ctx, a, "/settings/coolify-hosts", map[string]any{"hosts": in.Hosts, "revision": in.Revision})
 	})
 	register(tool)
 

@@ -5,11 +5,12 @@ const ENDPOINT = `${API_BASE_URL}/api/v1/settings/coolify-hosts`;
 
 export async function updateCoolifyHosts(
 	hosts: { hostName: string; apiURL: string; apiToken: string }[],
+	revision?: string,
 ): Promise<string> {
 	const response = await authenticatedFetch(ENDPOINT, {
 		method: "PUT",
 		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ hosts }),
+		body: JSON.stringify({ hosts, revision }),
 	});
 
 	if (!response.ok) {

@@ -31,8 +31,10 @@ export function useSettings() {
 export function useUpdateDockerHosts() {
 	const queryClient = useQueryClient();
 	return useMutation({
-		mutationFn: (hosts: { name: string; host: string }[]) =>
-			updateDockerHosts(hosts),
+		mutationFn: (input: {
+			hosts: { name: string; host: string }[];
+			revision?: string;
+		}) => updateDockerHosts(input.hosts, input.revision),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: SETTINGS_KEY });
 		},
@@ -42,9 +44,10 @@ export function useUpdateDockerHosts() {
 export function useUpdateCoolifyHosts() {
 	const queryClient = useQueryClient();
 	return useMutation({
-		mutationFn: (
-			hosts: { hostName: string; apiURL: string; apiToken: string }[],
-		) => updateCoolifyHosts(hosts),
+		mutationFn: (input: {
+			hosts: { hostName: string; apiURL: string; apiToken: string }[];
+			revision?: string;
+		}) => updateCoolifyHosts(input.hosts, input.revision),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: SETTINGS_KEY });
 		},

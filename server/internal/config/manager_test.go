@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -106,7 +107,7 @@ func TestUpdateDockerHostsRejectsEnvCollision(t *testing.T) {
 	t.Setenv("DOCKER_HOSTS", "local=tcp://envhost:2375")
 	m := newManagerWithFile(t, FileConfig{})
 
-	err := m.UpdateDockerHosts([]DockerHost{{Name: "local", Host: "tcp://x:2375"}})
+	err := m.UpdateDockerHosts([]DockerHost{{Name: "local", Host: "tcp://x:2375"}}, "")
 	if err == nil {
 		t.Fatal("expected an error updating a host that collides with an env host")
 	}
@@ -121,7 +122,7 @@ func TestUpdateDockerHostsPersistsAndRemerges(t *testing.T) {
 	m := newManagerWithFile(t, FileConfig{})
 
 	hosts := []DockerHost{{Name: "new", Host: "tcp://new:2375"}}
-	if err := m.UpdateDockerHosts(hosts); err != nil {
+	if err := m.UpdateDockerHosts(hosts, ""); err != nil {
 		t.Fatalf("UpdateDockerHosts: %v", err)
 	}
 
@@ -142,11 +143,33 @@ func TestUpdateDockerHostsPersistsAndRemerges(t *testing.T) {
 	}
 }
 
+func TestUpdateDockerHostsRejectsStaleRevision(t *testing.T) {
+	m := newManagerWithFile(t, FileConfig{})
+	rev := m.DockerHostsRevision()
+
+	if err := m.UpdateDockerHosts([]DockerHost{{Name: "a", Host: "tcp://a:2375"}}, rev); err != nil {
+		t.Fatalf("first update: %v", err)
+	}
+
+	// A second writer holding the same revision must be rejected.
+	err := m.UpdateDockerHosts([]DockerHost{{Name: "b", Host: "tcp://b:2375"}}, rev)
+	if !errors.Is(err, ErrStaleRevision) {
+		t.Fatalf("expected ErrStaleRevision, got %v", err)
+	}
+	if got := m.Config().DockerHosts; len(got) != 1 || got[0].Name != "a" {
+		t.Fatalf("stale write must not apply, got %+v", got)
+	}
+
+	if err := m.UpdateDockerHosts([]DockerHost{{Name: "b", Host: "tcp://b:2375"}}, m.DockerHostsRevision()); err != nil {
+		t.Fatalf("retry with fresh revision: %v", err)
+	}
+}
+
 func TestUpdateCoolifyHostsRejectsEnvCollision(t *testing.T) {
 	t.Setenv("COOLIFY_CONFIGS", "local|https://coolify.example|token")
 	m := newManagerWithFile(t, FileConfig{})
 
-	err := m.UpdateCoolifyHosts([]CoolifyHostConfig{{HostName: "local", APIURL: "https://x", APIToken: "t"}})
+	err := m.UpdateCoolifyHosts([]CoolifyHostConfig{{HostName: "local", APIURL: "https://x", APIToken: "t"}}, "")
 	if err == nil {
 		t.Fatal("expected an error updating a coolify host that collides with an env host")
 	}

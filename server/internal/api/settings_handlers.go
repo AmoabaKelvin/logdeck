@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -75,8 +76,9 @@ func (ar *APIRouter) GetSettings(w http.ResponseWriter, r *http.Request) {
 
 	WriteJsonResponse(w, http.StatusOK, map[string]any{
 		"dockerHosts": map[string]any{
-			"source": sources.DockerHosts,
-			"hosts":  dockerHosts,
+			"source":   sources.DockerHosts,
+			"hosts":    dockerHosts,
+			"revision": ar.manager.DockerHostsRevision(),
 		},
 		"logStore": map[string]any{
 			"enabled":              logStore.Enabled,
@@ -87,8 +89,9 @@ func (ar *APIRouter) GetSettings(w http.ResponseWriter, r *http.Request) {
 			"totalMBSource":        logStoreSources.TotalMB,
 		},
 		"coolifyHosts": map[string]any{
-			"source": sources.CoolifyHosts,
-			"hosts":  coolifyHosts,
+			"source":   sources.CoolifyHosts,
+			"hosts":    coolifyHosts,
+			"revision": ar.manager.CoolifyHostsRevision(),
 		},
 		"readOnly": map[string]any{
 			"source": sources.ReadOnly,
@@ -101,7 +104,8 @@ func (ar *APIRouter) GetSettings(w http.ResponseWriter, r *http.Request) {
 // UpdateDockerHosts handles PUT /api/v1/settings/docker-hosts.
 func (ar *APIRouter) UpdateDockerHosts(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Hosts []config.DockerHost `json:"hosts"`
+		Hosts    []config.DockerHost `json:"hosts"`
+		Revision string              `json:"revision"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -131,7 +135,7 @@ func (ar *APIRouter) UpdateDockerHosts(w http.ResponseWriter, r *http.Request) {
 		seen[h.Name] = true
 	}
 
-	if err := ar.manager.UpdateDockerHosts(req.Hosts); err != nil {
+	if err := ar.manager.UpdateDockerHosts(req.Hosts, req.Revision); err != nil {
 		http.Error(w, err.Error(), settingsErrorStatus(err))
 		return
 	}
@@ -147,6 +151,7 @@ func (ar *APIRouter) UpdateCoolifyHosts(w http.ResponseWriter, r *http.Request) 
 			APIURL   string `json:"apiURL"`
 			APIToken string `json:"apiToken"`
 		} `json:"hosts"`
+		Revision string `json:"revision"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -198,7 +203,7 @@ func (ar *APIRouter) UpdateCoolifyHosts(w http.ResponseWriter, r *http.Request) 
 		})
 	}
 
-	if err := ar.manager.UpdateCoolifyHosts(hosts); err != nil {
+	if err := ar.manager.UpdateCoolifyHosts(hosts, req.Revision); err != nil {
 		http.Error(w, err.Error(), settingsErrorStatus(err))
 		return
 	}
@@ -498,7 +503,7 @@ func (ar *APIRouter) TestCoolifyHost(w http.ResponseWriter, r *http.Request) {
 // settingsErrorStatus maps manager errors to appropriate HTTP status codes.
 // Env-override errors are 409 Conflict, everything else is 500.
 func settingsErrorStatus(err error) int {
-	if strings.Contains(err.Error(), "environment variable") {
+	if errors.Is(err, config.ErrStaleRevision) || strings.Contains(err.Error(), "environment variable") {
 		return http.StatusConflict
 	}
 	return http.StatusInternalServerError

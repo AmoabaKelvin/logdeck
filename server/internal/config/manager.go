@@ -1,7 +1,10 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -174,10 +177,38 @@ func (m *Manager) EnvCoolifyHostNames() map[string]bool {
 	return names
 }
 
+var ErrStaleRevision = errors.New("hosts changed since they were read; fetch settings again and retry")
+
+// revision is a content hash of a host list. Clients echo it back on writes
+// so a concurrent edit is rejected instead of silently overwritten.
+func revision(v any) string {
+	b, _ := json.Marshal(v)
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:8])
+}
+
+func (m *Manager) DockerHostsRevision() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return revision(m.fileConfig.DockerHosts)
+}
+
+func (m *Manager) CoolifyHostsRevision() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return revision(m.fileConfig.CoolifyHosts)
+}
+
 // UpdateDockerHosts updates the file-defined Docker hosts.
-// Rejects any host names that collide with env-defined hosts.
-func (m *Manager) UpdateDockerHosts(hosts []DockerHost) error {
+// Rejects any host names that collide with env-defined hosts, and a non-empty
+// ifRevision that no longer matches the stored list.
+func (m *Manager) UpdateDockerHosts(hosts []DockerHost, ifRevision string) error {
 	m.mu.Lock()
+
+	if ifRevision != "" && ifRevision != revision(m.fileConfig.DockerHosts) {
+		m.mu.Unlock()
+		return ErrStaleRevision
+	}
 
 	if m.envSnapshot.DockerHostsSet {
 		envNames := make(map[string]bool)
@@ -205,8 +236,13 @@ func (m *Manager) UpdateDockerHosts(hosts []DockerHost) error {
 
 // UpdateCoolifyHosts updates the file-defined Coolify hosts.
 // Rejects any host names that collide with env-defined hosts.
-func (m *Manager) UpdateCoolifyHosts(hosts []CoolifyHostConfig) error {
+func (m *Manager) UpdateCoolifyHosts(hosts []CoolifyHostConfig, ifRevision string) error {
 	m.mu.Lock()
+
+	if ifRevision != "" && ifRevision != revision(m.fileConfig.CoolifyHosts) {
+		m.mu.Unlock()
+		return ErrStaleRevision
+	}
 
 	if m.envSnapshot.CoolifySet {
 		envNames := make(map[string]bool)
