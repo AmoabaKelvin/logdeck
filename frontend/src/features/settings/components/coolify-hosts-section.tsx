@@ -81,7 +81,10 @@ export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
 		);
 
 	function handleSave() {
-		updateMutation.mutate(fileHosts, showResultToast);
+		updateMutation.mutate(
+			{ hosts: fileHosts, revision: config.revision },
+			showResultToast,
+		);
 	}
 
 	function handleRemove(index: number) {

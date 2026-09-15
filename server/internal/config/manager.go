@@ -1,7 +1,10 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -174,10 +177,28 @@ func (m *Manager) EnvCoolifyHostNames() map[string]bool {
 	return names
 }
 
+var ErrStaleRevision = errors.New("hosts changed since they were read; fetch settings again and retry")
+
+// HostsRevision is a content hash of a merged host list. Clients echo it back
+// on writes so a concurrent edit is rejected instead of silently overwritten.
+// Hashing the merged list lets the settings handler derive it from the same
+// Config it serves, so the list and revision in one response always agree.
+func HostsRevision[T any](hosts []T) string {
+	b, _ := json.Marshal(hosts)
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:8])
+}
+
 // UpdateDockerHosts updates the file-defined Docker hosts.
-// Rejects any host names that collide with env-defined hosts.
-func (m *Manager) UpdateDockerHosts(hosts []DockerHost) error {
+// Rejects any host names that collide with env-defined hosts, and a non-empty
+// ifRevision that no longer matches the stored list.
+func (m *Manager) UpdateDockerHosts(hosts []DockerHost, ifRevision string) error {
 	m.mu.Lock()
+
+	if ifRevision != "" && ifRevision != HostsRevision(m.merged.DockerHosts) {
+		m.mu.Unlock()
+		return ErrStaleRevision
+	}
 
 	if m.envSnapshot.DockerHostsSet {
 		envNames := make(map[string]bool)
@@ -205,8 +226,13 @@ func (m *Manager) UpdateDockerHosts(hosts []DockerHost) error {
 
 // UpdateCoolifyHosts updates the file-defined Coolify hosts.
 // Rejects any host names that collide with env-defined hosts.
-func (m *Manager) UpdateCoolifyHosts(hosts []CoolifyHostConfig) error {
+func (m *Manager) UpdateCoolifyHosts(hosts []CoolifyHostConfig, ifRevision string) error {
 	m.mu.Lock()
+
+	if ifRevision != "" && ifRevision != HostsRevision(m.merged.CoolifyHosts) {
+		m.mu.Unlock()
+		return ErrStaleRevision
+	}
 
 	if m.envSnapshot.CoolifySet {
 		envNames := make(map[string]bool)
