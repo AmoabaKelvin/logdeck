@@ -4,6 +4,8 @@ import (
 	"context"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -135,6 +137,12 @@ func main() {
 	alertEngine.Start(ctx)
 	if logStore != nil {
 		logStore.Start(ctx, logHub, registry)
+	}
+
+	// PPROF_ADDR=127.0.0.1:6060 exposes Go runtime profiles (heap, goroutines)
+	// on a separate listener. Off unless set; never bind it publicly.
+	if addr := os.Getenv("PPROF_ADDR"); addr != "" {
+		go func() { log.Printf("pprof: %v", http.ListenAndServe(addr, nil)) }()
 	}
 
 	go func() {
