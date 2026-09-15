@@ -110,12 +110,35 @@ var levelCheckOrder = []LogLevel{
 	LogLevelTrace,
 }
 
+// levelKeywords and levelKeyNames are the substrings the level regexes need.
+// A message without them cannot match, so the regexes are skipped.
+var levelKeywords = []string{
+	"trace", "trc", "debug", "dbg", "dbug", "verbose", "inf", "notice", "log",
+	"warn", "wrn", "err", "fail", "exception", "fatal", "crit", "panic", "emerg",
+}
+
+var levelKeyNames = []string{"level", "lvl", "severity"}
+
+func containsAny(s string, subs []string) bool {
+	for _, sub := range subs {
+		if strings.Contains(s, sub) {
+			return true
+		}
+	}
+	return false
+}
+
 // DetectLogLevel analyzes a log message to determine its severity level
 func DetectLogLevel(message string) LogLevel {
-	if level, ok := ExtractExplicitLogLevel(message); ok {
+	message = strings.TrimSpace(message)
+	lower := strings.ToLower(message)
+	if level, ok := extractExplicitLogLevel(message, lower); ok {
 		return level
 	}
 
+	if !containsAny(lower, levelKeywords) {
+		return LogLevelUnknown
+	}
 	for _, level := range levelCheckOrder {
 		if LogLevelRegexes[level].MatchString(message) {
 			return level
@@ -127,6 +150,10 @@ func DetectLogLevel(message string) LogLevel {
 
 func ExtractExplicitLogLevel(message string) (LogLevel, bool) {
 	message = strings.TrimSpace(message)
+	return extractExplicitLogLevel(message, strings.ToLower(message))
+}
+
+func extractExplicitLogLevel(message, lower string) (LogLevel, bool) {
 	if message == "" {
 		return LogLevelUnknown, false
 	}
@@ -135,21 +162,25 @@ func ExtractExplicitLogLevel(message string) (LogLevel, bool) {
 		return level, true
 	}
 
-	if matches := otelSeverityNumberRegex.FindStringSubmatch(message); len(matches) == 2 {
-		if level, ok := normalizeOtelSeverityNumber(matches[1]); ok {
-			return level, true
+	if containsAny(lower, levelKeyNames) {
+		if matches := otelSeverityNumberRegex.FindStringSubmatch(message); len(matches) == 2 {
+			if level, ok := normalizeOtelSeverityNumber(matches[1]); ok {
+				return level, true
+			}
+		}
+
+		if matches := keyedLevelRegex.FindStringSubmatch(message); len(matches) == 2 {
+			if level, ok := normalizeLogLevel(matches[1]); ok {
+				return level, true
+			}
 		}
 	}
 
-	if matches := keyedLevelRegex.FindStringSubmatch(message); len(matches) == 2 {
-		if level, ok := normalizeLogLevel(matches[1]); ok {
-			return level, true
-		}
-	}
-
-	if matches := prefixedLevelRegex.FindStringSubmatch(message); len(matches) == 2 {
-		if level, ok := normalizeLogLevel(matches[1]); ok {
-			return level, true
+	if containsAny(lower, levelKeywords) {
+		if matches := prefixedLevelRegex.FindStringSubmatch(message); len(matches) == 2 {
+			if level, ok := normalizeLogLevel(matches[1]); ok {
+				return level, true
+			}
 		}
 	}
 
