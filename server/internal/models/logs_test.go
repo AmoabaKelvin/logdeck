@@ -3,6 +3,7 @@ package models
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDetectLogLevelUsesExplicitStructuredLevels(t *testing.T) {
@@ -243,5 +244,54 @@ func TestGroupRelatedLogEntriesFoldsUnstampedSpillOverBehindStampedLine(t *testi
 	}
 	if grouped[2].ContinuationCount != 0 || grouped[3].ContinuationCount != 0 {
 		t.Fatalf("expected late unstamped lines to stay separate, got %#v", grouped[2:])
+	}
+}
+
+// parseTimestampScan is the exhaustive prefix scan ParseTimestamp falls back
+// to; the fast path must agree with it on every input.
+func parseTimestampScan(logLine string) (time.Time, string) {
+	line := strings.TrimSpace(logLine)
+	for i := min(len(line), 96); i >= 1; i-- {
+		if ts, ok := tryParseTimestampCandidate(line[:i]); ok {
+			return ts, strings.TrimLeft(strings.TrimSpace(line[i:]), ")]}> \t")
+		}
+	}
+	return time.Time{}, line
+}
+
+func TestParseTimestampFastPathMatchesScan(t *testing.T) {
+	lines := []string{
+		"2026-09-15T12:55:38.123456789Z GET /healthz 200",
+		"2026-09-15T12:55:38.123456789Z [2026-09-15 12:55:38] INFO ready",
+		"2026-09-15T12:55:38Z",
+		"[2026-09-15T12:55:38Z] bracketed",
+		"2026-09-15T12:55:38Z ] stray bracket",
+		"2026-09-15 12:55:38,123 INFO comma fraction",
+		"2026-09-15 12:55:38 space separated",
+		"10/Oct/2000:13:55:36 -0700 access log",
+		"Mon Jan  2 15:04:05 2006 ansic",
+		"Mon Jan 02 15:04:05 MST 2006 unix date",
+		"2026-09-15T12:55:38+0000 no colon offset",
+		"no timestamp at all",
+		"12:55:38 time only",
+		"",
+		"   ",
+		"2026-09-15T12:55:38Zmsg glued",
+		"    indented stack frame",
+	}
+	for _, line := range lines {
+		wantTS, wantRest := parseTimestampScan(line)
+		gotTS, gotRest := ParseTimestamp(line)
+		if !gotTS.Equal(wantTS) || gotRest != wantRest {
+			t.Errorf("ParseTimestamp(%q) = (%v, %q), scan = (%v, %q)", line, gotTS, gotRest, wantTS, wantRest)
+		}
+	}
+}
+
+func BenchmarkParseLogLine(b *testing.B) {
+	line := "2026-09-15T12:55:38.123456789Z 10.0.0.1 - - [15/Sep/2026:12:55:38 +0000] \"GET /api/v1/containers HTTP/1.1\" 200 512"
+	b.ReportAllocs()
+	for range b.N {
+		ParseLogLine(line, "stdout")
 	}
 }
