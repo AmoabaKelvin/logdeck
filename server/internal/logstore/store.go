@@ -11,6 +11,7 @@ package logstore
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -91,18 +92,21 @@ type Limits func() config.ResolvedLogStoreConfig
 
 // Store owns the SQLite database, the ingestion pipeline, and retention.
 type Store struct {
-	db     *sql.DB
-	path   string
-	limits Limits
+	db *sql.DB
+	// writerDB has one connection shared by ingestion, lifecycle, retention,
+	// and purge. They wait in Go's pool instead of competing for SQLite's
+	// write lock. db keeps history queries independent of that queue.
+	writerDB *sql.DB
+	path     string
+	limits   Limits
 	// codec packs and unpacks sealed blocks. Its encoder and decoder are safe
 	// for concurrent use, so the writer and every reader share one.
 	codec *blockCodec
 
 	ingestCh chan ingestMsg
 	// retainCh signals the writer to run a retention sweep between batches. It is
-	// coalescing (buffered one, non-blocking send): all writes go through the
-	// single writer goroutine, so eviction and ingestion never hold two competing
-	// write transactions.
+	// coalescing (buffered one, non-blocking send): retention runs between ingest
+	// batches, and writerDB serializes both with lifecycle and purge writes.
 	retainCh chan struct{}
 	drops    atomic.Uint64
 	// evictions counts retention sweeps that actually freed bytes. The writer
@@ -216,15 +220,29 @@ func Open(path string, limits Limits) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	writerDB, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("open log store writer: %w", err)
+	}
+	writerDB.SetMaxOpenConns(1)
+	writerDB.SetMaxIdleConns(1)
+	if err := writerDB.PingContext(ctx); err != nil {
+		writerDB.Close()
+		db.Close()
+		return nil, fmt.Errorf("open log store writer: %w", err)
+	}
 
 	codec, err := newBlockCodec()
 	if err != nil {
+		writerDB.Close()
 		db.Close()
 		return nil, err
 	}
 
 	return &Store{
 		db:          db,
+		writerDB:    writerDB,
 		path:        path,
 		limits:      limits,
 		codec:       codec,
@@ -499,7 +517,7 @@ func (s *Store) Wait() {
 // Close releases the database. Call it after Wait.
 func (s *Store) Close() error {
 	s.codec.close()
-	return s.db.Close()
+	return errors.Join(s.writerDB.Close(), s.db.Close())
 }
 
 // composeProject reads the compose project from container labels. Docker

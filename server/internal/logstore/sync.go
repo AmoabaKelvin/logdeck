@@ -199,7 +199,7 @@ func (s *Store) upsertMeta(ctx context.Context, key genKey, info models.Containe
 		firstSeenMS = info.Created * 1000
 	}
 
-	if _, err := s.db.ExecContext(ctx, `
+	if _, err := s.writerDB.ExecContext(ctx, `
 		INSERT INTO containers (host, container_id, name, compose_project, image, first_seen_ms, last_seen_ms, removed_ms)
 		VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
 		ON CONFLICT(host, container_id) DO UPDATE SET
@@ -252,7 +252,7 @@ func (s *Store) markRemoved(ctx context.Context, failedHosts map[string]bool, li
 	}
 
 	for _, key := range gone {
-		if _, err := s.db.ExecContext(ctx,
+		if _, err := s.writerDB.ExecContext(ctx,
 			"UPDATE containers SET removed_ms = ? WHERE host = ? AND container_id = ? AND removed_ms IS NULL",
 			nowMS, key.host, key.id); err != nil {
 			return err
