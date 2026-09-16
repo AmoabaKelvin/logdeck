@@ -38,11 +38,8 @@ func NewMultiHostClient(hosts []config.DockerHost) (*MultiHostClient, error) {
 				return nil, fmt.Errorf("failed to setup SSH helper for host %s (%s): %w", host.Name, host.Host, helperErr)
 			}
 
-			// No http.Client.Timeout: it also cuts off response bodies, which
-			// killed every followed log, stats, and event stream over SSH after
-			// 10s and had each of them reconnect through a fresh ssh process.
-			// The dial and header timeouts below bound an unreachable daemon
-			// without touching long-lived streams.
+			// No http.Client.Timeout: it would also cut off followed log,
+			// stats, and event streams.
 			httpClient := &http.Client{
 				Transport: &http.Transport{
 					DialContext:           helper.Dialer,
@@ -82,10 +79,8 @@ func NewMultiHostClient(hosts []config.DockerHost) (*MultiHostClient, error) {
 	}, nil
 }
 
-// sshFlags multiplexes every ssh dial over one persistent master connection.
-// Each Docker request over SSH otherwise spawns its own ssh handshake, and a
-// few dozen containers' worth of tails and stats polls is enough to trip
-// sshd's MaxStartups throttle on the remote.
+// sshFlags multiplexes every ssh dial over one master connection; a
+// handshake per request trips sshd's MaxStartups throttle.
 func sshFlags() []string {
 	return []string{
 		"-o ConnectTimeout=10",

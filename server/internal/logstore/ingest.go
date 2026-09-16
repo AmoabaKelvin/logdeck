@@ -191,11 +191,9 @@ func (s *Store) writeLoop() {
 	// SQLite's single write lock; see janitorLoop.
 	batchesSinceRetain := 0
 
-	// failDelay throttles the writer after a failed commit. Every dropped batch
-	// becomes a gap that backfill re-reads, so retrying at full speed turns a
-	// persistent write error (locked or full database) into an endless
-	// re-read-and-drop cycle that pegs the CPU. Sleeping here applies
-	// backpressure to the backfill producers; the live sink keeps dropping.
+	// failDelay throttles the writer after a failed commit: a dropped batch is
+	// re-read by backfill, and retrying at full speed makes that a CPU-bound
+	// loop. Sleeping here backpressures the producers.
 	var failDelay time.Duration
 
 	flush := func() {
