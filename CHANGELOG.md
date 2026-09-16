@@ -2,6 +2,14 @@
 
 All notable changes to LogDeck are documented here.
 
+## [0.3.1] - 2026-09-16
+
+### Fixed
+
+- Every followed log, stats, and event stream over an SSH host died after ten seconds and reconnected through a new `ssh` process, and each stats poll opened one more process per container. Remote sshd throttled the handshakes. Streams now stay open, and every connection to a host is multiplexed over one OpenSSH ControlMaster session, so the remote sees a single login.
+- LogDeck could sit at 140% CPU logging `database is locked`. Container metadata updates competed with log ingestion for SQLite's write lock during heavy backfills, and a failed commit was retried at full speed, which re-read and dropped the same batch in a tight loop. Writes are serialized on one connection now, and the writer backs off 1s to 5s after a failed commit.
+- Two admins or agents saving the Docker or Coolify host list at the same time silently lost one of the changes. The settings response carries a revision per host list and a stale write is rejected with 409. The MCP host tools require it; the HTTP endpoint accepts it but does not insist, so older clients keep working.
+
 ## [0.3.0] - 2026-09-15
 
 ### Added
