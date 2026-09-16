@@ -36,7 +36,11 @@ Every key is optional. This example sets all of them:
     { "name": "prod", "host": "ssh://deploy@prod.example.com" }
   ],
   "coolifyHosts": [
-    { "hostName": "prod", "apiURL": "https://coolify.example.com", "apiToken": "your-coolify-token" }
+    {
+      "hostName": "prod",
+      "apiURL": "https://coolify.example.com",
+      "apiToken": "your-coolify-token"
+    }
   ],
   "readOnly": false,
   "auth": {
@@ -56,8 +60,20 @@ Every key is optional. This example sets all of them:
   ],
   "alerts": {
     "channels": [
-      { "id": "c1", "type": "ntfy", "name": "Phone", "enabled": true, "url": "https://ntfy.sh/mytopic" },
-      { "id": "c2", "type": "telegram", "enabled": true, "token": "123456:bot-token", "target": "987654321" }
+      {
+        "id": "c1",
+        "type": "ntfy",
+        "name": "Phone",
+        "enabled": true,
+        "url": "https://ntfy.sh/mytopic"
+      },
+      {
+        "id": "c2",
+        "type": "telegram",
+        "enabled": true,
+        "token": "123456:bot-token",
+        "target": "987654321"
+      }
     ],
     "rules": [
       {
