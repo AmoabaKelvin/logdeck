@@ -1,10 +1,10 @@
-LogDeck runs with no configuration at all, and every environment variable on this page is optional. This is the reference for configuring it: the config file and data directory, every environment variable, authentication, API tokens, read-only mode, and reverse proxy setups.
+LogDeck runs with no configuration at all, and every environment variable on this page is optional. This is the reference for configuring it: the data directory, every key in the config file, every environment variable, authentication, API tokens, read-only mode, and reverse proxy setups.
 
 ## Two ways to configure
 
 LogDeck reads its configuration from environment variables and from a JSON config file that the Settings page writes. Environment variables win. A value pinned by the environment shows in the UI but can't be changed there, which is what you want when the deployment, not the admin, should have the final say.
 
-Hosts, Coolify hosts, read-only mode, and authentication can come from either source. API tokens, alert rules, and log retention live only in the config file. Manage tokens in the UI, alert rules in the UI or the CLI, and retention through the config file or its [environment overrides](#log-persistence).
+Hosts, Coolify hosts, read-only mode, and authentication can come from either source. API tokens, alert rules, and log retention live only in the config file. Manage tokens in the UI, alert rules in the UI or the CLI, and retention through the config file or its [environment overrides](#log-persistence). [The config file](#the-config-file) section documents every key, so you can also generate the file yourself.
 
 ## The data directory
 
@@ -22,6 +22,144 @@ volumes:
 ```
 
 Set `CONFIG_PATH` to move the config file, and with it the whole directory, somewhere else. For example, `CONFIG_PATH=/config/logdeck.json`.
+
+## The config file
+
+`config.json` is plain JSON, and the Settings page is only one way to write it. You can also generate it from Nix, Ansible, or a Git repo and ship it with the deployment. LogDeck reads the file once at startup, so restart it after editing the file by hand. A missing file is fine and means defaults. Invalid JSON is a startup error, so LogDeck never silently drops your settings. Unknown keys are ignored.
+
+Every key is optional. This example sets all of them:
+
+```json
+{
+  "dockerHosts": [
+    { "name": "local", "host": "unix:///var/run/docker.sock" },
+    { "name": "prod", "host": "ssh://deploy@prod.example.com" }
+  ],
+  "coolifyHosts": [
+    { "hostName": "prod", "apiURL": "https://coolify.example.com", "apiToken": "your-coolify-token" }
+  ],
+  "readOnly": false,
+  "auth": {
+    "enabled": true,
+    "jwtSecret": "a-long-random-string",
+    "adminUsername": "admin",
+    "adminPasswordHash": "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
+  },
+  "apiTokens": [
+    {
+      "name": "ci",
+      "prefix": "ldk_3fK9xQ2b",
+      "hash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "scope": "read",
+      "createdAt": "2026-09-16T10:00:00Z"
+    }
+  ],
+  "alerts": {
+    "channels": [
+      { "id": "c1", "type": "ntfy", "name": "Phone", "enabled": true, "url": "https://ntfy.sh/mytopic" },
+      { "id": "c2", "type": "telegram", "enabled": true, "token": "123456:bot-token", "target": "987654321" }
+    ],
+    "rules": [
+      {
+        "id": "r1",
+        "name": "crashes",
+        "enabled": true,
+        "type": "event",
+        "events": ["die", "oom", "unhealthy"],
+        "hosts": ["prod"],
+        "threshold": 1,
+        "cooldownSeconds": 300,
+        "createdAt": "2026-09-16T10:00:00Z"
+      },
+      {
+        "id": "r2",
+        "name": "error spike",
+        "enabled": true,
+        "type": "log",
+        "minLevel": "ERROR",
+        "pattern": "timeout|refused",
+        "projects": ["shop"],
+        "threshold": 5,
+        "windowSeconds": 60,
+        "cooldownSeconds": 300,
+        "createdAt": "2026-09-16T10:00:00Z"
+      }
+    ]
+  },
+  "logStore": {
+    "enabled": true,
+    "perContainerMB": 50,
+    "totalMB": 1024
+  }
+}
+```
+
+> **The UI rewrites this file.** Any change saved on the Settings page, in the CLI, or by the alerts migration replaces the whole file. If a tool generates it for you, either pin the sections you care about with environment variables so the UI can't change them, or make your deploy regenerate the file and restart LogDeck. The `.tmp` file that briefly appears beside it during a write is normal.
+
+### `dockerHosts`
+
+A list of `{ "name", "host" }` objects, the same as [`DOCKER_HOSTS`](#docker_hosts). When `DOCKER_HOSTS` is also set, LogDeck uses both lists, and on a name collision the environment host wins and the file host is dropped. With neither set, LogDeck uses the local socket.
+
+### `coolifyHosts`
+
+A list of `{ "hostName", "apiURL", "apiToken" }` objects, the same as [`COOLIFY_CONFIGS`](#coolify_configs). Each `hostName` must match a Docker host name. Merged with `COOLIFY_CONFIGS` the same way Docker hosts are.
+
+### `readOnly`
+
+`true` or `false`. Ignored when `READONLY_MODE` is set.
+
+### `auth`
+
+Ignored when `JWT_SECRET`, `ADMIN_USERNAME`, or `ADMIN_PASSWORD` is set. With `enabled` true, all three of `jwtSecret`, `adminUsername`, and `adminPasswordHash` are required, or LogDeck runs without auth.
+
+- `jwtSecret`: signs sessions. Any long random string. Changing it ends every session.
+- `adminUsername`: the login name.
+- `adminPasswordHash`: a [bcrypt hash](#password-hashing) of the password. JSON has no `$` escaping, so paste it as is.
+- `adminPasswordSalt`: legacy only. When set, `adminPasswordHash` is read as hex SHA256(password + salt) instead of bcrypt.
+
+### `apiTokens`
+
+One entry per [API token](#api-tokens). The file holds only a hash, so you can mint tokens outside LogDeck and hand out the plain token yourself:
+
+```bash
+token="ldk_$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
+hash=$(printf %s "$token" | sha256sum | cut -d' ' -f1)
+prefix=${token:0:12}
+```
+
+- `name`: a label shown in the UI.
+- `prefix`: the first 12 characters of the token, including `ldk_`. It identifies the token in the UI and is the id used to revoke it.
+- `hash`: hex SHA256 of the full token.
+- `scope`: `admin` or `read`. Missing means `admin`. Any other value is treated as `read`, so a typo never grants admin.
+- `createdAt`: RFC 3339 timestamp, display only.
+
+### `alerts`
+
+Rules and channels, as described on the [alerting](/docs/alerting) page. IDs are opaque strings and only need to be unique within their list. `createdAt` is display only.
+
+`channels` entries:
+
+- `id`, `type`, `enabled`, and an optional `name`.
+- `type` is `webhook`, `ntfy`, `gotify`, or `telegram`.
+- `url`: the webhook URL, the ntfy topic URL, or the Gotify server base URL.
+- `token`: the Gotify app token or the Telegram bot token.
+- `target`: the Telegram chat id.
+
+`rules` entries:
+
+- `id`, `name`, `enabled`, and `type`, which is `event` or `log`. Rules with any other type are skipped with a log line.
+- `hosts`, `containers`, `projects`: optional targeting lists, combined with AND. Empty means all.
+- `events`: for event rules, any of `die`, `oom`, `unhealthy`.
+- `minLevel`, `pattern`: for log rules, a level name and an RE2 regex. Set either or both. A rule with an invalid pattern is skipped with a log line.
+- `threshold`: matches needed before the rule fires. 0 or 1 fires on every match.
+- `windowSeconds`: the threshold window. Default 60.
+- `cooldownSeconds`: minimum seconds between alerts for the same rule and container. Default 300.
+
+`webhookUrl` is a legacy key from before channels existed. LogDeck turns it into a webhook channel on the next start and rewrites the file.
+
+### `logStore`
+
+`enabled`, `perContainerMB`, and `totalMB`, with the defaults shown in the example. Each one is overridden independently by its [environment variable](#log-persistence). Zero or negative sizes fall back to the default.
 
 ## Server
 
