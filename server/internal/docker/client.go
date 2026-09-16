@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -31,16 +33,19 @@ func NewMultiHostClient(hosts []config.DockerHost) (*MultiHostClient, error) {
 		)
 
 		if strings.HasPrefix(host.Host, "ssh://") {
-			helper, helperErr := connhelper.GetConnectionHelper(host.Host)
+			helper, helperErr := connhelper.GetConnectionHelperWithSSHOpts(host.Host, sshFlags())
 			if helperErr != nil {
 				return nil, fmt.Errorf("failed to setup SSH helper for host %s (%s): %w", host.Name, host.Host, helperErr)
 			}
 
+			// No http.Client.Timeout: it would also cut off followed log,
+			// stats, and event streams.
 			httpClient := &http.Client{
 				Transport: &http.Transport{
-					DialContext: helper.Dialer,
+					DialContext:           helper.Dialer,
+					MaxIdleConnsPerHost:   32,
+					ResponseHeaderTimeout: 10 * time.Second,
 				},
-				Timeout: 10 * time.Second,
 			}
 
 			apiClient, err = client.NewClientWithOpts(
@@ -72,6 +77,17 @@ func NewMultiHostClient(hosts []config.DockerHost) (*MultiHostClient, error) {
 		clients: clients,
 		hosts:   hosts,
 	}, nil
+}
+
+// sshFlags multiplexes every ssh dial over one master connection; a
+// handshake per request trips sshd's MaxStartups throttle.
+func sshFlags() []string {
+	return []string{
+		"-o ConnectTimeout=10",
+		"-o ControlMaster=auto",
+		"-o ControlPath=" + filepath.Join(os.TempDir(), "logdeck-ssh-%C"),
+		"-o ControlPersist=10m",
+	}
 }
 
 type HostError struct {

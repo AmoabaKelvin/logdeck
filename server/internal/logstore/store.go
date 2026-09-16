@@ -34,6 +34,10 @@ const (
 	// batchLines and batchInterval bound one write transaction.
 	batchLines    = 500
 	batchInterval = 250 * time.Millisecond
+	// Commit failures back the writer off between these bounds. The cap is
+	// also the most a failing store can delay shutdown.
+	minCommitBackoff = time.Second
+	maxCommitBackoff = 5 * time.Second
 	// syncInterval is the container lifecycle poll cadence.
 	syncInterval = 15 * time.Second
 	// listTimeout bounds one container listing; an unreachable host must not

@@ -191,6 +191,11 @@ func (s *Store) writeLoop() {
 	// SQLite's single write lock; see janitorLoop.
 	batchesSinceRetain := 0
 
+	// failDelay throttles the writer after a failed commit: a dropped batch is
+	// re-read by backfill, and retrying at full speed makes that a CPU-bound
+	// loop. Sleeping here backpressures the producers.
+	var failDelay time.Duration
+
 	flush := func() {
 		if len(batch) == 0 {
 			return
@@ -202,6 +207,10 @@ func (s *Store) writeLoop() {
 			// re-reads each one from its earliest dropped line, and the insert
 			// dedup makes that re-read safe.
 			s.markBatchGaps(batch)
+			failDelay = min(max(2*failDelay, minCommitBackoff), maxCommitBackoff)
+			time.Sleep(failDelay)
+		} else {
+			failDelay = 0
 		}
 		batch = batch[:0]
 		batchesSinceRetain++

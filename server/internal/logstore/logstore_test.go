@@ -1882,3 +1882,29 @@ func TestRetentionHonorsCapLoweredAtRuntime(t *testing.T) {
 		t.Fatal("the oldest line survived; eviction must be oldest-first")
 	}
 }
+
+func TestWriterBacksOffAfterFailedCommit(t *testing.T) {
+	s := newTestStore(t)
+	if _, err := s.writerDB.Exec("PRAGMA query_only(1)"); err != nil {
+		t.Fatal(err)
+	}
+	key := genKey{"local", "web"}
+	done := make(chan struct{})
+	start := time.Now()
+	go func() {
+		defer close(done)
+		s.writeLoop()
+	}()
+	for i := range batchLines {
+		s.ingestCh <- ingestMsg{kind: msgLine, key: key, name: "web",
+			line: lineFromEntry(entryAt(baseTime.Add(time.Duration(i)*time.Millisecond), "stdout", "hello"))}
+	}
+	close(s.ingestCh)
+	<-done
+	if elapsed := time.Since(start); elapsed < minCommitBackoff {
+		t.Fatalf("writer retried after %s, want at least %s", elapsed, minCommitBackoff)
+	}
+	if s.gapAt(key) == 0 {
+		t.Fatal("dropped batch left no gap to re-read")
+	}
+}
