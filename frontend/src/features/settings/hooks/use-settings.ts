@@ -31,9 +31,13 @@ export function useSettings() {
 export function useUpdateDockerHosts() {
 	const queryClient = useQueryClient();
 	return useMutation({
-		mutationFn: (hosts: { name: string; host: string }[]) =>
-			updateDockerHosts(hosts),
-		onSuccess: () => {
+		mutationFn: (input: {
+			hosts: { name: string; host: string }[];
+			revision?: string;
+		}) => updateDockerHosts(input.hosts, input.revision),
+		// Settled, not success: a 409 means the list changed under the user, and
+		// refetching remounts the section with the current hosts and revision.
+		onSettled: () => {
 			queryClient.invalidateQueries({ queryKey: SETTINGS_KEY });
 		},
 	});
@@ -42,10 +46,13 @@ export function useUpdateDockerHosts() {
 export function useUpdateCoolifyHosts() {
 	const queryClient = useQueryClient();
 	return useMutation({
-		mutationFn: (
-			hosts: { hostName: string; apiURL: string; apiToken: string }[],
-		) => updateCoolifyHosts(hosts),
-		onSuccess: () => {
+		mutationFn: (input: {
+			hosts: { hostName: string; apiURL: string; apiToken: string }[];
+			revision?: string;
+		}) => updateCoolifyHosts(input.hosts, input.revision),
+		// Settled, not success: a 409 means the list changed under the user, and
+		// refetching remounts the section with the current hosts and revision.
+		onSettled: () => {
 			queryClient.invalidateQueries({ queryKey: SETTINGS_KEY });
 		},
 	});

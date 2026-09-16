@@ -16,11 +16,14 @@ export interface CoolifyHost {
 export interface DockerHostsConfig {
 	source: ConfigSource;
 	hosts: DockerHost[];
+	/** Echoed back on save so a concurrent edit is rejected instead of overwritten. */
+	revision?: string;
 }
 
 export interface CoolifyHostsConfig {
 	source: ConfigSource;
 	hosts: CoolifyHost[];
+	revision?: string;
 }
 
 export interface ReadOnlyConfig {

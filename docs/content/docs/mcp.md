@@ -52,7 +52,7 @@ These need an admin token. There are no flags to set. Hand the assistant the tok
 - `run_command`: run one non-interactive command in a container and return separate stdout, stderr, and the exit code.
 - `get_env` / `set_env`: read and replace a container's environment variables. Values often hold secrets, and a write recreates the container, so it restarts with a new ID.
 - `get_settings` / `set_read_only` / `set_log_storage`: read settings, toggle server-wide read-only mode, and change log persistence and its retention caps.
-- `set_docker_hosts` / `set_coolify_hosts`: replace the configured hosts. Each takes the complete list instead of merging, so read `get_settings` first.
+- `set_docker_hosts` / `set_coolify_hosts`: replace the configured hosts. Each takes the complete list instead of merging, plus the section's `revision` from `get_settings`. If the hosts changed since that read, the write is rejected instead of overwriting the other change.
 - `set_auth` / `list_api_tokens` / `create_api_token` / `delete_api_token`: change authentication and manage API tokens. Disabling auth leaves the server open to anyone who can reach it.
 
 Client confirmation prompts are a convenience, not a security boundary. The token scope is the boundary. A read-scoped token cannot use any action tool: the server rejects every mutation and denies the env and settings endpoints outright. Destructive tools carry the protocol's destructive hint, so a well-behaved client prompts harder before running them.
