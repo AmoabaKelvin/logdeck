@@ -23,7 +23,7 @@ var ErrContainerNotFound = errors.New("container not found")
 // simply files its next line under a fresh generation. See invalidate for how
 // the writer's ref cache is kept from pointing at the ids this removes.
 func (s *Store) DeleteContainer(ctx context.Context, host, name string) (int64, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.writerDB.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}

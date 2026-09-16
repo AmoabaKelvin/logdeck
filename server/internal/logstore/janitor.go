@@ -235,7 +235,7 @@ func (s *Store) evictOldest(ctx context.Context, refs []int64, excess int64) (in
 func (s *Store) evictOldestBlocks(ctx context.Context, refs []int64, excess, boundTS int64) (int64, error) {
 	placeholders, args := refArgs(refs)
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.writerDB.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -312,7 +312,7 @@ func (s *Store) evictOldestBlocks(ctx context.Context, refs []int64, excess, bou
 func (s *Store) evictOldestHotLines(ctx context.Context, refs []int64, excess, boundTS int64) (int64, error) {
 	placeholders, args := refArgs(refs)
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.writerDB.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -382,7 +382,7 @@ func (s *Store) evictOldestHotLines(ctx context.Context, refs []int64, excess, b
 // still has lines is kept — its history is part of the logical container's
 // timeline.
 func (s *Store) pruneEmptyGenerations(ctx context.Context) error {
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.writerDB.ExecContext(ctx, `
 		DELETE FROM containers
 		WHERE removed_ms IS NOT NULL
 		  AND NOT EXISTS (SELECT 1 FROM log_lines WHERE container_ref = containers.id)

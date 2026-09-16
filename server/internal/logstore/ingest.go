@@ -266,7 +266,7 @@ func (s *Store) writeLoop() {
 func (s *Store) checkpoint() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, _ = s.db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)")
+	_, _ = s.writerDB.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)")
 }
 
 // markBatchGaps records a dropped-line gap for every generation in a batch the
@@ -296,7 +296,7 @@ func (s *Store) commit(batch []ingestMsg, state *writerState) error {
 
 	refs := state.refs
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.writerDB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -325,6 +325,13 @@ func (s *Store) commit(batch []ingestMsg, state *writerState) error {
 	newHot := make(map[int64]int)
 	nowMS := time.Now().UnixMilli()
 	insertedCount := int64(0)
+	// Every line uses the same dedup/insert statement. Prepare it once per
+	// batch so the driver reuses SQLite's compiled statement for all 500 rows.
+	insert, err := tx.PrepareContext(ctx, insertLineSQL)
+	if err != nil {
+		return err
+	}
+	defer insert.Close()
 
 	for _, msg := range batch {
 		ref, ok := refs[msg.key]
@@ -355,7 +362,7 @@ func (s *Store) commit(batch []ingestMsg, state *writerState) error {
 			continue
 		}
 
-		inserted, err := s.insertLine(ctx, tx, state, ref, msg.line)
+		inserted, err := s.insertLine(ctx, tx, insert, state, ref, msg.line)
 		if err != nil {
 			return err
 		}
@@ -439,7 +446,7 @@ func upsertGeneration(ctx context.Context, tx *sql.Tx, key genKey, name, project
 // also read it). Note that this never drops a line by timestamp alone — only a
 // byte-identical line on the same stream in the same nanosecond, which is the
 // duplicate we are trying to avoid.
-func (s *Store) insertLine(ctx context.Context, tx *sql.Tx, state *writerState, ref int64, l line) (bool, error) {
+func (s *Store) insertLine(ctx context.Context, tx *sql.Tx, insert *sql.Stmt, state *writerState, ref int64, l line) (bool, error) {
 	sealed, err := s.sealedHasLine(ctx, tx, state, ref, l)
 	if err != nil {
 		return false, err
@@ -450,13 +457,7 @@ func (s *Store) insertLine(ctx context.Context, tx *sql.Tx, state *writerState, 
 
 	// The hot check is an index seek on (container_ref, ts_ns), the same B-tree
 	// the insert already touches.
-	result, err := tx.ExecContext(ctx, `
-		INSERT INTO log_lines (container_ref, ts_ns, stream, level, raw, seq)
-		SELECT ?, ?, ?, ?, ?, ?
-		WHERE NOT EXISTS (
-			SELECT 1 FROM log_lines
-			WHERE container_ref = ? AND ts_ns = ? AND stream = ? AND raw = ?
-		)`,
+	result, err := insert.ExecContext(ctx,
 		ref, l.tsNS, l.stream, l.level, l.raw, state.nextSeq,
 		ref, l.tsNS, l.stream, l.raw)
 	if err != nil {
@@ -471,6 +472,13 @@ func (s *Store) insertLine(ctx context.Context, tx *sql.Tx, state *writerState, 
 	}
 	return rows > 0, nil
 }
+
+const insertLineSQL = `INSERT INTO log_lines (container_ref, ts_ns, stream, level, raw, seq)
+	SELECT ?, ?, ?, ?, ?, ?
+	WHERE NOT EXISTS (
+		SELECT 1 FROM log_lines
+		WHERE container_ref = ? AND ts_ns = ? AND stream = ? AND raw = ?
+	)`
 
 // sealedHasLine reports whether a line is already inside one of the
 // generation's sealed blocks.
@@ -572,7 +580,7 @@ func (s *Store) sealOneBlock(ref int64, state *writerState) (int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.writerDB.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
