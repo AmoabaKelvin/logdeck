@@ -38,6 +38,7 @@ import { LogToolbar } from "./log-toolbar";
 import { ShortcutHelpDialog } from "./shortcut-help";
 import { resolveTimeRange } from "./time-range";
 import { useLogFiltering } from "./use-log-filtering";
+import { DEFAULT_LOG_FONT_SIZE, useLogFontSize } from "./use-log-font-size";
 import { navigatePins, useLogPins } from "./use-log-pins";
 import { useLogSearch, useSearchMatches } from "./use-log-search";
 import { LOG_LEVELS, type LogViewState } from "./use-log-view-state";
@@ -93,6 +94,8 @@ export function LogViewer({
 		logLines,
 		setLogLines,
 		timeRange,
+		isFullscreen,
+		setIsFullscreen,
 	} = viewState;
 
 	const [excludeMatches, setExcludeMatches] = useState(false);
@@ -105,6 +108,7 @@ export function LogViewer({
 	);
 	const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
 	const [showShortcutHelp, setShowShortcutHelp] = useState(false);
+	const { fontSize, stepFontSize } = useLogFontSize();
 	const parentRef = useRef<HTMLDivElement>(null);
 	const searchInputRef = useRef<HTMLInputElement>(null);
 	const autoScrollRef = useRef(autoScroll);
@@ -169,6 +173,11 @@ export function LogViewer({
 	// History reads a single container's stored logs by name, so it is offered
 	// on the page variant only (the sheet stays live; aggregate views have no
 	// per-container store to read).
+	// The sheet is a transformed dialog: a fixed child would fill the sheet, not
+	// the viewport. It links to the full page instead.
+	const canFullscreen = variant === "page";
+	const showFullscreen = canFullscreen && isFullscreen;
+
 	const supportsHistory = variant === "page" && !targets;
 	const { data: historyStatus } = useHistoryStatus(supportsHistory);
 	const historyEnabled = supportsHistory && historyStatus?.enabled === true;
@@ -522,9 +531,15 @@ export function LogViewer({
 	const rowVirtualizer = useVirtualizer({
 		count: filteredLogs.length,
 		getScrollElement: () => parentRef.current,
-		estimateSize: () => (wrapText ? 60 : 36),
+		estimateSize: () =>
+			((wrapText ? 60 : 36) * fontSize) / DEFAULT_LOG_FONT_SIZE,
 		overscan: 5,
 	});
+
+	// Cached row heights belong to the old text size.
+	useEffect(() => {
+		rowVirtualizer.measure();
+	}, [fontSize, rowVirtualizer]);
 
 	const goToPreviousMatch = useCallback(() => {
 		if (searchMatches.length === 0) return;
@@ -681,6 +696,24 @@ export function LogViewer({
 				return;
 			}
 
+			if (canFullscreen && lowerKey === "f") {
+				event.preventDefault();
+				setIsFullscreen(!isFullscreen);
+				return;
+			}
+
+			if (showFullscreen && event.key === "Escape") {
+				event.preventDefault();
+				setIsFullscreen(false);
+				return;
+			}
+
+			if (event.key === "+" || event.key === "=" || event.key === "-") {
+				event.preventDefault();
+				stepFontSize(event.key === "-" ? -1 : 1);
+				return;
+			}
+
 			if (event.key === "/") {
 				event.preventDefault();
 				focusSearchInput();
@@ -727,6 +760,11 @@ export function LogViewer({
 			}
 		};
 	}, [
+		canFullscreen,
+		showFullscreen,
+		isFullscreen,
+		setIsFullscreen,
+		stepFontSize,
 		focusSearchInput,
 		goToAdjacentLogLine,
 		extendSelectionByLine,
@@ -846,18 +884,23 @@ export function LogViewer({
 			onTogglePause={togglePauseStreaming}
 			onRefresh={handleRefresh}
 			onLogLinesChange={handleLogLinesChange}
+			fontSize={fontSize}
+			onStepFontSize={stepFontSize}
 			onDownload={handleDownloadLogs}
 			onShowShortcutHelp={() => setShowShortcutHelp(true)}
 			totalCount={logs.length}
 			filteredCount={filteredLogs.length}
 			isHistory={isHistory}
 			showSourceToggle={historyEnabled && !historyOnly}
+			title={historyContainer}
+			canFullscreen={canFullscreen}
 		/>
 	);
 
 	const logList = (
 		<LogList
 			variant={variant}
+			isFullscreen={showFullscreen}
 			parentRef={parentRef}
 			rowVirtualizer={rowVirtualizer}
 			isLoadingLogs={isLoadingLogs}
@@ -873,6 +916,7 @@ export function LogViewer({
 			filteredLogs={filteredLogs}
 			filteredToOriginalIndex={filteredToOriginalIndex}
 			wrapText={wrapText}
+			fontSize={fontSize}
 			showTimestamps={showTimestamps}
 			showContainerName={targets !== undefined}
 			searchMatches={searchMatches}
@@ -899,6 +943,20 @@ export function LogViewer({
 			onOpenChange={setShowShortcutHelp}
 		/>
 	);
+
+	if (showFullscreen) {
+		// Same element tree as the page branch below, so toggling restyles the
+		// viewer in place: the stream, scroll position and selection survive.
+		return (
+			<div className="fixed inset-0 z-50 flex flex-col bg-background">
+				<div className="shrink-0 border-b border-border/70 py-3 pr-4 pl-2.5">
+					{toolbar}
+				</div>
+				{logList}
+				{shortcutHelpDialog}
+			</div>
+		);
+	}
 
 	if (variant === "page") {
 		return (

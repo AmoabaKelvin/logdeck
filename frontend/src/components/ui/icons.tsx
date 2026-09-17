@@ -101,8 +101,20 @@ export function LogOutIcon(props: IconProps) {
   return <HugeiconsIcon icon={hugeicons.LogOutIcon} {...props} />
 }
 
+export function MaximizeIcon(props: IconProps) {
+  return <HugeiconsIcon icon={hugeicons.ArrowExpandIcon} {...props} />
+}
+
 export function MemoryStickIcon(props: IconProps) {
   return <HugeiconsIcon icon={hugeicons.MemoryStickIcon} {...props} />
+}
+
+export function MinimizeIcon(props: IconProps) {
+  return <HugeiconsIcon icon={hugeicons.ArrowShrinkIcon} {...props} />
+}
+
+export function MinusIcon(props: IconProps) {
+  return <HugeiconsIcon icon={hugeicons.MinusSignIcon} {...props} />
 }
 
 export function MonitorIcon(props: IconProps) {

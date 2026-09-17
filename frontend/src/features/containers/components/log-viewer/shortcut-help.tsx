@@ -28,6 +28,9 @@ export const LOG_VIEWER_SHORTCUTS: ShortcutEntry[] = [
 	{ keys: ["p"], description: "Next pinned line" },
 	{ keys: ["P"], description: "Previous pinned line" },
 	{ keys: ["Shift+Click"], description: "Select a range of lines" },
+	{ keys: ["+", "-"], description: "Larger or smaller text" },
+	{ keys: ["f"], description: "Toggle fullscreen" },
+	{ keys: ["Esc"], description: "Exit fullscreen" },
 	{ keys: ["?"], description: "Toggle this help" },
 ];
 

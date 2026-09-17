@@ -16,8 +16,12 @@ import {
 	DownloadIcon,
 	EllipsisVerticalIcon,
 	HelpCircleIcon,
+	MaximizeIcon,
+	MinimizeIcon,
+	MinusIcon,
 	PauseIcon,
 	PlayIcon,
+	PlusIcon,
 	RefreshCcwIcon,
 	SearchIcon,
 	SquareIcon,
@@ -31,6 +35,7 @@ import {
 import type { LogLevel } from "@/features/containers/api/get-container-logs-parsed";
 import { LevelFilterPopover } from "./level-filter-popover";
 import { TimeRangeControl } from "./time-range-control";
+import { LOG_FONT_SIZES } from "./use-log-font-size";
 import type { SearchParsed } from "./use-log-search";
 import { LOG_SOURCES, type LogViewState } from "./use-log-view-state";
 
@@ -60,6 +65,8 @@ interface StreamControls {
 	onTogglePause: () => void;
 	onRefresh: () => void;
 	onLogLinesChange: (value: string) => void;
+	fontSize: number;
+	onStepFontSize: (direction: 1 | -1) => void;
 	onDownload: (format: "json" | "txt") => void;
 	onShowShortcutHelp: () => void;
 }
@@ -73,6 +80,9 @@ interface LogToolbarProps extends StreamControls {
 	// The toggle only appears when the server persists logs and the view has a
 	// live counterpart to switch back to.
 	showSourceToggle: boolean;
+	// Names what is on screen once fullscreen hides the page header.
+	title: string;
+	canFullscreen: boolean;
 }
 
 const segmentButtonClass =
@@ -153,12 +163,16 @@ export function LogToolbar({
 	onTogglePause,
 	onRefresh,
 	onLogLinesChange,
+	fontSize,
+	onStepFontSize,
 	onDownload,
 	onShowShortcutHelp,
 	totalCount,
 	filteredCount,
 	isHistory,
 	showSourceToggle,
+	title,
+	canFullscreen,
 }: LogToolbarProps) {
 	const {
 		source,
@@ -176,6 +190,8 @@ export function LogToolbar({
 		logLines,
 		timeRange,
 		setTimeRange,
+		isFullscreen,
+		setIsFullscreen,
 	} = viewState;
 
 	// History searches server-side: the non-matching lines were never sent, so
@@ -184,6 +200,12 @@ export function LogToolbar({
 
 	return (
 		<div className="flex flex-wrap items-center gap-2">
+			{isFullscreen && title && (
+				<h2 className="max-w-full truncate pr-1 text-base font-semibold sm:max-w-64 sm:text-sm">
+					{title}
+				</h2>
+			)}
+
 			{showSourceToggle && (
 				<div className="flex shrink-0 items-center gap-0.5 rounded-md bg-muted p-0.5">
 					{LOG_SOURCES.map((value) => (
@@ -393,6 +415,35 @@ export function LogToolbar({
 							<span className="flex-1">Wrap long lines</span>
 							{wrapText && <CheckIcon className="size-4" />}
 						</DropdownMenuItem>
+						<DropdownMenuItem
+							onSelect={(event) => event.preventDefault()}
+							className="justify-between gap-3"
+						>
+							<span>Text size</span>
+							<div className="flex items-center gap-0.5">
+								<Button
+									variant="ghost"
+									size="icon-sm"
+									onClick={() => onStepFontSize(-1)}
+									disabled={fontSize === LOG_FONT_SIZES[0]}
+									aria-label="Decrease text size"
+									className="size-7"
+								>
+									<MinusIcon className="size-4" />
+								</Button>
+								<span className="w-6 text-center tabular-nums">{fontSize}</span>
+								<Button
+									variant="ghost"
+									size="icon-sm"
+									onClick={() => onStepFontSize(1)}
+									disabled={fontSize === LOG_FONT_SIZES.at(-1)}
+									aria-label="Increase text size"
+									className="size-7"
+								>
+									<PlusIcon className="size-4" />
+								</Button>
+							</div>
+						</DropdownMenuItem>
 						{!isHistory && searchText && (
 							<DropdownMenuItem
 								onClick={() => setExcludeMatches(!excludeMatches)}
@@ -436,6 +487,31 @@ export function LogToolbar({
 						</DropdownMenuItem>
 					</DropdownMenuContent>
 				</DropdownMenu>
+
+				{canFullscreen && (
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button
+								variant="outline"
+								size="icon-sm"
+								data-active={isFullscreen}
+								onClick={() => setIsFullscreen(!isFullscreen)}
+								aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+								aria-pressed={isFullscreen}
+								className={activeControlClass}
+							>
+								{isFullscreen ? (
+									<MinimizeIcon className="size-4" />
+								) : (
+									<MaximizeIcon className="size-4" />
+								)}
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent>
+							{isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+						</TooltipContent>
+					</Tooltip>
+				)}
 			</div>
 		</div>
 	);
