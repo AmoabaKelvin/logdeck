@@ -3,6 +3,7 @@ import {
 	parseAsInteger,
 	parseAsIsoDateTime,
 	parseAsString,
+	parseAsStringLiteral,
 	useQueryStates,
 } from "nuqs";
 import { useCallback, useMemo } from "react";
@@ -11,7 +12,9 @@ import type { DateRange } from "react-day-picker";
 import type {
 	GroupByOption,
 	SortDirection,
+	SortKey,
 } from "../components/container-utils";
+import { SORT_KEYS } from "../components/container-utils";
 
 const parseAsSortDirection = createParser({
 	parse: (value): SortDirection | null => {
@@ -38,6 +41,7 @@ const searchParamsConfig = {
 	state: parseAsString.withDefault("all"),
 	host: parseAsString.withDefault("all"),
 	sort: parseAsSortDirection.withDefault("desc"),
+	sortBy: parseAsStringLiteral(SORT_KEYS).withDefault("created"),
 	group: parseAsGroupBy.withDefault("none"),
 	page: parseAsInteger.withDefault(1),
 	pageSize: parseAsInteger.withDefault(10),
@@ -55,6 +59,7 @@ export function useContainersDashboardUrlState() {
 		state: stateFilter,
 		host: hostFilter,
 		sort: sortDirection,
+		sortBy: sortKey,
 		group: groupBy,
 		page,
 		pageSize,
@@ -103,10 +108,12 @@ export function useContainersDashboardUrlState() {
 		[setParams],
 	);
 
-	const setSortDirection = useCallback(
-		(value: SortDirection) => {
+	const setSort = useCallback(
+		(key: SortKey, direction: SortDirection) => {
 			setParams({
-				sort: value,
+				sortBy: key,
+				sort: direction,
+				page: 1,
 			});
 		},
 		[setParams],
@@ -167,8 +174,9 @@ export function useContainersDashboardUrlState() {
 		setStateFilter,
 		hostFilter,
 		setHostFilter,
+		sortKey,
 		sortDirection,
-		setSortDirection,
+		setSort,
 		groupBy,
 		setGroupBy,
 		dateRange,
