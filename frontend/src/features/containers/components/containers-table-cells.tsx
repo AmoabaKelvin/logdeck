@@ -1,5 +1,7 @@
 import { Badge } from "@/components/ui/badge";
+import { ArrowUpIcon } from "@/components/ui/icons";
 import type { ContainerInfo, ContainerPort, ContainerStatsMap } from "../types";
+import type { SortDirection, SortKey } from "./container-utils";
 import { formatBytes, formatCPUPercent } from "./container-utils";
 import { Meter } from "./meter";
 import { Sparkline } from "./sparkline";
@@ -9,6 +11,49 @@ export const cellClass =
 	"h-14 px-3 align-middle whitespace-nowrap first:pl-0 last:pr-0";
 export const headClass =
 	"h-11 px-3 text-left align-middle font-medium whitespace-nowrap text-muted-foreground first:pl-0 last:pr-0";
+
+const DESC_FIRST: ReadonlySet<SortKey> = new Set([
+	"uptime",
+	"created",
+	"cpu",
+	"memory",
+]);
+
+export function SortButton({
+	label,
+	sortKey,
+	activeKey,
+	direction,
+	onSort,
+}: {
+	label: string;
+	sortKey: SortKey;
+	activeKey: SortKey;
+	direction: SortDirection;
+	onSort: (key: SortKey, direction: SortDirection) => void;
+}) {
+	const active = sortKey === activeKey;
+	const firstDirection = DESC_FIRST.has(sortKey) ? "desc" : "asc";
+	const nextDirection = active
+		? direction === "desc"
+			? "asc"
+			: "desc"
+		: firstDirection;
+	const pointsDown = (active ? direction : firstDirection) === "desc";
+
+	return (
+		<button
+			type="button"
+			onClick={() => onSort(sortKey, nextDirection)}
+			className={`group inline-flex items-center gap-1 rounded-sm hover:text-foreground ${active ? "text-foreground" : ""}`}
+		>
+			{label}
+			<ArrowUpIcon
+				className={`size-4 shrink-0 ${pointsDown ? "rotate-180" : ""} ${active ? "" : "invisible group-hover:visible group-focus-visible:visible"}`}
+			/>
+		</button>
+	);
+}
 
 const TONE_BADGE_CLASS = {
 	warn: "border-transparent bg-amber-500/10 text-amber-700 dark:text-amber-400",

@@ -23,6 +23,7 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import type { ColumnId } from "../hooks/use-table-columns";
 import type { ContainerInfo, ContainerStatsMap } from "../types";
 import type { RemovedContainerInfo } from "./container-utils";
 import {
@@ -199,6 +200,8 @@ export function ContainerRow({
 	history,
 	busy,
 	isReadOnly,
+	hiddenColumns,
+	indented,
 	...callbacks
 }: ContainerRowCallbacks & {
 	container: ContainerInfo;
@@ -206,6 +209,9 @@ export function ContainerRow({
 	history: number[];
 	busy: boolean;
 	isReadOnly: boolean;
+	hiddenColumns: ReadonlySet<ColumnId>;
+	/** Set under a project group, so the name lines up with the project's. */
+	indented: boolean;
 }) {
 	const removed = isRemovedContainer(container);
 	const { label, duration, exitCode } = splitContainerStatus(container);
@@ -221,7 +227,9 @@ export function ContainerRow({
 			{/* The usage cell already makes the row two lines, so the image is
 			    free here. */}
 			<td className={cellClass}>
-				<div className="flex min-w-0 flex-col gap-1">
+				<div
+					className={`flex min-w-0 flex-col gap-1 ${indented ? "pl-6" : ""}`}
+				>
 					<div className="flex min-w-0 items-center gap-2">
 						<Link
 							to="/containers/$containerId/logs"
@@ -256,39 +264,61 @@ export function ContainerRow({
 				</div>
 			</td>
 
-			<td className={cellClass}>
-				<StatusCell container={container} label={label} exitCode={exitCode} />
-			</td>
+			{!hiddenColumns.has("host") && (
+				<td
+					className={`${cellClass} hidden text-muted-foreground md:table-cell`}
+				>
+					<div className="truncate" title={container.host}>
+						{container.host}
+					</div>
+				</td>
+			)}
 
-			<td className={`${cellClass} hidden text-muted-foreground md:table-cell`}>
-				{duration ?? "—"}
-			</td>
+			{!hiddenColumns.has("status") && (
+				<td className={cellClass}>
+					<StatusCell container={container} label={label} exitCode={exitCode} />
+				</td>
+			)}
 
-			<td
-				className={`${cellClass} hidden text-muted-foreground tabular-nums lg:table-cell`}
-			>
-				<span title={formatCreatedDate(container.created)}>
-					{formatRelativeCreated(container.created)}
-				</span>
-			</td>
+			{!hiddenColumns.has("uptime") && (
+				<td
+					className={`${cellClass} hidden text-muted-foreground md:table-cell`}
+				>
+					{duration ?? "—"}
+				</td>
+			)}
 
-			<td className={`${cellClass} hidden lg:table-cell`}>
-				<PortsCell ports={container.ports ?? []} />
-			</td>
-
-			<td className={`${cellClass} hidden sm:table-cell`}>
-				{removed ? (
-					<span className="font-mono text-xs text-muted-foreground">
-						{container.storedBytes > 0
-							? `${formatBytes(container.storedBytes)} stored`
-							: "—"}
+			{!hiddenColumns.has("created") && (
+				<td
+					className={`${cellClass} hidden text-muted-foreground tabular-nums lg:table-cell`}
+				>
+					<span title={formatCreatedDate(container.created)}>
+						{formatRelativeCreated(container.created)}
 					</span>
-				) : container.state.toLowerCase() !== "running" ? (
-					<span className="text-muted-foreground">—</span>
-				) : (
-					<MetricsCell stats={stats} history={history} />
-				)}
-			</td>
+				</td>
+			)}
+
+			{!hiddenColumns.has("ports") && (
+				<td className={`${cellClass} hidden lg:table-cell`}>
+					<PortsCell ports={container.ports ?? []} />
+				</td>
+			)}
+
+			{!hiddenColumns.has("usage") && (
+				<td className={`${cellClass} hidden sm:table-cell`}>
+					{removed ? (
+						<span className="font-mono text-xs text-muted-foreground">
+							{container.storedBytes > 0
+								? `${formatBytes(container.storedBytes)} stored`
+								: "—"}
+						</span>
+					) : container.state.toLowerCase() !== "running" ? (
+						<span className="text-muted-foreground">—</span>
+					) : (
+						<MetricsCell stats={stats} history={history} />
+					)}
+				</td>
+			)}
 
 			<td className={cellClass}>
 				<div className="flex items-center justify-end gap-0.5">

@@ -10,6 +10,7 @@ const dashboardSearchSchema = z
 		search: z.string().optional(),
 		state: z.string().optional(),
 		sort: z.enum(["asc", "desc"]).optional(),
+		sortBy: z.string().optional(),
 		group: z.enum(["none", "compose"]).optional(),
 		page: z.number().optional(),
 		pageSize: z.number().optional(),
