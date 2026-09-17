@@ -2,6 +2,29 @@
 
 All notable changes to LogDeck are documented here.
 
+## [0.4.0] - 2026-09-17
+
+### Added
+
+**Sortable container table.** Every column header sorts: name, host, status, uptime, created, ports, and usage. Usage sorts by CPU or memory, picked from a small menu beside the header, and re-sorts as new stats arrive. Containers with nothing to sort on, such as stopped ones under CPU, stay at the bottom in both directions. The sort is part of the URL, so a bookmarked or shared link opens the same view.
+
+**Host column and a Columns menu.** The table can show which host each container runs on. The column is off by default. A Columns menu in the toolbar shows or hides every column except the name and the row actions, and the choice is remembered in the browser.
+
+**Collapsible project groups.** With grouping on, each compose project has a header with a chevron, a container count, and how many are running. Its containers are indented under it. Click a header to fold the project away, or use Collapse all and Expand all in the grouping menu. Collapsed projects are remembered in the browser.
+
+**Fullscreen logs and text size.** The log viewer on the container and stack pages can fill the screen from a toolbar button (`f` toggles, `Esc` leaves). The stream, scroll position, and selection carry over, and `?fullscreen=true` in the URL reopens it after a refresh. Text size is in the View menu, 11 to 20px, and `+` and `-` also work.
+
+### Changed
+
+- Grouping by project covers the whole filtered list, and pagination is hidden while it is on. Groups used to be built one page at a time, so a project could be split across pages and show the wrong count.
+
+### Fixed
+
+- With the same container name on two hosts, the container page always opened the first host's container. The header named the wrong host, and the logs and actions went to the wrong container as well. Links to the page now carry the host. Old links without one behave as before.
+- The dashboard read "LogDeck on logdeck", or a container ID, when LogDeck ran in a container, because the hostname it reported was the container's own. It now reports the machine's name, taken from the local Docker or Podman engine.
+- The toolbar above the container table overflowed the screen on phones. Its controls wrap now.
+- A browser with localStorage blocked or full could fail to load the dashboard. Table preferences that cannot be saved now last for the session.
+
 ## [0.3.1] - 2026-09-16
 
 ### Fixed
