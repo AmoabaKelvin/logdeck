@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"strings"
 	"sync"
 
 	"github.com/AmoabaKelvin/logdeck/internal/models"
@@ -38,6 +39,25 @@ func (c *MultiHostClient) GetHostsInfo(ctx context.Context) []models.HostInfo {
 
 	wg.Wait()
 	return result
+}
+
+// LocalEngineHostname returns the hostname reported by the engine behind the
+// first unix-socket host, which is the machine LogDeck itself runs on. It
+// returns "" when there is no such host or the engine cannot be reached.
+func (c *MultiHostClient) LocalEngineHostname(ctx context.Context) string {
+	for _, host := range c.hosts {
+		if !strings.HasPrefix(host.Host, "unix://") {
+			continue
+		}
+		apiClient, err := c.GetClient(host.Name)
+		if err != nil {
+			continue
+		}
+		if info, err := apiClient.Info(ctx); err == nil {
+			return info.Name
+		}
+	}
+	return ""
 }
 
 func hostInfoFromEngine(hostName string, info system.Info) models.HostInfo {

@@ -39,6 +39,17 @@ func Init() {
 	}
 }
 
+// InContainer reports whether the server runs inside a Docker or Podman
+// container, where the OS hostname is the container's and not the machine's.
+func InContainer() bool {
+	for _, marker := range []string{"/.dockerenv", "/run/.containerenv"} {
+		if _, err := os.Stat(marker); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
 func GetStats(ctx context.Context) (*SystemStats, error) {
 	hInfo, err := host.InfoWithContext(ctx)
 	if err != nil {

@@ -37,6 +37,19 @@ func (ar *APIRouter) GetSystemStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Inside a container the OS hostname is the container's own. The local
+	// engine knows the machine's real name.
+	if system.InContainer() {
+		ar.machineHostnameMu.Lock()
+		if ar.machineHostname == "" {
+			ar.machineHostname = ar.registry.Docker().LocalEngineHostname(ctx)
+		}
+		if ar.machineHostname != "" {
+			stats.HostInfo.Hostname = ar.machineHostname
+		}
+		ar.machineHostnameMu.Unlock()
+	}
+
 	WriteJsonResponse(w, http.StatusOK, stats)
 }
 
