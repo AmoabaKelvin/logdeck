@@ -401,7 +401,13 @@ describe("LogViewer history mode", () => {
 
 describe("LogViewer fullscreen", () => {
 	it("toggles from the toolbar and exits on Escape", async () => {
-		render(<Harness />);
+		render(
+			<>
+				<button type="button">behind</button>
+				<Harness />
+			</>,
+		);
+		const behind = screen.getByRole("button", { name: "behind" });
 		await act(async () => {
 			await drainMicrotasks();
 		});
@@ -410,9 +416,20 @@ describe("LogViewer fullscreen", () => {
 		expect(
 			screen.getByRole("button", { name: "Exit fullscreen" }),
 		).toBeTruthy();
+		expect(behind.hasAttribute("inert")).toBe(true);
+
+		// From the search field, the first Escape only leaves the field.
+		const search = screen.getByLabelText("Search logs");
+		search.focus();
+		fireEvent.keyDown(search, { key: "Escape" });
+		expect(document.activeElement).not.toBe(search);
+		expect(
+			screen.getByRole("button", { name: "Exit fullscreen" }),
+		).toBeTruthy();
 
 		fireEvent.keyDown(window, { key: "Escape" });
 		expect(screen.getByRole("button", { name: "Fullscreen" })).toBeTruthy();
+		expect(behind.hasAttribute("inert")).toBe(false);
 
 		fireEvent.keyDown(window, { key: "f" });
 		expect(

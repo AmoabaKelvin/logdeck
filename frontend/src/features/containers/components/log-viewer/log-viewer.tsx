@@ -110,6 +110,7 @@ export function LogViewer({
 	const [showShortcutHelp, setShowShortcutHelp] = useState(false);
 	const { fontSize, stepFontSize } = useLogFontSize();
 	const parentRef = useRef<HTMLDivElement>(null);
+	const fullscreenRef = useRef<HTMLDivElement>(null);
 	const searchInputRef = useRef<HTMLInputElement>(null);
 	const autoScrollRef = useRef(autoScroll);
 	const historyScrollAnchorRef = useRef<number | null>(null);
@@ -176,6 +177,29 @@ export function LogViewer({
 	// The sheet is transformed, so a fixed child would fill it, not the viewport.
 	const canFullscreen = variant === "page";
 	const showFullscreen = canFullscreen && isFullscreen;
+
+	// The page behind the overlay must not take focus. Inert everything beside
+	// the viewer up to the route root; portals and the toaster sit outside it.
+	useEffect(() => {
+		const root = fullscreenRef.current;
+		if (!showFullscreen || !root) return;
+		const stop = root.closest(".isolate") ?? document.body;
+		const inerted: Element[] = [];
+		for (
+			let el: Element = root;
+			el.parentElement && el !== stop;
+			el = el.parentElement
+		) {
+			for (const sibling of el.parentElement.children) {
+				if (sibling === el || sibling.hasAttribute("inert")) continue;
+				sibling.setAttribute("inert", "");
+				inerted.push(sibling);
+			}
+		}
+		return () => {
+			for (const el of inerted) el.removeAttribute("inert");
+		};
+	}, [showFullscreen]);
 
 	const supportsHistory = variant === "page" && !targets;
 	const { data: historyStatus } = useHistoryStatus(supportsHistory);
@@ -686,6 +710,8 @@ export function LogViewer({
 						"input, textarea, select, [contenteditable='true'], [role='textbox']",
 					))
 			) {
+				// Esc leaves the field first, so the next one can exit fullscreen.
+				if (showFullscreen && event.key === "Escape") target.blur();
 				return;
 			}
 
@@ -946,7 +972,10 @@ export function LogViewer({
 	if (showFullscreen) {
 		// Same element tree as the page branch, so toggling doesn't remount.
 		return (
-			<div className="fixed inset-0 z-50 flex flex-col bg-background">
+			<div
+				ref={fullscreenRef}
+				className="fixed inset-0 z-50 flex flex-col bg-background"
+			>
 				<div className="shrink-0 border-b border-border/70 py-3 pr-4 pl-2.5">
 					{toolbar}
 				</div>
