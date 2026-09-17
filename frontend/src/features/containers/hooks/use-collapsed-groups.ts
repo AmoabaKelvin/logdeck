@@ -1,16 +1,16 @@
 import { useCallback, useState } from "react";
+import { readStorage, writeStorage } from "@/lib/safe-storage";
 
 const STORAGE_KEY = "logdeck.collapsedGroups";
 
 export function useCollapsedGroups() {
 	const [collapsedGroups, setState] = useState<ReadonlySet<string>>(
-		() =>
-			new Set(localStorage.getItem(STORAGE_KEY)?.split("\n").filter(Boolean)),
+		() => new Set(readStorage(STORAGE_KEY)?.split("\n").filter(Boolean)),
 	);
 
 	const setCollapsedGroups = useCallback((projects: Iterable<string>) => {
 		const next = new Set(projects);
-		localStorage.setItem(STORAGE_KEY, [...next].join("\n"));
+		writeStorage(STORAGE_KEY, [...next].join("\n"));
 		setState(next);
 	}, []);
 

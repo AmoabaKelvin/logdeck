@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { readStorage, writeStorage } from "@/lib/safe-storage";
 
 export const TOGGLEABLE_COLUMNS = [
 	{ id: "host", label: "Host" },
@@ -15,15 +16,11 @@ const STORAGE_KEY = "logdeck.containerColumns.hidden";
 const DEFAULT_HIDDEN: ColumnId[] = ["host"];
 
 function readHidden(): ColumnId[] {
-	try {
-		const stored: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "");
-		if (!Array.isArray(stored)) return DEFAULT_HIDDEN;
-		return TOGGLEABLE_COLUMNS.map((column) => column.id).filter((id) =>
-			stored.includes(id),
-		);
-	} catch {
-		return DEFAULT_HIDDEN;
-	}
+	const stored = readStorage(STORAGE_KEY)?.split("\n");
+	if (!stored) return DEFAULT_HIDDEN;
+	return TOGGLEABLE_COLUMNS.map((column) => column.id).filter((id) =>
+		stored.includes(id),
+	);
 }
 
 export function useTableColumns() {
@@ -35,7 +32,7 @@ export function useTableColumns() {
 		setHiddenColumns((current) => {
 			const next = new Set(current);
 			if (!next.delete(id)) next.add(id);
-			localStorage.setItem(STORAGE_KEY, JSON.stringify([...next]));
+			writeStorage(STORAGE_KEY, [...next].join("\n"));
 			return next;
 		});
 	}, []);
