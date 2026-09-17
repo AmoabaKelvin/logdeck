@@ -200,6 +200,7 @@ export function ContainerRow({
 	busy,
 	isReadOnly,
 	hiddenColumns,
+	indented,
 	...callbacks
 }: ContainerRowCallbacks & {
 	container: ContainerInfo;
@@ -208,6 +209,8 @@ export function ContainerRow({
 	busy: boolean;
 	isReadOnly: boolean;
 	hiddenColumns: ReadonlySet<ColumnId>;
+	/** Set under a project group, so the name lines up with the project's. */
+	indented: boolean;
 }) {
 	const removed = isRemovedContainer(container);
 	const { label, duration, exitCode } = splitContainerStatus(container);
@@ -223,7 +226,9 @@ export function ContainerRow({
 			{/* The usage cell already makes the row two lines, so the image is
 			    free here. */}
 			<td className={cellClass}>
-				<div className="flex min-w-0 flex-col gap-1">
+				<div
+					className={`flex min-w-0 flex-col gap-1 ${indented ? "pl-6" : ""}`}
+				>
 					<div className="flex min-w-0 items-center gap-2">
 						<Link
 							to="/containers/$containerId/logs"

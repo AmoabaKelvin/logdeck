@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { GetContainersResponse } from "../api/get-containers";
 import { useContainerActions } from "../hooks/use-container-actions";
+import { useCollapsedGroups } from "../hooks/use-collapsed-groups";
 import { useContainerStats } from "../hooks/use-container-stats";
 import { useContainersDashboardUrlState } from "../hooks/use-containers-dashboard-url-state";
 import { useDeleteHistoryContainer } from "../hooks/use-delete-history-container";
@@ -84,6 +85,8 @@ export function ContainersDashboard() {
 		setPage,
 	} = useContainersDashboardUrlState();
 	const { hiddenColumns, toggleColumn } = useTableColumns();
+	const { collapsedGroups, toggleGroup, setCollapsedGroups } =
+		useCollapsedGroups();
 	const [selectedContainer, setSelectedContainer] =
 		useState<ContainerInfo | null>(null);
 	const [isLogsSheetOpen, setIsLogsSheetOpen] = useState(false);
@@ -186,12 +189,13 @@ export function ContainersDashboard() {
 		return filteredContainers.slice(offset, offset + pageSize);
 	}, [filteredContainers, page, pageSize]);
 
+	// Groups span the whole list: paging would split a project across pages.
 	const groupedItems = useMemo(() => {
 		if (groupBy !== "compose") {
 			return null;
 		}
-		return groupByCompose(pageItems);
-	}, [pageItems, groupBy]);
+		return groupByCompose(filteredContainers);
+	}, [filteredContainers, groupBy]);
 
 	// Filter by host, search, and date - but NOT by state filter
 	// This way state counts reflect the current host selection
@@ -297,6 +301,12 @@ export function ContainersDashboard() {
 					availableHosts={hosts}
 					groupBy={groupBy}
 					onGroupByChange={setGroupBy}
+					onCollapseAllGroups={() =>
+						setCollapsedGroups(
+							groupedItems?.map((group) => group.project) ?? [],
+						)
+					}
+					onExpandAllGroups={() => setCollapsedGroups([])}
 					hiddenColumns={hiddenColumns}
 					onToggleColumn={toggleColumn}
 					dateRange={dateRange}
@@ -319,6 +329,8 @@ export function ContainersDashboard() {
 						sortDirection={sortDirection}
 						onSortChange={setSort}
 						hiddenColumns={hiddenColumns}
+						collapsedGroups={collapsedGroups}
+						onToggleGroup={toggleGroup}
 						emptyMessage={
 							stateFilter === REMOVED_STATE
 								? "No removed containers with stored logs."
@@ -353,18 +365,20 @@ export function ContainersDashboard() {
 					/>
 				</div>
 
-				<div className="mt-6">
-					<ContainersPagination
-						totalItems={filteredContainers.length}
-						startIndex={startIndex}
-						endIndex={endIndex}
-						page={page}
-						totalPages={totalPages}
-						pageSize={pageSize}
-						onPageChange={setPage}
-						onPageSizeChange={setPageSize}
-					/>
-				</div>
+				{!groupedItems && (
+					<div className="mt-6">
+						<ContainersPagination
+							totalItems={filteredContainers.length}
+							startIndex={startIndex}
+							endIndex={endIndex}
+							page={page}
+							totalPages={totalPages}
+							pageSize={pageSize}
+							onPageChange={setPage}
+							onPageSizeChange={setPageSize}
+						/>
+					</div>
+				)}
 			</section>
 
 			<ConfirmActionDialog

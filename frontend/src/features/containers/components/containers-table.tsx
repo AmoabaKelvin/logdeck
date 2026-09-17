@@ -11,6 +11,7 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+	ChevronRightIcon,
 	EllipsisVerticalIcon,
 	FileTextIcon,
 	PlayIcon,
@@ -59,6 +60,8 @@ interface ContainersTableProps extends ContainerRowCallbacks {
 	sortDirection: SortDirection;
 	onSortChange: (key: SortKey, direction: SortDirection) => void;
 	hiddenColumns: ReadonlySet<ColumnId>;
+	collapsedGroups: ReadonlySet<string>;
+	onToggleGroup: (project: string) => void;
 	emptyMessage: string;
 	hasActiveFilters: boolean;
 	onClearFilters: () => void;
@@ -83,6 +86,8 @@ export function ContainersTable({
 	sortDirection,
 	onSortChange,
 	hiddenColumns,
+	collapsedGroups,
+	onToggleGroup,
 	emptyMessage,
 	hasActiveFilters,
 	onClearFilters,
@@ -130,7 +135,7 @@ export function ContainersTable({
 		/>
 	);
 
-	const renderRow = (container: ContainerInfo) => (
+	const renderRow = (container: ContainerInfo, indented = false) => (
 		<ContainerRow
 			key={container.id}
 			container={container}
@@ -139,6 +144,7 @@ export function ContainersTable({
 			busy={pendingActions.has(container.id)}
 			isReadOnly={isReadOnly}
 			hiddenColumns={hiddenColumns}
+			indented={indented}
 			{...rowCallbacks}
 		/>
 	);
@@ -195,6 +201,10 @@ export function ContainersTable({
 		if (groupBy === "compose" && groupedItems) {
 			return groupedItems.map((group) => {
 				const busy = pendingComposeActions.has(group.project);
+				const collapsed = collapsedGroups.has(group.project);
+				const running = group.items.filter(
+					(container) => container.state.toLowerCase() === "running",
+				).length;
 
 				return (
 					<Fragment key={group.project}>
@@ -202,15 +212,23 @@ export function ContainersTable({
 							{/* oxlint-disable-next-line jsx-a11y/control-has-associated-label -- a plain group header cell, not a control; its text sits deeper than the rule looks */}
 							<td colSpan={columnCount} className="h-10 px-0">
 								<div className="flex items-center justify-between gap-3">
-									<div className="flex min-w-0 items-baseline gap-2">
-										<span className="truncate font-medium">
+									<button
+										type="button"
+										onClick={() => onToggleGroup(group.project)}
+										aria-expanded={!collapsed}
+										className="flex min-w-0 items-center gap-2 rounded-sm text-left"
+									>
+										<ChevronRightIcon
+											className={`size-4 shrink-0 text-muted-foreground ${collapsed ? "" : "rotate-90"}`}
+										/>
+										<span className="truncate font-semibold">
 											{group.project}
 										</span>
 										<span className="shrink-0 text-xs text-muted-foreground tabular-nums">
 											{group.items.length} container
-											{group.items.length === 1 ? "" : "s"}
+											{group.items.length === 1 ? "" : "s"} · {running} running
 										</span>
-									</div>
+									</button>
 									<div className="flex shrink-0 items-center gap-0.5">
 										{group.project !== "Standalone" && (
 											<Button variant="ghost" size="sm" asChild>
@@ -273,13 +291,14 @@ export function ContainersTable({
 								</div>
 							</td>
 						</tr>
-						{group.items.map(renderRow)}
+						{!collapsed &&
+							group.items.map((container) => renderRow(container, true))}
 					</Fragment>
 				);
 			});
 		}
 
-		return pageItems.map(renderRow);
+		return pageItems.map((container) => renderRow(container));
 	};
 
 	return (

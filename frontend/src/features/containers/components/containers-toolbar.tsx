@@ -5,8 +5,10 @@ import {
 	DropdownMenu,
 	DropdownMenuCheckboxItem,
 	DropdownMenuContent,
+	DropdownMenuItem,
 	DropdownMenuRadioGroup,
 	DropdownMenuRadioItem,
+	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -41,6 +43,8 @@ interface ContainersToolbarProps {
 	availableHosts: DockerHost[];
 	groupBy: GroupByOption;
 	onGroupByChange: (value: GroupByOption) => void;
+	onCollapseAllGroups: () => void;
+	onExpandAllGroups: () => void;
 	hiddenColumns: ReadonlySet<ColumnId>;
 	onToggleColumn: (id: ColumnId) => void;
 	dateRange: DateRange | undefined;
@@ -65,6 +69,8 @@ export function ContainersToolbar({
 	availableHosts,
 	groupBy,
 	onGroupByChange,
+	onCollapseAllGroups,
+	onExpandAllGroups,
 	hiddenColumns,
 	onToggleColumn,
 	dateRange,
@@ -166,6 +172,17 @@ export function ContainersToolbar({
 								By compose project
 							</DropdownMenuRadioItem>
 						</DropdownMenuRadioGroup>
+						{groupBy === "compose" && (
+							<>
+								<DropdownMenuSeparator />
+								<DropdownMenuItem inset onClick={onCollapseAllGroups}>
+									Collapse all
+								</DropdownMenuItem>
+								<DropdownMenuItem inset onClick={onExpandAllGroups}>
+									Expand all
+								</DropdownMenuItem>
+							</>
+						)}
 					</DropdownMenuContent>
 				</DropdownMenu>
 
