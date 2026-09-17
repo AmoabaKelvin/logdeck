@@ -38,6 +38,7 @@ import { LogToolbar } from "./log-toolbar";
 import { ShortcutHelpDialog } from "./shortcut-help";
 import { resolveTimeRange } from "./time-range";
 import { useLogFiltering } from "./use-log-filtering";
+import { DEFAULT_LOG_FONT_SIZE, useLogFontSize } from "./use-log-font-size";
 import { navigatePins, useLogPins } from "./use-log-pins";
 import { useLogSearch, useSearchMatches } from "./use-log-search";
 import { LOG_LEVELS, type LogViewState } from "./use-log-view-state";
@@ -93,6 +94,8 @@ export function LogViewer({
 		logLines,
 		setLogLines,
 		timeRange,
+		isFullscreen,
+		setIsFullscreen,
 	} = viewState;
 
 	const [excludeMatches, setExcludeMatches] = useState(false);
@@ -105,7 +108,9 @@ export function LogViewer({
 	);
 	const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
 	const [showShortcutHelp, setShowShortcutHelp] = useState(false);
+	const { fontSize, stepFontSize } = useLogFontSize();
 	const parentRef = useRef<HTMLDivElement>(null);
+	const fullscreenRef = useRef<HTMLDivElement>(null);
 	const searchInputRef = useRef<HTMLInputElement>(null);
 	const autoScrollRef = useRef(autoScroll);
 	const historyScrollAnchorRef = useRef<number | null>(null);
@@ -169,6 +174,33 @@ export function LogViewer({
 	// History reads a single container's stored logs by name, so it is offered
 	// on the page variant only (the sheet stays live; aggregate views have no
 	// per-container store to read).
+	// The sheet is transformed, so a fixed child would fill it, not the viewport.
+	const canFullscreen = variant === "page";
+	const showFullscreen = canFullscreen && isFullscreen;
+
+	// The page behind the overlay must not take focus. Inert everything beside
+	// the viewer up to the route root; portals and the toaster sit outside it.
+	useEffect(() => {
+		const root = fullscreenRef.current;
+		if (!showFullscreen || !root) return;
+		const stop = root.closest(".isolate") ?? document.body;
+		const inerted: Element[] = [];
+		for (
+			let el: Element = root;
+			el.parentElement && el !== stop;
+			el = el.parentElement
+		) {
+			for (const sibling of el.parentElement.children) {
+				if (sibling === el || sibling.hasAttribute("inert")) continue;
+				sibling.setAttribute("inert", "");
+				inerted.push(sibling);
+			}
+		}
+		return () => {
+			for (const el of inerted) el.removeAttribute("inert");
+		};
+	}, [showFullscreen]);
+
 	const supportsHistory = variant === "page" && !targets;
 	const { data: historyStatus } = useHistoryStatus(supportsHistory);
 	const historyEnabled = supportsHistory && historyStatus?.enabled === true;
@@ -522,9 +554,15 @@ export function LogViewer({
 	const rowVirtualizer = useVirtualizer({
 		count: filteredLogs.length,
 		getScrollElement: () => parentRef.current,
-		estimateSize: () => (wrapText ? 60 : 36),
+		estimateSize: () =>
+			((wrapText ? 60 : 36) * fontSize) / DEFAULT_LOG_FONT_SIZE,
 		overscan: 5,
 	});
+
+	// Cached row heights belong to the old text size.
+	useEffect(() => {
+		rowVirtualizer.measure();
+	}, [fontSize, rowVirtualizer]);
 
 	const goToPreviousMatch = useCallback(() => {
 		if (searchMatches.length === 0) return;
@@ -672,12 +710,32 @@ export function LogViewer({
 						"input, textarea, select, [contenteditable='true'], [role='textbox']",
 					))
 			) {
+				// Esc leaves the field first, so the next one can exit fullscreen.
+				if (showFullscreen && event.key === "Escape") target.blur();
 				return;
 			}
 
 			if (event.key === "?") {
 				event.preventDefault();
 				setShowShortcutHelp((prev) => !prev);
+				return;
+			}
+
+			if (canFullscreen && lowerKey === "f") {
+				event.preventDefault();
+				setIsFullscreen(!isFullscreen);
+				return;
+			}
+
+			if (showFullscreen && event.key === "Escape") {
+				event.preventDefault();
+				setIsFullscreen(false);
+				return;
+			}
+
+			if (event.key === "+" || event.key === "=" || event.key === "-") {
+				event.preventDefault();
+				stepFontSize(event.key === "-" ? -1 : 1);
 				return;
 			}
 
@@ -727,6 +785,11 @@ export function LogViewer({
 			}
 		};
 	}, [
+		canFullscreen,
+		showFullscreen,
+		isFullscreen,
+		setIsFullscreen,
+		stepFontSize,
 		focusSearchInput,
 		goToAdjacentLogLine,
 		extendSelectionByLine,
@@ -846,18 +909,23 @@ export function LogViewer({
 			onTogglePause={togglePauseStreaming}
 			onRefresh={handleRefresh}
 			onLogLinesChange={handleLogLinesChange}
+			fontSize={fontSize}
+			onStepFontSize={stepFontSize}
 			onDownload={handleDownloadLogs}
 			onShowShortcutHelp={() => setShowShortcutHelp(true)}
 			totalCount={logs.length}
 			filteredCount={filteredLogs.length}
 			isHistory={isHistory}
 			showSourceToggle={historyEnabled && !historyOnly}
+			title={historyContainer}
+			canFullscreen={canFullscreen}
 		/>
 	);
 
 	const logList = (
 		<LogList
 			variant={variant}
+			isFullscreen={showFullscreen}
 			parentRef={parentRef}
 			rowVirtualizer={rowVirtualizer}
 			isLoadingLogs={isLoadingLogs}
@@ -873,6 +941,7 @@ export function LogViewer({
 			filteredLogs={filteredLogs}
 			filteredToOriginalIndex={filteredToOriginalIndex}
 			wrapText={wrapText}
+			fontSize={fontSize}
 			showTimestamps={showTimestamps}
 			showContainerName={targets !== undefined}
 			searchMatches={searchMatches}
@@ -899,6 +968,22 @@ export function LogViewer({
 			onOpenChange={setShowShortcutHelp}
 		/>
 	);
+
+	if (showFullscreen) {
+		// Same element tree as the page branch, so toggling doesn't remount.
+		return (
+			<div
+				ref={fullscreenRef}
+				className="fixed inset-0 z-50 flex flex-col bg-background"
+			>
+				<div className="shrink-0 border-b border-border/70 py-3 pr-4 pl-2.5">
+					{toolbar}
+				</div>
+				{logList}
+				{shortcutHelpDialog}
+			</div>
+		);
+	}
 
 	if (variant === "page") {
 		return (

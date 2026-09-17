@@ -164,7 +164,7 @@ export function LogRow(props: LogRowProps) {
 			)}
 
 			<span
-				className={`w-12 shrink-0 ${level ? getLogLevelTextColor(entry.level) : ""}`}
+				className={`w-[4em] shrink-0 ${level ? getLogLevelTextColor(entry.level) : ""}`}
 			>
 				{level}
 			</span>
@@ -172,7 +172,7 @@ export function LogRow(props: LogRowProps) {
 			{showContainerName && entry.containerName && (
 				<span
 					title={entry.containerName}
-					className={`w-40 shrink-0 truncate ${getContainerNameColor(entry.containerName)}`}
+					className={`w-[13em] shrink-0 truncate ${getContainerNameColor(entry.containerName)}`}
 				>
 					{entry.containerName}
 				</span>

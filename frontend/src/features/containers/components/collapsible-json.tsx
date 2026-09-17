@@ -129,7 +129,7 @@ export function CollapsibleJson({
 			>
 				<ChevronDownIcon className="size-3" />
 			</button>
-			<pre className="whitespace-pre font-mono text-xs leading-relaxed inline">
+			<pre className="whitespace-pre font-mono leading-relaxed inline">
 				{highlightSearchText
 					? highlightSearchText(prettyJson, isCurrentMatch)
 					: colorizeJson(prettyJson)}

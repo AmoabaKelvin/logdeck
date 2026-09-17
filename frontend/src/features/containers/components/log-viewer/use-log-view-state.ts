@@ -40,6 +40,8 @@ export interface LogViewState {
 	setLogLines: (value: number) => void;
 	timeRange: TimeRange;
 	setTimeRange: (value: TimeRange) => void;
+	isFullscreen: boolean;
+	setIsFullscreen: (value: boolean) => void;
 }
 
 export function useLocalLogViewState(): LogViewState {
@@ -53,6 +55,7 @@ export function useLocalLogViewState(): LogViewState {
 	const [wrapText, setWrapText] = useState(false);
 	const [logLines, setLogLines] = useState(100);
 	const [timeRange, setTimeRange] = useState<TimeRange>(ALL_TIME_RANGE);
+	const [isFullscreen, setIsFullscreen] = useState(false);
 
 	return {
 		source,
@@ -71,6 +74,8 @@ export function useLocalLogViewState(): LogViewState {
 		setLogLines,
 		timeRange,
 		setTimeRange,
+		isFullscreen,
+		setIsFullscreen,
 	};
 }
 
@@ -109,6 +114,7 @@ const logViewSearchParams = {
 	range: parseAsStringLiteral(TIME_RANGE_PRESETS).withDefault("all"),
 	since: parseAsIsoDateTime,
 	until: parseAsIsoDateTime,
+	fullscreen: parseAsBoolean.withDefault(false),
 };
 
 export function useUrlLogViewState(): LogViewState {
@@ -186,6 +192,13 @@ export function useUrlLogViewState(): LogViewState {
 		[setParams],
 	);
 
+	const setIsFullscreen = useCallback(
+		(value: boolean) => {
+			setParams({ fullscreen: value });
+		},
+		[setParams],
+	);
+
 	return {
 		source: params.source,
 		setSource,
@@ -203,5 +216,7 @@ export function useUrlLogViewState(): LogViewState {
 		setLogLines,
 		timeRange,
 		setTimeRange,
+		isFullscreen: params.fullscreen,
+		setIsFullscreen,
 	};
 }

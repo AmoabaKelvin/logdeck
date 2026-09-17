@@ -398,3 +398,58 @@ describe("LogViewer history mode", () => {
 		expect(toast.error).not.toHaveBeenCalled();
 	});
 });
+
+describe("LogViewer fullscreen", () => {
+	it("toggles from the toolbar and exits on Escape", async () => {
+		render(
+			<>
+				<button type="button">behind</button>
+				<Harness />
+			</>,
+		);
+		const behind = screen.getByRole("button", { name: "behind" });
+		await act(async () => {
+			await drainMicrotasks();
+		});
+
+		fireEvent.click(screen.getByRole("button", { name: "Fullscreen" }));
+		expect(
+			screen.getByRole("button", { name: "Exit fullscreen" }),
+		).toBeTruthy();
+		expect(behind.hasAttribute("inert")).toBe(true);
+
+		// From the search field, the first Escape only leaves the field.
+		const search = screen.getByLabelText("Search logs");
+		search.focus();
+		fireEvent.keyDown(search, { key: "Escape" });
+		expect(document.activeElement).not.toBe(search);
+		expect(
+			screen.getByRole("button", { name: "Exit fullscreen" }),
+		).toBeTruthy();
+
+		fireEvent.keyDown(window, { key: "Escape" });
+		expect(screen.getByRole("button", { name: "Fullscreen" })).toBeTruthy();
+		expect(behind.hasAttribute("inert")).toBe(false);
+
+		fireEvent.keyDown(window, { key: "f" });
+		expect(
+			screen.getByRole("button", { name: "Exit fullscreen" }),
+		).toBeTruthy();
+	});
+});
+
+describe("LogViewer text size", () => {
+	it("steps with the keyboard, clamps at the ends and persists", async () => {
+		localStorage.clear();
+		render(<Harness />);
+		await act(async () => {
+			await drainMicrotasks();
+		});
+
+		fireEvent.keyDown(window, { key: "+" });
+		expect(localStorage.getItem("logdeck.logFontSize")).toBe("13");
+
+		for (let i = 0; i < 10; i++) fireEvent.keyDown(window, { key: "-" });
+		expect(localStorage.getItem("logdeck.logFontSize")).toBe("11");
+	});
+});

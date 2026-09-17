@@ -9,6 +9,7 @@ import { LogRow } from "./log-row";
 
 interface LogListProps {
 	variant: "page" | "sheet";
+	isFullscreen: boolean;
 	parentRef: React.RefObject<HTMLDivElement | null>;
 	rowVirtualizer: Virtualizer<HTMLDivElement, Element>;
 	isLoadingLogs: boolean;
@@ -22,6 +23,7 @@ interface LogListProps {
 	filteredLogs: LogEntry[];
 	filteredToOriginalIndex: number[];
 	wrapText: boolean;
+	fontSize: number;
 	showTimestamps: boolean;
 	// Per-row container badge; only the aggregate view mixes containers.
 	showContainerName: boolean;
@@ -51,6 +53,7 @@ interface LogListProps {
 
 export function LogList({
 	variant,
+	isFullscreen,
 	parentRef,
 	rowVirtualizer,
 	isLoadingLogs,
@@ -60,6 +63,7 @@ export function LogList({
 	filteredLogs,
 	filteredToOriginalIndex,
 	wrapText,
+	fontSize,
 	showTimestamps,
 	showContainerName,
 	searchMatches,
@@ -104,8 +108,9 @@ export function LogList({
 					height: `${rowVirtualizer.getTotalSize()}px`,
 					width: "100%",
 					position: "relative",
+					fontSize: `${fontSize / 16}rem`,
 				}}
-				className={`font-mono text-xs ${wrapText ? "" : "w-fit min-w-full"}`}
+				className={`font-mono leading-[1.333] ${wrapText ? "" : "w-fit min-w-full"}`}
 			>
 				{rowVirtualizer.getVirtualItems().map((virtualRow) => {
 					const isCurrentMatch =
@@ -152,9 +157,11 @@ export function LogList({
 		// open; the sheet gets a fixed window.
 		<div
 			className={
-				variant === "page"
-					? "relative flex flex-col lg:min-h-0 lg:flex-1"
-					: "relative"
+				isFullscreen
+					? "relative flex min-h-0 flex-1 flex-col"
+					: variant === "page"
+						? "relative flex flex-col lg:min-h-0 lg:flex-1"
+						: "relative"
 			}
 		>
 			<SelectionActionBar
@@ -168,9 +175,11 @@ export function LogList({
 			<div
 				ref={parentRef}
 				className={
-					variant === "page"
-						? "h-[60dvh] w-full overflow-auto lg:h-auto lg:min-h-[26rem] lg:flex-1"
-						: "h-[400px] w-full overflow-auto"
+					isFullscreen
+						? "min-h-0 w-full flex-1 overflow-auto overscroll-contain"
+						: variant === "page"
+							? "h-[60dvh] w-full overflow-auto lg:h-auto lg:min-h-[26rem] lg:flex-1"
+							: "h-[400px] w-full overflow-auto"
 				}
 			>
 				{body}
