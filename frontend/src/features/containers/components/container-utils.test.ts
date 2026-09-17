@@ -7,7 +7,9 @@ import {
 	getComposeProject,
 	resolvePublishedHost,
 	selectStackMembers,
+	parseDurationSeconds,
 	selectVisibleContainers,
+	sortContainers,
 	sortStoredContainersBySize,
 	splitContainerStatus,
 	synthesizeRemovedContainers,
@@ -303,5 +305,72 @@ describe("resolvePublishedHost", () => {
 
 	it("gives up rather than guess on an address it cannot read", () => {
 		expect(resolvePublishedHost("weird://thing", "box")).toBeNull();
+	});
+});
+
+describe("sortContainers", () => {
+	const api = live({ id: "a", names: ["/api"], created: 3, host: "beta" });
+	const web = live({ id: "b", names: ["/Web"], created: 1, host: "alpha" });
+	const db = live({
+		id: "c",
+		names: ["/db"],
+		created: 2,
+		state: "exited",
+		status: "Exited (0) 3 days ago",
+	});
+	const names = (items: ContainerInfo[]) => items.map((c) => c.names[0]);
+
+	it("sorts text keys without regard to case", () => {
+		expect(names(sortContainers([web, db, api], "name", "asc", {}))).toEqual([
+			"/api",
+			"/db",
+			"/Web",
+		]);
+		expect(names(sortContainers([api, web], "host", "asc", {}))).toEqual([
+			"/Web",
+			"/api",
+		]);
+	});
+
+	it("sorts by usage and sinks rows without stats in both directions", () => {
+		const stats = {
+			a: {
+				id: "a",
+				host: "",
+				cpu_percent: 5,
+				memory_percent: 0,
+				memory_used: 10,
+				memory_limit: 0,
+			},
+			b: {
+				id: "b",
+				host: "",
+				cpu_percent: 50,
+				memory_percent: 0,
+				memory_used: 1,
+				memory_limit: 0,
+			},
+		};
+		expect(names(sortContainers([db, api, web], "cpu", "desc", stats))).toEqual(
+			["/Web", "/api", "/db"],
+		);
+		expect(names(sortContainers([db, api, web], "cpu", "asc", stats))).toEqual([
+			"/api",
+			"/Web",
+			"/db",
+		]);
+		expect(
+			names(sortContainers([db, api, web], "memory", "desc", stats)),
+		).toEqual(["/api", "/Web", "/db"]);
+	});
+
+	it("sorts uptime by Docker's humanised duration", () => {
+		expect(parseDurationSeconds("About an hour")).toBe(3600);
+		expect(parseDurationSeconds("47 hours")).toBe(47 * 3600);
+		expect(parseDurationSeconds(null)).toBeUndefined();
+		expect(names(sortContainers([api, db], "uptime", "desc", {}))).toEqual([
+			"/db",
+			"/api",
+		]);
 	});
 });

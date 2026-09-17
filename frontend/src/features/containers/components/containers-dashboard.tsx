@@ -12,7 +12,8 @@ import { useHostsStats } from "../hooks/use-hosts-stats";
 import { useLiveContainersQuery } from "../hooks/use-live-containers-query";
 import { useSystemUsageHistory } from "../hooks/use-stats-history";
 import { useSystemStats } from "../hooks/use-system-stats";
-import type { ContainerInfo } from "../types";
+import { useTableColumns } from "../hooks/use-table-columns";
+import type { ContainerInfo, ContainerStatsMap } from "../types";
 import { ConfirmActionDialog } from "./confirm-action-dialog";
 import {
 	countContainerStates,
@@ -20,6 +21,7 @@ import {
 	groupByCompose,
 	REMOVED_STATE,
 	selectVisibleContainers,
+	sortContainers,
 	synthesizeRemovedContainers,
 } from "./container-utils";
 import { ContainersLogsSheet } from "./containers-logs-sheet";
@@ -32,6 +34,7 @@ import { PurgeHistoryDialog } from "./purge-history-dialog";
 
 // A stable fallback, so memos keyed on the list don't rerun while it loads.
 const NO_CONTAINERS: ContainerInfo[] = [];
+const NO_STATS: ContainerStatsMap = {};
 
 export function ContainersDashboard() {
 	const queryClient = useQueryClient();
@@ -67,8 +70,9 @@ export function ContainersDashboard() {
 		setStateFilter,
 		hostFilter,
 		setHostFilter,
+		sortKey,
 		sortDirection,
-		setSortDirection,
+		setSort,
 		groupBy,
 		setGroupBy,
 		dateRange,
@@ -79,6 +83,7 @@ export function ContainersDashboard() {
 		page,
 		setPage,
 	} = useContainersDashboardUrlState();
+	const { hiddenColumns, toggleColumn } = useTableColumns();
 	const [selectedContainer, setSelectedContainer] =
 		useState<ContainerInfo | null>(null);
 	const [isLogsSheetOpen, setIsLogsSheetOpen] = useState(false);
@@ -136,6 +141,10 @@ export function ContainersDashboard() {
 		};
 	}, [searchTerm, hostFilter, dateRange, stateFilter]);
 
+	// Keeps non-usage sorts from re-running on every stats tick.
+	const sortStats =
+		sortKey === "cpu" || sortKey === "memory" ? statsMap : NO_STATS;
+
 	const filteredContainers = useMemo(() => {
 		const filtered = selectVisibleContainers(
 			containers,
@@ -145,15 +154,15 @@ export function ContainersDashboard() {
 			matchesFilters(container, { includeStateFilter: true }),
 		);
 
-		return filtered.sort((a, b) =>
-			sortDirection === "desc" ? b.created - a.created : a.created - b.created,
-		);
+		return sortContainers(filtered, sortKey, sortDirection, sortStats);
 	}, [
 		containers,
 		removedContainers,
 		stateFilter,
 		matchesFilters,
+		sortKey,
 		sortDirection,
+		sortStats,
 	]);
 
 	const totalPages =
@@ -288,6 +297,8 @@ export function ContainersDashboard() {
 					availableHosts={hosts}
 					groupBy={groupBy}
 					onGroupByChange={setGroupBy}
+					hiddenColumns={hiddenColumns}
+					onToggleColumn={toggleColumn}
 					dateRange={dateRange}
 					onDateRangeChange={setDateRange}
 					onDateRangeClear={clearDateRange}
@@ -304,8 +315,10 @@ export function ContainersDashboard() {
 						isError={isError}
 						error={error}
 						groupBy={groupBy}
+						sortKey={sortKey}
 						sortDirection={sortDirection}
-						onSortDirectionChange={setSortDirection}
+						onSortChange={setSort}
+						hiddenColumns={hiddenColumns}
 						emptyMessage={
 							stateFilter === REMOVED_STATE
 								? "No removed containers with stored logs."

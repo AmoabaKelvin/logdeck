@@ -3,6 +3,7 @@ import { activeControlClass, Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
 	DropdownMenu,
+	DropdownMenuCheckboxItem,
 	DropdownMenuContent,
 	DropdownMenuRadioGroup,
 	DropdownMenuRadioItem,
@@ -26,6 +27,8 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+import type { ColumnId } from "../hooks/use-table-columns";
+import { TOGGLEABLE_COLUMNS } from "../hooks/use-table-columns";
 import type { DockerHost } from "../types";
 import type { GroupByOption, StateCounts } from "./container-utils";
 import { ContainersStateFilter } from "./containers-state-filter";
@@ -38,6 +41,8 @@ interface ContainersToolbarProps {
 	availableHosts: DockerHost[];
 	groupBy: GroupByOption;
 	onGroupByChange: (value: GroupByOption) => void;
+	hiddenColumns: ReadonlySet<ColumnId>;
+	onToggleColumn: (id: ColumnId) => void;
 	dateRange: DateRange | undefined;
 	onDateRangeChange: (range: DateRange | undefined) => void;
 	onDateRangeClear: () => void;
@@ -60,6 +65,8 @@ export function ContainersToolbar({
 	availableHosts,
 	groupBy,
 	onGroupByChange,
+	hiddenColumns,
+	onToggleColumn,
 	dateRange,
 	onDateRangeChange,
 	onDateRangeClear,
@@ -94,7 +101,7 @@ export function ContainersToolbar({
 				/>
 			</div>
 
-			<div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">
+			<div className="ml-auto flex flex-wrap items-center gap-2">
 				<ContainersStateFilter
 					stateCounts={stateCounts}
 					stateFilter={stateFilter}
@@ -195,6 +202,28 @@ export function ContainersToolbar({
 						)}
 					</PopoverContent>
 				</Popover>
+
+				<DropdownMenu>
+					<DropdownMenuTrigger asChild>
+						<Button variant="outline">
+							Columns
+							<ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
+						</Button>
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="end">
+						{TOGGLEABLE_COLUMNS.map((column) => (
+							<DropdownMenuCheckboxItem
+								key={column.id}
+								checked={!hiddenColumns.has(column.id)}
+								onCheckedChange={() => onToggleColumn(column.id)}
+								// Keep the menu open.
+								onSelect={(event) => event.preventDefault()}
+							>
+								{column.label}
+							</DropdownMenuCheckboxItem>
+						))}
+					</DropdownMenuContent>
+				</DropdownMenu>
 
 				<Tooltip>
 					<TooltipTrigger asChild>
