@@ -40,7 +40,6 @@ export interface LogViewState {
 	setLogLines: (value: number) => void;
 	timeRange: TimeRange;
 	setTimeRange: (value: TimeRange) => void;
-	// The viewer covers the whole viewport.
 	isFullscreen: boolean;
 	setIsFullscreen: (value: boolean) => void;
 }

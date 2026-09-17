@@ -80,7 +80,6 @@ interface LogToolbarProps extends StreamControls {
 	// The toggle only appears when the server persists logs and the view has a
 	// live counterpart to switch back to.
 	showSourceToggle: boolean;
-	// Names what is on screen once fullscreen hides the page header.
 	title: string;
 	canFullscreen: boolean;
 }

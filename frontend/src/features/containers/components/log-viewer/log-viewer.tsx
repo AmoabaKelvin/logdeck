@@ -173,8 +173,7 @@ export function LogViewer({
 	// History reads a single container's stored logs by name, so it is offered
 	// on the page variant only (the sheet stays live; aggregate views have no
 	// per-container store to read).
-	// The sheet is a transformed dialog: a fixed child would fill the sheet, not
-	// the viewport. It links to the full page instead.
+	// The sheet is transformed, so a fixed child would fill it, not the viewport.
 	const canFullscreen = variant === "page";
 	const showFullscreen = canFullscreen && isFullscreen;
 
@@ -945,8 +944,7 @@ export function LogViewer({
 	);
 
 	if (showFullscreen) {
-		// Same element tree as the page branch below, so toggling restyles the
-		// viewer in place: the stream, scroll position and selection survive.
+		// Same element tree as the page branch, so toggling doesn't remount.
 		return (
 			<div className="fixed inset-0 z-50 flex flex-col bg-background">
 				<div className="shrink-0 border-b border-border/70 py-3 pr-4 pl-2.5">

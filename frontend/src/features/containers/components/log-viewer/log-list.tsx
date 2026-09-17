@@ -23,7 +23,6 @@ interface LogListProps {
 	filteredLogs: LogEntry[];
 	filteredToOriginalIndex: number[];
 	wrapText: boolean;
-	// Log text size in px.
 	fontSize: number;
 	showTimestamps: boolean;
 	// Per-row container badge; only the aggregate view mixes containers.
