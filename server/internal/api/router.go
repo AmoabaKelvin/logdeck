@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"sync"
 
 	"github.com/AmoabaKelvin/logdeck/internal/alerts"
 	"github.com/AmoabaKelvin/logdeck/internal/api/middleware"
@@ -25,6 +26,10 @@ type APIRouter struct {
 	// logStore is nil when log persistence is disabled or unusable.
 	logStore *logstore.Store
 	version  string
+
+	// machineHostname caches the engine-reported hostname; see GetSystemStats.
+	machineHostnameMu sync.Mutex
+	machineHostname   string
 }
 
 func NewRouter(registry *services.Registry, manager *config.Manager, engine *alerts.Engine, logStore *logstore.Store, version string) *chi.Mux {

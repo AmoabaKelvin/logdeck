@@ -86,6 +86,7 @@ function RowActions({
 								params={{
 									containerId: getContainerUrlIdentifier(container),
 								}}
+								search={{ host: container.host }}
 								aria-label={`Stored logs for ${formatContainerName(container.names)}`}
 							>
 								<FileTextIcon className="size-4" />
@@ -233,6 +234,7 @@ export function ContainerRow({
 						<Link
 							to="/containers/$containerId/logs"
 							params={{ containerId: getContainerUrlIdentifier(container) }}
+							search={{ host: container.host }}
 							className="truncate font-medium hover:underline"
 						>
 							{name}

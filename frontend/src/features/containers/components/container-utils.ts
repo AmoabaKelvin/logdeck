@@ -445,6 +445,24 @@ export function countContainerStates(
  * Gets the container name for use in URLs (without leading slash)
  * Falls back to container ID if no name is available
  */
+/**
+ * Resolves a detail-page URL to a container. The identifier is a name, or an
+ * ID for old links. Names are only unique per host, so `host` narrows the
+ * match; without it the first host wins.
+ */
+export function findContainerByIdentifier(
+	containers: ContainerInfo[],
+	identifier: string,
+	host?: string,
+) {
+	return containers.find(
+		(container) =>
+			(!host || container.host === host) &&
+			(getContainerUrlIdentifier(container) === identifier ||
+				container.id.startsWith(identifier)),
+	);
+}
+
 export function getContainerUrlIdentifier(container: ContainerInfo): string {
 	if (container.names && container.names.length > 0) {
 		const name = container.names[0];
