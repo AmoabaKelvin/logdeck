@@ -1,11 +1,15 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useState } from "react";
+import { z } from "zod";
 import { AppHeader } from "@/components/app-header";
 import { ConfirmActionDialog } from "@/features/containers/components/confirm-action-dialog";
 import { ContainerDetailHeader } from "@/features/containers/components/container-detail-header";
 import { ContainerDetailPanels } from "@/features/containers/components/container-detail-panels";
-import { formatContainerName } from "@/features/containers/components/container-utils";
+import {
+	findContainerByIdentifier,
+	formatContainerName,
+} from "@/features/containers/components/container-utils";
 import type { LogViewerHandle } from "@/features/containers/components/log-viewer/log-viewer";
 import { LogViewer } from "@/features/containers/components/log-viewer/log-viewer";
 import { useUrlLogViewState } from "@/features/containers/components/log-viewer/use-log-view-state";
@@ -17,7 +21,14 @@ import { useHistoryContainers } from "@/features/containers/hooks/use-history-co
 import { useLiveContainersQuery } from "@/features/containers/hooks/use-live-containers-query";
 import { requireAuthIfEnabled } from "@/lib/auth-guard";
 
+// Container names are only unique per host, so links say which host they mean.
+const containerSearchSchema = z
+	.object({ host: z.string().optional() })
+	.passthrough()
+	.catch({});
+
 export const Route = createFileRoute("/containers/$containerId/logs")({
+	validateSearch: containerSearchSchema.parse,
 	beforeLoad: async () => {
 		await requireAuthIfEnabled();
 	},
@@ -26,6 +37,7 @@ export const Route = createFileRoute("/containers/$containerId/logs")({
 
 function ContainerLogsPage() {
 	const { containerId: encodedContainerId } = Route.useParams();
+	const { host: hostParam } = Route.useSearch();
 	const queryClient = useQueryClient();
 
 	const logViewerRef = useRef<LogViewerHandle>(null);
@@ -41,18 +53,11 @@ function ContainerLogsPage() {
 	const containers = containersData?.containers ?? [];
 	const isReadOnly = containersData?.readOnly ?? false;
 
-	// Find container by name (preferred) or ID (fallback for backward compatibility)
-	const container = containers.find((c) => {
-		if (c.names && c.names.length > 0) {
-			const cleanName = c.names[0].startsWith("/")
-				? c.names[0].slice(1)
-				: c.names[0];
-			if (cleanName === containerIdentifier) {
-				return true;
-			}
-		}
-		return c.id === containerIdentifier || c.id.startsWith(containerIdentifier);
-	});
+	const container = findContainerByIdentifier(
+		containers,
+		containerIdentifier,
+		hostParam,
+	);
 
 	// Prefer the real ID for API calls; fall back to the raw identifier while
 	// the container list is still loading.
@@ -65,7 +70,9 @@ function ContainerLogsPage() {
 	const { data: storedContainers } = useHistoryContainers(isUnresolved);
 	const storedContainer = isUnresolved
 		? storedContainers?.find(
-				(stored) => stored.name.replace(/^\//, "") === containerIdentifier,
+				(stored) =>
+					(!hostParam || stored.host === hostParam) &&
+					stored.name.replace(/^\//, "") === containerIdentifier,
 			)
 		: undefined;
 	const isRemoved = storedContainer !== undefined;

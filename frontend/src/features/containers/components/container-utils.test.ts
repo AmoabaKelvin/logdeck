@@ -4,6 +4,7 @@ import type { StoredContainer } from "../api/get-history";
 import type { ContainerInfo } from "../types";
 import {
 	countContainerStates,
+	findContainerByIdentifier,
 	getComposeProject,
 	resolvePublishedHost,
 	selectStackMembers,
@@ -303,5 +304,23 @@ describe("resolvePublishedHost", () => {
 
 	it("gives up rather than guess on an address it cannot read", () => {
 		expect(resolvePublishedHost("weird://thing", "box")).toBeNull();
+	});
+});
+
+describe("findContainerByIdentifier", () => {
+	const onLocal = live({ id: "aaa111", names: ["/traefik"], host: "local" });
+	const onRemote = live({ id: "bbb222", names: ["/traefik"], host: "remote" });
+
+	it("uses the host to tell apart containers that share a name", () => {
+		const both = [onLocal, onRemote];
+		expect(findContainerByIdentifier(both, "traefik", "remote")).toBe(onRemote);
+		expect(findContainerByIdentifier(both, "traefik")).toBe(onLocal);
+		expect(findContainerByIdentifier(both, "traefik", "gone")).toBeUndefined();
+	});
+
+	it("still resolves old links that carry an ID", () => {
+		expect(findContainerByIdentifier([onLocal, onRemote], "bbb2")).toBe(
+			onRemote,
+		);
 	});
 });

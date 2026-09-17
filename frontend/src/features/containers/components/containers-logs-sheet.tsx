@@ -83,7 +83,7 @@ export function ContainersLogsSheet({
 											onClick={() => {
 												const identifier = getContainerUrlIdentifier(container);
 												window.open(
-													`/containers/${encodeURIComponent(identifier)}/logs`,
+													`/containers/${encodeURIComponent(identifier)}/logs?host=${encodeURIComponent(container.host)}`,
 													"_blank",
 												);
 											}}

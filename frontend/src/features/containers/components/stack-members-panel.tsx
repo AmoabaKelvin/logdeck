@@ -134,6 +134,7 @@ export function StackMembersPanel({
 																	containerId:
 																		getContainerUrlIdentifier(member),
 																}}
+																search={{ host: member.host }}
 																aria-label={
 																	removed
 																		? `Stored logs for ${formatContainerName(member.names)}`
