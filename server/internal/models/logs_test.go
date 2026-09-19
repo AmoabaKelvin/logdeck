@@ -359,3 +359,116 @@ func TestGroupRelatedLogEntriesFoldsPostgresDetailLines(t *testing.T) {
 		}
 	}
 }
+
+func TestDetectLogLevelFallbackHeuristics(t *testing.T) {
+	tests := []struct {
+		message string
+		want    LogLevel
+	}{
+		{`TypeError: x is not a function`, LogLevelError},
+		{`java.lang.NullPointerException: null`, LogLevelError},
+		{`Unhandled rejection ReferenceError: foo is not defined`, LogLevelError},
+		{`registered ExceptionHandler middleware`, LogLevelUnknown},
+		{`tests: 12 passed, 0 failed`, LogLevelUnknown},
+		{`tests: 2 passed, 10 failed`, LogLevelError},
+		{`connected to db err=nil`, LogLevelUnknown},
+		{`msg="sync done" error=""`, LogLevelUnknown},
+		{`no error detected during healthcheck`, LogLevelUnknown},
+		{`registered error handler for route /x`, LogLevelUnknown},
+		{`Loaded error pages from /etc/nginx/pages`, LogLevelUnknown},
+		{`Stack trace:`, LogLevelUnknown},
+		{`connection refused: dial tcp 10.0.0.5:5432`, LogLevelError},
+		{`Killed process 123 (node) out of memory`, LogLevelError},
+		{`request timed out after 30s`, LogLevelWarn},
+		{`Unable to connect to redis, retrying in 5s`, LogLevelWarn},
+		{`thread 'main' panicked at src/main.rs:4:5:`, LogLevelPanic},
+		{`172.17.0.1 - - [14/Sep/2026:12:00:00 +0000] "GET /checkout HTTP/1.1" 500 512`, LogLevelError},
+		{`172.17.0.1 - - [14/Sep/2026:12:00:00 +0000] "GET /missing HTTP/1.1" 404 12`, LogLevelWarn},
+		{`172.17.0.1 - - [14/Sep/2026:12:00:00 +0000] "GET /api/error HTTP/1.1" 200 512`, LogLevelUnknown},
+		{`[GIN] 2026/09/14 - 12:00:00 | 500 |  1.2ms | 172.17.0.1 | GET "/x"`, LogLevelError},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.message, func(t *testing.T) {
+			if got := DetectLogLevel(tt.message); got != tt.want {
+				t.Fatalf("DetectLogLevel(%q) = %s, want %s", tt.message, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGroupRelatedLogEntriesKeepsTracesWhole(t *testing.T) {
+	type row struct {
+		level LogLevel
+		count int
+	}
+	tests := []struct {
+		name string
+		text string
+		want []row
+	}{
+		{"python chained", `2026-09-14 12:00:00,123 INFO worker started
+Traceback (most recent call last):
+  File "/app/main.py", line 10, in <module>
+ValueError: invalid literal for int()
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/app/main.py", line 14, in <module>
+requests.exceptions.ConnectionError: Max retries exceeded (Failed to establish a new connection)`,
+			[]row{{LogLevelInfo, 0}, {LogLevelError, 8}}},
+		{"java exception after info", `2026-09-14 12:00:00.123 INFO 1 --- [main] c.f.App : Started App
+java.lang.NullPointerException: null
+	at com.foo.App.main(App.java:5)`,
+			[]row{{LogLevelInfo, 0}, {LogLevelError, 1}}},
+		{"go nil deref", `panic: runtime error: invalid memory address or nil pointer dereference
+[signal SIGSEGV: segmentation violation code=0x1 addr=0x0 pc=0x10a2b3c]
+
+goroutine 1 [running]:
+main.(*Server).handle(0xc000010000)
+	/app/main.go:12 +0x1d`,
+			[]row{{LogLevelPanic, 5}}},
+		{"node errors back to back", `TypeError: a is not a function
+    at /app/index.js:5:11
+TypeError: b is not a function
+    at /app/index.js:9:11`,
+			[]row{{LogLevelError, 1}, {LogLevelError, 1}}},
+		{"php", `[14-Sep-2026 12:00:00 UTC] PHP Fatal error:  Uncaught Exception: boom in /var/www/index.php:3
+Stack trace:
+#0 /var/www/index.php(7): foo()
+#1 {main}
+  thrown in /var/www/index.php on line 3`,
+			[]row{{LogLevelFatal, 4}}},
+		{"postgres", `2026-09-14 12:00:00.000 UTC [77] ERROR:  duplicate key value violates unique constraint "users_pkey"
+2026-09-14 12:00:00.000 UTC [77] DETAIL:  Key (id)=(1) already exists.
+2026-09-14 12:00:00.000 UTC [77] STATEMENT:  INSERT INTO users VALUES (1)
+2026-09-14 12:00:01.000 UTC [77] LOG:  checkpoint starting: time`,
+			[]row{{LogLevelError, 2}, {LogLevelInfo, 0}}},
+		{"postgres interleaved backends", `2026-09-14 12:00:00.000 UTC [42] ERROR:  duplicate key value violates unique constraint "users_pkey"
+2026-09-14 12:00:00.000 UTC [77] LOG:  checkpoint starting: time
+2026-09-14 12:00:00.000 UTC [42] DETAIL:  Key (id)=(1) already exists.`,
+			[]row{{LogLevelError, 0}, {LogLevelInfo, 0}, {LogLevelUnknown, 0}}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var entries []LogEntry
+			for _, line := range strings.Split(tt.text, "\n") {
+				entries = append(entries, ParseLogLine("2026-09-14T12:00:00.000Z "+line, "stderr"))
+			}
+			grouped := GroupRelatedLogEntries(entries)
+			if len(grouped) != len(tt.want) {
+				for _, g := range grouped {
+					t.Logf("%s cont=%d %q", g.Level, g.ContinuationCount, g.Message)
+				}
+				t.Fatalf("expected %d entries, got %d", len(tt.want), len(grouped))
+			}
+			for i, w := range tt.want {
+				if grouped[i].Level != w.level || grouped[i].ContinuationCount != w.count {
+					t.Fatalf("entry %d: expected %s cont=%d, got %s cont=%d (%q)", i, w.level, w.count, grouped[i].Level, grouped[i].ContinuationCount, grouped[i].Message)
+				}
+			}
+		})
+	}
+}
