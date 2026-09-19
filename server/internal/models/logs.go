@@ -142,8 +142,9 @@ var stackLineRegex = regexp.MustCompile(`^(?:` +
 // "java.lang.IllegalStateException: boom", "ValueError: bad value".
 var exceptionHeaderRegex = regexp.MustCompile(`^(?:[\w$]+\.)*` + exceptionName)
 
-// Postgres follow-up lines belong to the message before them.
-var postgresDetailRegex = regexp.MustCompile(`^[\d-]+ [\d:.]+ \S+ \[\d+\] (?:DETAIL|HINT|CONTEXT|STATEMENT|QUERY|LOCATION):`)
+// Postgres follows an ERROR/LOG line with secondary lines for the same event.
+// It puts two spaces after the colon; a multi-line STATEMENT ends at the colon.
+var postgresDetailRegex = regexp.MustCompile(`(?:^|[\]\s])(?:DETAIL|HINT|QUERY|CONTEXT|LOCATION|STATEMENT|BACKTRACE):(?:  |$)`)
 
 // How far an unstamped spill-over line may trail a stamped entry and still fold into it.
 const continuationWindow = 2 * time.Second
@@ -153,13 +154,14 @@ var keyedLevelRegex = regexp.MustCompile(`(?i)(?:^|[\s,{([])(?:level|lvl|level_?
 var prefixedLevelRegex = regexp.MustCompile(`(?i)^(?:\[|\(|<)?(trace|trc|debug|dbg|dbug|verbose|info|inf|information|notice|warn|warning|wrn|error|err|fatal|critical|crit|panic|emergency|emerg)(?:\]|\)|>|:|\s+-|\s+--|\s+)`)
 
 // markerFormats are line formats that spell the level as a single character:
-// glog ("E0914 12:00:00 ...") and Redis ("1:M 14 Sep 2026 12:00:00.000 # ...").
+// glog ("E0914 12:00:00 ...") and Redis, after its own timestamp
+// ("1:M 04 Sep 2026 00:14:53.950 * Background saving terminated with success").
 var markerFormats = []struct {
 	regex  *regexp.Regexp
 	levels map[string]LogLevel
 }{
 	{regexp.MustCompile(`^([IWEF])\d{4}\s`), map[string]LogLevel{"I": LogLevelInfo, "W": LogLevelWarn, "E": LogLevelError, "F": LogLevelFatal}},
-	{regexp.MustCompile(`^\d+:[XCSM] \d{2} \w{3} \d{4} [\d:.]+ ([.\-*#]) `), map[string]LogLevel{".": LogLevelDebug, "-": LogLevelDebug, "*": LogLevelInfo, "#": LogLevelWarn}},
+	{regexp.MustCompile(`^\d+:[XCSM] \d{2} \w{3} \d{4} \d{2}:\d{2}:\d{2}\.\d{3} ([.\-*#]) `), map[string]LogLevel{".": LogLevelDebug, "-": LogLevelDebug, "*": LogLevelInfo, "#": LogLevelWarn}},
 }
 
 // levelKeywords and levelKeyNames are the substrings levelWords and the keyed
@@ -486,13 +488,14 @@ func GroupRelatedLogEntries(entries []LogEntry) []LogEntry {
 //
 //  1. Blank or indented lines (stack frames, YAML/JSON dumps) always fold,
 //     whatever level keywords they contain.
-//  2. Postgres DETAIL/STATEMENT lines fold, and after a WARN+ entry so do
-//     stack-shaped lines, regardless of their own level: "Caused by: ...
-//     failed" classifies as ERROR and must still fold.
-//  3. Everything below applies to UNKNOWN lines only, so "ERROR: x" never
+//  2. Postgres DETAIL/HINT/STATEMENT lines fold regardless of their own
+//     level: "DETAIL:  Failed process was running" classifies as ERROR.
+//  3. After a WARN+ entry, stack-shaped lines fold regardless of their own
+//     level: "Caused by: ... failed" classifies as ERROR and must still fold.
+//  4. Everything below applies to UNKNOWN lines only, so "ERROR: x" never
 //     folds into the entry before it.
-//  4. A "key: value" line folds (structured fields printed one per line).
-//  5. An unstamped line right behind an app-stamped one is spill-over from
+//  5. A "key: value" line folds (structured fields printed one per line).
+//  6. An unstamped line right behind an app-stamped one is spill-over from
 //     that event (progress bar, access log, bare print).
 func IsContinuationLogEntry(entry LogEntry, previous LogEntry) bool {
 	message := strings.TrimSpace(entry.Message)

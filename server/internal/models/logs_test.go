@@ -305,6 +305,61 @@ func BenchmarkParseLogLine(b *testing.B) {
 	}
 }
 
+func TestDetectLogLevelReadsRedisMarkers(t *testing.T) {
+	tests := []struct {
+		message string
+		want    LogLevel
+	}{
+		{"1:M 04 Sep 2026 00:14:53.950 * Background saving terminated with success", LogLevelInfo},
+		{"1:M 04 Sep 2026 00:22:24.117 # Can't save in background: fork: Cannot allocate memory", LogLevelWarn},
+		{"191:C 04 Sep 2026 00:14:53.884 - DB saved on disk", LogLevelDebug},
+		{"1:S 04 Sep 2026 00:14:53.884 . 0 clients connected (0 replicas), 1048576 bytes in use", LogLevelDebug},
+		{"3 * 4 is twelve", LogLevelUnknown},
+	}
+
+	for _, tt := range tests {
+		if got := DetectLogLevel(tt.message); got != tt.want {
+			t.Errorf("DetectLogLevel(%q) = %s, want %s", tt.message, got, tt.want)
+		}
+	}
+}
+
+func TestGroupRelatedLogEntriesFoldsPostgresDetailLines(t *testing.T) {
+	lines := []string{
+		`2026-08-30T06:09:47.285Z 2026-08-30 06:09:47.285 UTC [8426] ERROR:  new row violates check constraint "outbox_status_check"`,
+		`2026-08-30T06:09:47.285Z 2026-08-30 06:09:47.285 UTC [8426] DETAIL:  Failing row contains (093f84e8, email, failed).`,
+		`2026-08-30T06:09:47.285Z 2026-08-30 06:09:47.285 UTC [8426] STATEMENT:  `,
+		"2026-08-30T06:09:47.285Z \t          INSERT INTO public.notification_outbox (",
+		"2026-08-30T06:09:47.285Z \t            event_id, channel, recipient, payload, status",
+		`2026-08-30T06:09:48.100Z 2026-08-30 06:09:48.100 UTC [27] LOG:  checkpoint starting: time`,
+		`2026-08-30T06:09:48.200Z 2026-08-30 06:09:48.200 UTC [31] LOG:  server process (PID 8426) was terminated by signal 9`,
+		`2026-08-30T06:09:48.200Z 2026-08-30 06:09:48.200 UTC [31] DETAIL:  Failed process was running: SELECT 1`,
+	}
+	entries := make([]LogEntry, 0, len(lines))
+	for _, line := range lines {
+		entries = append(entries, ParseLogLine(line, "stderr"))
+	}
+
+	grouped := GroupRelatedLogEntries(entries)
+
+	want := []struct {
+		level LogLevel
+		count int
+	}{
+		{LogLevelError, 4},
+		{LogLevelInfo, 0},
+		{LogLevelInfo, 1},
+	}
+	if len(grouped) != len(want) {
+		t.Fatalf("got %d entries, want %d: %+v", len(grouped), len(want), grouped)
+	}
+	for i, w := range want {
+		if grouped[i].Level != w.level || grouped[i].ContinuationCount != w.count {
+			t.Errorf("entry %d: level=%s count=%d, want level=%s count=%d", i, grouped[i].Level, grouped[i].ContinuationCount, w.level, w.count)
+		}
+	}
+}
+
 func TestDetectLogLevelFallbackHeuristics(t *testing.T) {
 	tests := []struct {
 		message string
@@ -331,8 +386,6 @@ func TestDetectLogLevelFallbackHeuristics(t *testing.T) {
 		{`172.17.0.1 - - [14/Sep/2026:12:00:00 +0000] "GET /missing HTTP/1.1" 404 12`, LogLevelWarn},
 		{`172.17.0.1 - - [14/Sep/2026:12:00:00 +0000] "GET /api/error HTTP/1.1" 200 512`, LogLevelUnknown},
 		{`[GIN] 2026/09/14 - 12:00:00 | 500 |  1.2ms | 172.17.0.1 | GET "/x"`, LogLevelError},
-		{`1:M 14 Sep 2026 12:00:00.000 * Ready to accept connections`, LogLevelInfo},
-		{`1:M 14 Sep 2026 12:00:00.000 # WARNING overcommit_memory is set to 0`, LogLevelWarn},
 	}
 
 	for _, tt := range tests {
