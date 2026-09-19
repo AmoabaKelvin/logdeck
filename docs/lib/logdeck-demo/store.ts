@@ -37,6 +37,9 @@ export interface LogEntry {
   raw?: string;
   fields?: Record<string, string>;
   continuationCount?: number;
+  // True when this line belongs to the entry before it. The real server
+  // decides this; see models.IsContinuationLogEntry.
+  continuation?: boolean;
   containerId?: string;
   containerName?: string;
 }
@@ -336,6 +339,7 @@ function generateSeedLogs(
           message: stackLine,
           raw: stackLine,
           stream: "stderr",
+          continuation: true,
         });
       }
     }
