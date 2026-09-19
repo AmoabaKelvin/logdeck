@@ -138,15 +138,6 @@ export function getLogLevelBadgeColor(level: LogLevel | undefined): string {
 }
 
 const STRUCTURED_FIELD_REGEX = /^([A-Za-z_][A-Za-z0-9_.-]*)\s*[:=]\s*(.+)$/;
-const STACK_TRACE_PREFIXES = [
-  "at ",
-  "File ",
-  "Traceback ",
-  "Caused by:",
-  "... ",
-  "goroutine ",
-];
-
 export function groupRelatedLogEntries<TLogEntry extends LogEntry>(
   entries: TLogEntry[],
 ): TLogEntry[] {
@@ -166,18 +157,12 @@ export function groupRelatedLogEntries<TLogEntry extends LogEntry>(
 }
 
 function isContinuationLogEntry(entry: LogEntry, previous: LogEntry): boolean {
-  if (entry.level !== "UNKNOWN") return false;
   // Aggregate streams interleave containers; never fold a line into another
   // container's entry.
-  if (entry.containerName !== previous.containerName) return false;
-
-  const message = (entry.message ?? entry.raw ?? "").trim();
-  const previousMessage = (previous.message ?? previous.raw ?? "").trim();
-  if (!message || !previousMessage) return false;
-
-  if (STRUCTURED_FIELD_REGEX.test(message)) return true;
-
-  return isProblemLevel(previous.level) && isStackTraceContinuation(message);
+  return (
+    entry.continuation === true &&
+    entry.containerName === previous.containerName
+  );
 }
 
 function appendContinuationLogEntry<TLogEntry extends LogEntry>(
@@ -203,21 +188,4 @@ function appendContinuationLogEntry<TLogEntry extends LogEntry>(
     fields: Object.keys(fields).length > 0 ? fields : entry.fields,
     continuationCount: (entry.continuationCount ?? 0) + 1,
   } as TLogEntry;
-}
-
-function isProblemLevel(level: LogLevel | undefined): boolean {
-  return (
-    level === "WARN" ||
-    level === "WARNING" ||
-    level === "ERROR" ||
-    level === "FATAL" ||
-    level === "PANIC"
-  );
-}
-
-function isStackTraceContinuation(message: string): boolean {
-  return (
-    STACK_TRACE_PREFIXES.some((prefix) => message.startsWith(prefix)) ||
-    (message.startsWith("/") && message.includes(":"))
-  );
 }
