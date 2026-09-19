@@ -40,15 +40,56 @@ const (
 	LogLevelUnknown LogLevel = "UNKNOWN"
 )
 
-// LogLevelRegexes are patterns to detect log levels in messages
-var LogLevelRegexes = map[LogLevel]*regexp.Regexp{
-	LogLevelTrace: regexp.MustCompile(`(?i)\b(trace|trc)\b`),
-	LogLevelDebug: regexp.MustCompile(`(?i)\b(debug|dbg)\b`),
-	LogLevelInfo:  regexp.MustCompile(`(?i)\b(info|inf|notice|log)\b`),
-	LogLevelWarn:  regexp.MustCompile(`(?i)\b(warn|warning|wrn)\b`),
-	LogLevelError: regexp.MustCompile(`(?i)\b(error|err|fail|failed|exception|traceback)\b`),
-	LogLevelFatal: regexp.MustCompile(`(?i)\b(fatal|critical|crit)\b`),
-	LogLevelPanic: regexp.MustCompile(`(?i)\b(panic|emergency)\b`),
+// exceptionName matches a class name such as "TypeError" or "NullPointerException".
+const exceptionName = `[A-Z]\w*(?:Error|Exception)\b`
+
+// levelWords is the keyword fallback, most severe first, so a message
+// mentioning several levels is classified by the worst one. Phrases are failure
+// wording with no level keyword; they are plain substrings because as regex
+// alternations they slowed every match.
+var levelWords = []struct {
+	level   LogLevel
+	regexes []*regexp.Regexp
+	phrases []string
+}{
+	{level: LogLevelPanic, regexes: mustCompileAll(`(?i)\b(panic|panicked|emergency)\b`)},
+	{level: LogLevelFatal, regexes: mustCompileAll(`(?i)\b(fatal|critical|crit)\b`)},
+	{
+		level:   LogLevelError,
+		regexes: mustCompileAll(`(?i)\b(error|err|fail|failed|exception|traceback)\b`, `\b`+exceptionName),
+		phrases: []string{"connection refused", "permission denied", "access denied", "out of memory", "segmentation fault"},
+	},
+	{
+		level:   LogLevelWarn,
+		regexes: mustCompileAll(`(?i)\b(warn|warning|wrn)\b`),
+		phrases: []string{"deprecated", "timed out", "unable to", "could not"},
+	},
+	{level: LogLevelInfo, regexes: mustCompileAll(`(?i)\b(info|inf|notice|log)\b`)},
+	{level: LogLevelDebug, regexes: mustCompileAll(`(?i)\b(debug|dbg)\b`)},
+	{level: LogLevelTrace, regexes: mustCompileAll(`(?i)\b(trace|trc)\b`)},
+}
+
+func mustCompileAll(patterns ...string) []*regexp.Regexp {
+	regexes := make([]*regexp.Regexp, len(patterns))
+	for i, pattern := range patterns {
+		regexes[i] = regexp.MustCompile(pattern)
+	}
+	return regexes
+}
+
+// notALevelRegex matches level keywords used in a way that says nothing about
+// severity ("0 failed", "err=nil", "error handler"). They are dropped before
+// the keyword fallback runs.
+var notALevelRegex = regexp.MustCompile(`(?i)\b(?:no|0|zero|without)\s+(?:errors?|failures?|fail|failed|exceptions?|warnings?)\b` +
+	`|\b(?:err|error)"?\s*[=:]\s*(?:nil|null|none|false|<nil>|""|'')` +
+	`|\berror[ _-](?:handl\w+|pages?|report\w*|track\w*|rates?|counts?|boundar\w+)` +
+	`|\bstack (?:back)?trace\b`)
+
+// notALevelHints are the substrings notALevelRegex needs, as levelKeywords is
+// for the level regexes.
+var notALevelHints = []string{
+	"no ", "0 ", "zero ", "without ", "nil", "null", "none", "false", `""`, "''",
+	"error ", "error_", "error-", "stack ",
 }
 
 // Common timestamp formats found in Docker logs
@@ -85,10 +126,24 @@ var structuredFieldRegex = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_.-]*)\s*[:=
 // (Raw is "<RFC3339Nano> <line>" because logs are always requested with
 // timestamps; without one, the line itself starts the raw), a message the app
 // stamped itself ("2026-09-14 12:53:29.888 | WARN", "[2026-09-14 12:53:30]
-// INFO"), and a Go stack frame ("main.main()").
+// INFO").
 var indentedRawRegex = regexp.MustCompile(`^(?:\d{4}-\d{2}-\d{2}T\S+ )?[ \t]`)
 var appStampedRegex = regexp.MustCompile(`^\W{0,2}\d{4}[-/]\d{2}[-/]\d{2}[T ]\d{2}:\d{2}:\d{2}`)
-var goFrameRegex = regexp.MustCompile(`^\S+\(.*\)$`)
+
+// stackLineRegex matches an unindented line that can only belong to a trace.
+var stackLineRegex = regexp.MustCompile(`^(?:` +
+	`at |Caused by:|\.\.\. ` + // Java, JS
+	`|File |Traceback |During handling of the above exception|The above exception was the direct cause` + // Python
+	`|goroutine |created by |\[signal |\S+\(.*\)$` + // Go
+	`|Stack trace:|#\d+ ` + // PHP
+	`|stack backtrace:` + // Rust
+	`|/.*:)`) // file:line
+
+// "java.lang.IllegalStateException: boom", "ValueError: bad value".
+var exceptionHeaderRegex = regexp.MustCompile(`^(?:[\w$]+\.)*` + exceptionName)
+
+// Postgres follow-up lines belong to the message before them.
+var postgresDetailRegex = regexp.MustCompile(`^[\d-]+ [\d:.]+ \S+ \[\d+\] (?:DETAIL|HINT|CONTEXT|STATEMENT|QUERY|LOCATION):`)
 
 // How far an unstamped spill-over line may trail a stamped entry and still fold into it.
 const continuationWindow = 2 * time.Second
@@ -96,25 +151,23 @@ const continuationWindow = 2 * time.Second
 var otelSeverityNumberRegex = regexp.MustCompile(`(?i)(?:^|[\s,{([])severity_?number\s*[:=]\s*"?([0-9]{1,3})"?`)
 var keyedLevelRegex = regexp.MustCompile(`(?i)(?:^|[\s,{([])(?:level|lvl|level_?name|severity|severity_?text|log[._-]?level)\s*[:=]\s*"?([A-Za-z]+|[0-9]{1,3})"?`)
 var prefixedLevelRegex = regexp.MustCompile(`(?i)^(?:\[|\(|<)?(trace|trc|debug|dbg|dbug|verbose|info|inf|information|notice|warn|warning|wrn|error|err|fatal|critical|crit|panic|emergency|emerg)(?:\]|\)|>|:|\s+-|\s+--|\s+)`)
-var glogPrefixRegex = regexp.MustCompile(`^([IWEF])\d{4}\s`)
 
-// levelCheckOrder ranks levels most-severe first, so a message mentioning
-// several level keywords is classified by the worst one.
-var levelCheckOrder = []LogLevel{
-	LogLevelPanic,
-	LogLevelFatal,
-	LogLevelError,
-	LogLevelWarn,
-	LogLevelInfo,
-	LogLevelDebug,
-	LogLevelTrace,
+// markerFormats are line formats that spell the level as a single character:
+// glog ("E0914 12:00:00 ...") and Redis ("1:M 14 Sep 2026 12:00:00.000 # ...").
+var markerFormats = []struct {
+	regex  *regexp.Regexp
+	levels map[string]LogLevel
+}{
+	{regexp.MustCompile(`^([IWEF])\d{4}\s`), map[string]LogLevel{"I": LogLevelInfo, "W": LogLevelWarn, "E": LogLevelError, "F": LogLevelFatal}},
+	{regexp.MustCompile(`^\d+:[XCSM] \d{2} \w{3} \d{4} [\d:.]+ ([.\-*#]) `), map[string]LogLevel{".": LogLevelDebug, "-": LogLevelDebug, "*": LogLevelInfo, "#": LogLevelWarn}},
 }
 
-// levelKeywords and levelKeyNames are the substrings the level regexes need.
-// A message without them cannot match, so the regexes are skipped.
+// levelKeywords and levelKeyNames are the substrings levelWords and the keyed
+// level regexes need. A message without them cannot match, so they are skipped.
 var levelKeywords = []string{
 	"trace", "trc", "debug", "dbg", "dbug", "verbose", "inf", "notice", "log",
 	"warn", "wrn", "err", "fail", "exception", "fatal", "crit", "panic", "emerg",
+	"refused", "denied", "out of memory", "segmentation", "deprecated", "timed out", "unable to", "could not",
 }
 
 var levelKeyNames = []string{"level", "lvl", "severity"}
@@ -136,21 +189,54 @@ func DetectLogLevel(message string) LogLevel {
 		return level
 	}
 
+	if level, ok := accessLogLevel(message); ok {
+		return level
+	}
+
 	if !containsAny(lower, levelKeywords) {
 		return LogLevelUnknown
 	}
-	for _, level := range levelCheckOrder {
-		if LogLevelRegexes[level].MatchString(message) {
-			return level
+	if containsAny(lower, notALevelHints) {
+		message = notALevelRegex.ReplaceAllString(message, "")
+		lower = strings.ToLower(message)
+	}
+	for _, words := range levelWords {
+		for _, regex := range words.regexes {
+			if regex.MatchString(message) {
+				return words.level
+			}
+		}
+		if containsAny(lower, words.phrases) {
+			return words.level
 		}
 	}
 
 	return LogLevelUnknown
 }
 
-func ExtractExplicitLogLevel(message string) (LogLevel, bool) {
-	message = strings.TrimSpace(message)
-	return extractExplicitLogLevel(message, strings.ToLower(message))
+// accessLogLevel reads the severity of a common-log (`"GET / HTTP/1.1" 500`)
+// or Gin (`[GIN] ... | 500 |`) line from its status code, so a URL such as
+// /api/errors cannot decide it. A 2xx/3xx line is deliberately UNKNOWN.
+func accessLogLevel(message string) (LogLevel, bool) {
+	var status string
+	if i := strings.Index(message, `HTTP/`); i >= 0 {
+		_, status, _ = strings.Cut(message[i:], `" `)
+	} else if strings.HasPrefix(message, "[GIN]") {
+		_, status, _ = strings.Cut(message, "| ")
+	} else {
+		return LogLevelUnknown, false
+	}
+	status, _, _ = strings.Cut(status, " ")
+	code, err := strconv.Atoi(status)
+	switch {
+	case err != nil || code < 100 || code > 599:
+		return LogLevelUnknown, false
+	case code >= 500:
+		return LogLevelError, true
+	case code >= 400:
+		return LogLevelWarn, true
+	}
+	return LogLevelUnknown, true
 }
 
 func extractExplicitLogLevel(message, lower string) (LogLevel, bool) {
@@ -184,16 +270,9 @@ func extractExplicitLogLevel(message, lower string) (LogLevel, bool) {
 		}
 	}
 
-	if matches := glogPrefixRegex.FindStringSubmatch(message); len(matches) == 2 {
-		switch matches[1] {
-		case "I":
-			return LogLevelInfo, true
-		case "W":
-			return LogLevelWarn, true
-		case "E":
-			return LogLevelError, true
-		case "F":
-			return LogLevelFatal, true
+	for _, format := range markerFormats {
+		if matches := format.regex.FindStringSubmatch(message); len(matches) == 2 {
+			return format.levels[matches[1]], true
 		}
 	}
 
@@ -407,8 +486,9 @@ func GroupRelatedLogEntries(entries []LogEntry) []LogEntry {
 //
 //  1. Blank or indented lines (stack frames, YAML/JSON dumps) always fold,
 //     whatever level keywords they contain.
-//  2. After a WARN+ entry, stack-shaped lines fold regardless of their own
-//     level: "Caused by: ... failed" classifies as ERROR and must still fold.
+//  2. Postgres DETAIL/STATEMENT lines fold, and after a WARN+ entry so do
+//     stack-shaped lines, regardless of their own level: "Caused by: ...
+//     failed" classifies as ERROR and must still fold.
 //  3. Everything below applies to UNKNOWN lines only, so "ERROR: x" never
 //     folds into the entry before it.
 //  4. A "key: value" line folds (structured fields printed one per line).
@@ -423,8 +503,19 @@ func IsContinuationLogEntry(entry LogEntry, previous LogEntry) bool {
 		return false
 	}
 
-	if isProblemLevel(previous.Level) && (isStackTraceContinuation(message) || goFrameRegex.MatchString(message)) {
+	if postgresDetailRegex.MatchString(message) {
 		return true
+	}
+
+	if isProblemLevel(previous.Level) {
+		if stackLineRegex.MatchString(message) {
+			return true
+		}
+		// An exception line closes a Python traceback and opens a Java one, but
+		// behind another exception line it is a new event.
+		if exceptionHeaderRegex.MatchString(message) && !exceptionHeaderRegex.MatchString(previous.Message) {
+			return true
+		}
 	}
 
 	if entry.Level != LogLevelUnknown {
@@ -485,26 +576,6 @@ func isProblemLevel(level LogLevel) bool {
 	default:
 		return false
 	}
-}
-
-func isStackTraceContinuation(message string) bool {
-	stackPrefixes := []string{
-		"at ",
-		"File ",
-		"Traceback ",
-		"Caused by:",
-		"... ",
-		"goroutine ",
-		"created by ",
-	}
-
-	for _, prefix := range stackPrefixes {
-		if strings.HasPrefix(message, prefix) {
-			return true
-		}
-	}
-
-	return strings.HasPrefix(message, "/") && strings.Contains(message, ":")
 }
 
 func tryParseTimestampCandidate(candidate string) (time.Time, bool) {
