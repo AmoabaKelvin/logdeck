@@ -144,7 +144,8 @@ var exceptionHeaderRegex = regexp.MustCompile(`^(?:[\w$]+\.)*` + exceptionName)
 
 // Postgres follows an ERROR/LOG line with secondary lines for the same event.
 // It puts two spaces after the colon; a multi-line STATEMENT ends at the colon.
-var postgresDetailRegex = regexp.MustCompile(`(?:^|[\]\s])(?:DETAIL|HINT|QUERY|CONTEXT|LOCATION|STATEMENT|BACKTRACE):(?:  |$)`)
+// The group is the backend PID of the default "%m [%p] " line prefix.
+var postgresDetailRegex = regexp.MustCompile(`(?:^|\[(\d+)\] |[\]\s])(?:DETAIL|HINT|QUERY|CONTEXT|LOCATION|STATEMENT|BACKTRACE):(?:  |$)`)
 
 // How far an unstamped spill-over line may trail a stamped entry and still fold into it.
 const continuationWindow = 2 * time.Second
@@ -489,7 +490,8 @@ func GroupRelatedLogEntries(entries []LogEntry) []LogEntry {
 //  1. Blank or indented lines (stack frames, YAML/JSON dumps) always fold,
 //     whatever level keywords they contain.
 //  2. Postgres DETAIL/HINT/STATEMENT lines fold regardless of their own
-//     level: "DETAIL:  Failed process was running" classifies as ERROR.
+//     level: "DETAIL:  Failed process was running" classifies as ERROR. One
+//     from another backend PID never folds.
 //  3. After a WARN+ entry, stack-shaped lines fold regardless of their own
 //     level: "Caused by: ... failed" classifies as ERROR and must still fold.
 //  4. Everything below applies to UNKNOWN lines only, so "ERROR: x" never
@@ -506,8 +508,9 @@ func IsContinuationLogEntry(entry LogEntry, previous LogEntry) bool {
 		return false
 	}
 
-	if postgresDetailRegex.MatchString(message) {
-		return true
+	if matches := postgresDetailRegex.FindStringSubmatch(message); matches != nil {
+		// Backends interleave: only fold into a line from the same PID.
+		return matches[1] == "" || strings.Contains(previous.Message, "["+matches[1]+"] ")
 	}
 
 	if isProblemLevel(previous.Level) {

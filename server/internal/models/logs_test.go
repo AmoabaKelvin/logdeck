@@ -445,6 +445,10 @@ Stack trace:
 2026-09-14 12:00:00.000 UTC [77] STATEMENT:  INSERT INTO users VALUES (1)
 2026-09-14 12:00:01.000 UTC [77] LOG:  checkpoint starting: time`,
 			[]row{{LogLevelError, 2}, {LogLevelInfo, 0}}},
+		{"postgres interleaved backends", `2026-09-14 12:00:00.000 UTC [42] ERROR:  duplicate key value violates unique constraint "users_pkey"
+2026-09-14 12:00:00.000 UTC [77] LOG:  checkpoint starting: time
+2026-09-14 12:00:00.000 UTC [42] DETAIL:  Key (id)=(1) already exists.`,
+			[]row{{LogLevelError, 0}, {LogLevelInfo, 0}, {LogLevelUnknown, 0}}},
 	}
 
 	for _, tt := range tests {
