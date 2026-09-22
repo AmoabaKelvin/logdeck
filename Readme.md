@@ -5,7 +5,7 @@ Self-hosted logs, alerting and container management for Docker and Podman, in on
 **[Website](https://logdeck.dev)** · **[Live demo](https://logdeck.dev/demo)** · **[Docs](https://logdeck.dev/docs/getting-started)**
 
 ![LogDeck containers dashboard](./docs/containers.png)
-![LogDeck container logs](./docs/logs.png)
+![LogDeck container logs](./docs/logs-sheet.png)
 
 ## Quick start
 
