@@ -3,9 +3,11 @@ package logstore
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/AmoabaKelvin/logdeck/internal/config"
 	"github.com/AmoabaKelvin/logdeck/internal/models"
 )
 
@@ -256,5 +258,36 @@ func TestDeleteRemovedLeavesLiveContainers(t *testing.T) {
 	}
 	if containers != 0 {
 		t.Fatalf("deleted %d containers with a past cutoff, want 0", containers)
+	}
+}
+
+// TestRetainExpiresOldRemovedContainers checks the janitor drops a removed
+// container once it is older than the configured window, and only then.
+func TestRetainExpiresOldRemovedContainers(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "logs.db"), func() config.ResolvedLogStoreConfig {
+		return config.ResolvedLogStoreConfig{Enabled: true, PerContainerMB: 50, TotalMB: 1024, RemovedDays: 7}
+	})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { store.Close() })
+
+	writeEntries(t, store, genKey{"local", "old"}, "old", entryAt(baseTime, "stdout", "long gone"))
+	writeEntries(t, store, genKey{"local", "new"}, "new", entryAt(baseTime, "stdout", "just left"))
+	for id, age := range map[string]time.Duration{"old": 8 * 24 * time.Hour, "new": time.Hour} {
+		if _, err := store.db.Exec("UPDATE containers SET removed_ms = ? WHERE container_id = ?",
+			time.Now().Add(-age).UnixMilli(), id); err != nil {
+			t.Fatalf("mark removed: %v", err)
+		}
+	}
+
+	if err := store.retain(context.Background()); err != nil {
+		t.Fatalf("retain: %v", err)
+	}
+	if got := storedMessages(t, store, "local", "old"); len(got) != 0 {
+		t.Fatalf("local/old still has %v, want expired", got)
+	}
+	if got := storedMessages(t, store, "local", "new"); len(got) != 1 {
+		t.Fatalf("local/new = %v, want kept inside the window", got)
 	}
 }

@@ -33,7 +33,10 @@ import { useHistoryStatus } from "@/features/containers/hooks/use-history-status
 import type { UpdateLogStoragePayload } from "../api/update-log-storage";
 import { useUpdateLogStorage } from "../hooks/use-settings";
 import type { LogStoreConfig } from "../types";
-import { validateRetentionCaps } from "./log-storage-utils";
+import {
+	validateRemovedDays,
+	validateRetentionCaps,
+} from "./log-storage-utils";
 import { showResultToast } from "./mutation-toast";
 import { SaveButton } from "./save-button";
 import {
@@ -95,16 +98,21 @@ function RetentionCapsForm({ config }: { config: LogStoreConfig }) {
 		String(config.perContainerMB),
 	);
 	const [totalMB, setTotalMB] = useState(String(config.totalMB));
+	const [removedDays, setRemovedDays] = useState(String(config.removedDays));
 	const updateMutation = useUpdateLogStorage();
 
 	const perContainerIsEnv = config.perContainerMBSource === "env";
 	const totalIsEnv = config.totalMBSource === "env";
+	const removedIsEnv = config.removedDaysSource === "env";
 	const hasChanges =
 		(!perContainerIsEnv && perContainerMB !== String(config.perContainerMB)) ||
-		(!totalIsEnv && totalMB !== String(config.totalMB));
+		(!totalIsEnv && totalMB !== String(config.totalMB)) ||
+		(!removedIsEnv && removedDays !== String(config.removedDays));
 
 	function handleSave() {
-		const error = validateRetentionCaps(perContainerMB, totalMB);
+		const error =
+			validateRetentionCaps(perContainerMB, totalMB) ??
+			validateRemovedDays(removedDays);
 		if (error) {
 			toast.error(error);
 			return;
@@ -112,13 +120,14 @@ function RetentionCapsForm({ config }: { config: LogStoreConfig }) {
 		const payload: UpdateLogStoragePayload = {};
 		if (!perContainerIsEnv) payload.perContainerMB = Number(perContainerMB);
 		if (!totalIsEnv) payload.totalMB = Number(totalMB);
+		if (!removedIsEnv) payload.removedDays = Number(removedDays);
 		updateMutation.mutate(payload, showResultToast);
 	}
 
 	return (
-		<SettingsSubsection title="Retention caps">
+		<SettingsSubsection title="Retention">
 			<div className="space-y-4">
-				<div className="grid max-w-md gap-4 sm:grid-cols-2">
+				<div className="grid max-w-2xl gap-4 sm:grid-cols-3">
 					<Field
 						id="log-store-per-container"
 						label={
@@ -157,10 +166,30 @@ function RetentionCapsForm({ config }: { config: LogStoreConfig }) {
 							onChange={(e) => setTotalMB(e.target.value)}
 						/>
 					</Field>
+					<Field
+						id="log-store-removed-days"
+						label={
+							<span className="inline-flex flex-wrap items-center gap-2">
+								Keep removed for (days)
+								{removedIsEnv && <EnvBadge />}
+							</span>
+						}
+					>
+						<Input
+							id="log-store-removed-days"
+							name="removedDays"
+							type="number"
+							min={0}
+							value={removedDays}
+							disabled={removedIsEnv}
+							onChange={(e) => setRemovedDays(e.target.value)}
+						/>
+					</Field>
 				</div>
 				<Note>
 					Lowering a cap evicts the oldest stored logs on the next retention
-					pass.
+					pass. A removed container's logs are dropped once it has been gone
+					that many days; 0 keeps them until a cap evicts them.
 				</Note>
 				{hasChanges && (
 					<SaveButton
@@ -263,7 +292,7 @@ export function LogStorageSection({ config }: LogStorageSectionProps) {
 
 				{config && (
 					<RetentionCapsForm
-						key={`${config.perContainerMB}-${config.totalMB}`}
+						key={`${config.perContainerMB}-${config.totalMB}-${config.removedDays}`}
 						config={config}
 					/>
 				)}

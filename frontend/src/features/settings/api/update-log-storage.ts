@@ -8,6 +8,7 @@ export interface UpdateLogStoragePayload {
 	enabled?: boolean;
 	perContainerMB?: number;
 	totalMB?: number;
+	removedDays?: number;
 }
 
 export async function updateLogStorage(
