@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"log"
+	"sort"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/AmoabaKelvin/logdeck/internal/models"
 )
@@ -92,21 +94,22 @@ type writerState struct {
 	sealedMaxTS map[int64]int64
 	// nextSeq hands out the store-wide monotonic line number.
 	nextSeq int64
-	// unpacked caches the most recently decompressed block, held only for the
-	// span of one commit. A backfill re-read walks forward through time, so
-	// consecutive lines usually land in the same block.
-	unpacked      []sealedLine
-	unpackedRowid int64
+	// unpacked caches decoded blocks for the span of one commit. Concurrent
+	// producers interleave containers, so one block is not enough.
+	unpacked      map[int64][]sealedLine
+	unpackedBytes int
 	scratch       []byte
 }
 
+const maxDedupCacheBytes = 16 << 20
+
 func newWriterState() *writerState {
 	return &writerState{
-		refs:          make(map[genKey]int64),
-		hot:           make(map[int64]int),
-		sealedMaxTS:   make(map[int64]int64),
-		unpackedRowid: -1,
-		nextSeq:       1,
+		refs:        make(map[genKey]int64),
+		hot:         make(map[int64]int),
+		sealedMaxTS: make(map[int64]int64),
+		unpacked:    make(map[int64][]sealedLine),
+		nextSeq:     1,
 	}
 }
 
@@ -317,9 +320,10 @@ func (s *Store) commit(batch []ingestMsg, state *writerState) error {
 	// written against.
 	s.dropInvalidated(state)
 
-	// The cached block belongs to the previous transaction's snapshot; retention
-	// may have deleted it since.
-	state.unpacked, state.unpackedRowid = nil, -1
+	// Cached blocks belong to the previous transaction's snapshot; retention
+	// may have deleted them since.
+	clear(state.unpacked)
+	state.unpackedBytes = 0
 
 	// Per-generation aggregates applied once at the end of the transaction.
 	type agg struct {
@@ -492,10 +496,9 @@ const insertLineSQL = `INSERT INTO log_lines (container_ref, ts_ns, stream, leve
 // sealedHasLine reports whether a line is already inside one of the
 // generation's sealed blocks.
 //
-// Live ingestion never reaches the database here: its timestamps are newer than
-// anything sealed, which the writer already knows. Only a backfill re-reading a
-// window the store has kept gets this far, and then a block's filter usually
-// rules it out without decompressing.
+// Lines newer than all sealed blocks skip this check. Replayed or delayed live
+// lines also need it. The filter rejects absent lines cheaply; real duplicates
+// always pass the filter and need an exact comparison against decoded data.
 func (s *Store) sealedHasLine(ctx context.Context, tx *sql.Tx, state *writerState, ref int64, l line) (bool, error) {
 	if l.tsNS > state.sealedMaxTS[ref] {
 		return false, nil
@@ -534,8 +537,8 @@ func (s *Store) sealedHasLine(ctx context.Context, tx *sql.Tx, state *writerStat
 	}
 
 	for _, rowid := range candidates {
-		lines := state.unpacked
-		if state.unpackedRowid != rowid {
+		lines, cached := state.unpacked[rowid]
+		if !cached {
 			var payload []byte
 			if err := tx.QueryRowContext(ctx,
 				"SELECT payload FROM log_blocks WHERE rowid = ?", rowid).Scan(&payload); err != nil {
@@ -546,10 +549,18 @@ func (s *Store) sealedHasLine(ctx context.Context, tx *sql.Tx, state *writerStat
 			if err != nil {
 				return false, err
 			}
-			state.unpacked, state.unpackedRowid = lines, rowid
+			bytes := len(lines) * int(unsafe.Sizeof(sealedLine{}))
+			for _, sl := range lines {
+				bytes += len(sl.raw)
+			}
+			if state.unpackedBytes+bytes <= maxDedupCacheBytes {
+				state.unpacked[rowid] = lines
+				state.unpackedBytes += bytes
+			}
 		}
-		for _, sl := range lines {
-			if sl.tsNS == l.tsNS && sl.stream == l.stream && sl.raw == l.raw {
+		start := sort.Search(len(lines), func(i int) bool { return lines[i].tsNS >= l.tsNS })
+		for i := start; i < len(lines) && lines[i].tsNS == l.tsNS; i++ {
+			if sl := lines[i]; sl.stream == l.stream && sl.raw == l.raw {
 				return true, nil
 			}
 		}

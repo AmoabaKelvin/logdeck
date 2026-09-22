@@ -37,12 +37,13 @@ func NewMultiHostClient(hosts []config.DockerHost) (*MultiHostClient, error) {
 			if helperErr != nil {
 				return nil, fmt.Errorf("failed to setup SSH helper for host %s (%s): %w", host.Name, host.Host, helperErr)
 			}
+			dial := serialSSHDialer(helper.Dialer)
 
 			// No http.Client.Timeout: it would also cut off followed log,
 			// stats, and event streams.
 			httpClient := &http.Client{
 				Transport: &http.Transport{
-					DialContext:           helper.Dialer,
+					DialContext:           dial,
 					MaxIdleConnsPerHost:   32,
 					ResponseHeaderTimeout: 10 * time.Second,
 				},
@@ -51,7 +52,7 @@ func NewMultiHostClient(hosts []config.DockerHost) (*MultiHostClient, error) {
 			apiClient, err = client.NewClientWithOpts(
 				client.WithHTTPClient(httpClient),
 				client.WithHost(helper.Host),
-				client.WithDialContext(helper.Dialer),
+				client.WithDialContext(dial),
 				client.WithAPIVersionNegotiation(),
 			)
 		} else {
@@ -79,8 +80,8 @@ func NewMultiHostClient(hosts []config.DockerHost) (*MultiHostClient, error) {
 	}, nil
 }
 
-// sshFlags multiplexes every ssh dial over one master connection; a
-// handshake per request trips sshd's MaxStartups throttle.
+// sshFlags reuses a master connection where the server's session limit allows.
+// serialSSHDialer prevents concurrent handshakes when no master is available.
 func sshFlags() []string {
 	return []string{
 		"-o ConnectTimeout=10",

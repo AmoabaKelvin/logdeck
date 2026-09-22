@@ -163,3 +163,126 @@ func BenchmarkIngestThirtyContainers(b *testing.B) {
 	}
 	b.ReportMetric(float64(b.N*batchLines)/b.Elapsed().Seconds(), "lines/s")
 }
+
+// Concurrent tails and backfills interleave generations in the writer queue.
+// Replaying sealed history must not decompress a block for every such switch.
+func BenchmarkReplaySealedInterleaved(b *testing.B) {
+	s, state, batch := sealedReplayFixture(b)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		if err := s.commit(batch, state); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.StopTimer()
+	if got := s.Committed(); got != 30*blockLines {
+		b.Fatalf("replay inserted duplicates: committed %d lines", got)
+	}
+	b.ReportMetric(float64(b.N*batchLines)/b.Elapsed().Seconds(), "lines/s")
+}
+
+func TestReplaySealedInterleaved(t *testing.T) {
+	s, state, batch := sealedReplayFixture(t)
+	allocs := testing.AllocsPerRun(1, func() {
+		if err := s.commit(batch, state); err != nil {
+			t.Fatal(err)
+		}
+	})
+	// A cached replay allocates ~106k objects; the old one-block cache, 1.5M.
+	if allocs > 500_000 {
+		t.Fatalf("interleaved replay allocated %.0f objects; blocks are being repeatedly decoded", allocs)
+	}
+	if got := s.Committed(); got != 30*blockLines {
+		t.Fatalf("replay inserted duplicates: committed %d lines", got)
+	}
+}
+
+func TestDedupCacheResetsAfterPurge(t *testing.T) {
+	s := newTestStore(t)
+	entries := chatty(blockLines, baseTime, dockerEntry)
+	key := genKey{"local", "api"}
+	writeAndSeal(t, s, key, "api", entries...)
+	state := mustWriterState(t, s)
+	batch := []ingestMsg{{key: key, name: "api", line: lineFromEntry(entries[0])}}
+	if err := s.commit(batch, state); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DeleteContainer(context.Background(), "local", "api"); err != nil {
+		t.Fatal(err)
+	}
+	// Reuse the deleted block's rowid, but with different content at the same
+	// timestamps. The old cached block must not hide a newly arriving line.
+	for i := range entries {
+		entries[i] = dockerEntry(entries[i].Timestamp, "stdout", "replacement")
+	}
+	writeAndSeal(t, s, key, "api", entries...)
+	before := s.Committed()
+	if err := s.commit(batch, state); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Committed() - before; got != 1 {
+		t.Fatalf("inserted %d lines after purge, want 1", got)
+	}
+}
+
+func TestSealedDedupWithFullCache(t *testing.T) {
+	s := newTestStore(t)
+	key := genKey{"local", "api"}
+	entries := chatty(blockLines, baseTime, dockerEntry)
+	writeAndSeal(t, s, key, "api", entries...)
+	state := mustWriterState(t, s)
+	state.unpackedBytes = maxDedupCacheBytes
+	ctx := context.Background()
+	tx, err := s.writerDB.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var ref int64
+	if err := tx.QueryRow("SELECT id FROM containers WHERE container_id = 'api'").Scan(&ref); err != nil {
+		t.Fatal(err)
+	}
+	l := lineFromEntry(entries[0])
+	if found, err := s.sealedHasLine(ctx, tx, state, ref, l); err != nil || !found {
+		t.Fatalf("duplicate with full cache: found=%v, err=%v", found, err)
+	}
+	l.raw += " different message"
+	if found, err := s.sealedHasLine(ctx, tx, state, ref, l); err != nil || found {
+		t.Fatalf("distinct line with full cache: found=%v, err=%v", found, err)
+	}
+	if len(state.unpacked) != 0 || state.unpackedBytes != maxDedupCacheBytes {
+		t.Fatal("decoded block exceeded the cache budget")
+	}
+}
+
+func sealedReplayFixture(t testing.TB) (*Store, *writerState, []ingestMsg) {
+	t.Helper()
+	s, err := Open(filepath.Join(t.TempDir(), "logs.db"), testLimits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	state := newWriterState()
+	const containers = 30
+	entries := chatty(blockLines, baseTime, dockerEntry)
+	for c := range containers {
+		id := fmt.Sprint(c)
+		batch := make([]ingestMsg, len(entries))
+		for i, entry := range entries {
+			batch[i] = ingestMsg{key: genKey{"local", id}, name: id, line: lineFromEntry(entry)}
+		}
+		if err := s.commit(batch, state); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.sealFullBlocks(state); err != nil {
+			t.Fatal(err)
+		}
+	}
+	batch := make([]ingestMsg, batchLines)
+	for i := range batch {
+		id := fmt.Sprint(i % containers)
+		batch[i] = ingestMsg{key: genKey{"local", id}, name: id, line: lineFromEntry(entries[i/containers])}
+	}
+	return s, state, batch
+}
