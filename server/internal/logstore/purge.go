@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"os"
+	"time"
 )
 
 // ErrContainerNotFound is returned when the store holds no generation of the
@@ -157,4 +158,49 @@ func (s *Store) DBSize() (int64, error) {
 		total += wal.Size()
 	}
 	return total, nil
+}
+
+// DeleteRemoved purges every logical container whose generations are all gone
+// from the engine and were last seen before cutoff. A container with any live
+// generation is left alone: its history is still being written. It returns how
+// many containers and lines were removed.
+func (s *Store) DeleteRemoved(ctx context.Context, cutoff time.Time) (int, int64, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT host, name FROM containers
+		GROUP BY host, name
+		HAVING SUM(removed_ms IS NULL) = 0 AND MAX(removed_ms) < ?`, cutoff.UnixMilli())
+	if err != nil {
+		return 0, 0, err
+	}
+	type target struct{ host, name string }
+	var targets []target
+	for rows.Next() {
+		var t target
+		if err := rows.Scan(&t.host, &t.name); err != nil {
+			rows.Close()
+			return 0, 0, err
+		}
+		targets = append(targets, t)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, 0, err
+	}
+
+	var (
+		containers int
+		lines      int64
+	)
+	for _, t := range targets {
+		deleted, err := s.DeleteContainer(ctx, t.host, t.name)
+		if errors.Is(err, ErrContainerNotFound) {
+			continue // purged by hand between the listing and now
+		}
+		if err != nil {
+			return containers, lines, err
+		}
+		containers++
+		lines += deleted
+	}
+	return containers, lines, nil
 }

@@ -162,10 +162,12 @@ func (ar *APIRouter) registerHistoryRoutes(r chi.Router) {
 	r.Get("/history/containers", ar.GetHistoryContainers)
 	r.Get("/history/logs", ar.GetHistoryLogs)
 
-	r.With(
+	destructive := r.With(
 		middleware.ReadOnly(func() bool { return ar.registry.Config().ReadOnly }),
 		auth.DenyReadScope,
-	).Delete("/history/containers/{name}", ar.DeleteHistoryContainer)
+	)
+	destructive.Delete("/history/containers/{name}", ar.DeleteHistoryContainer)
+	destructive.Delete("/history/removed", ar.DeleteHistoryRemoved)
 }
 
 func (ar *APIRouter) registerSettingsRoutes(r chi.Router) {

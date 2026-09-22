@@ -213,3 +213,48 @@ func TestDBSize(t *testing.T) {
 		t.Fatalf("DBSize = %d, want the size of the database on disk", size)
 	}
 }
+
+// TestDeleteRemovedLeavesLiveContainers purges only the logical containers
+// every generation of which is gone from the engine.
+func TestDeleteRemovedLeavesLiveContainers(t *testing.T) {
+	store := newTestStore(t)
+
+	// gone: removed on every generation.
+	writeEntries(t, store, genKey{"local", "aaa"}, "gone",
+		entryAt(baseTime, "stdout", "one"), entryAt(baseTime.Add(time.Second), "stdout", "two"))
+	markRemoved(t, store, genKey{"local", "aaa"})
+	// rebuilt: an old removed generation and a live one.
+	writeEntries(t, store, genKey{"local", "bbb"}, "rebuilt", entryAt(baseTime, "stdout", "old gen"))
+	markRemoved(t, store, genKey{"local", "bbb"})
+	writeEntries(t, store, genKey{"local", "ccc"}, "rebuilt", entryAt(baseTime, "stdout", "new gen"))
+	// live: never removed.
+	writeEntries(t, store, genKey{"local", "ddd"}, "live", entryAt(baseTime, "stdout", "still here"))
+
+	containers, lines, err := store.DeleteRemoved(context.Background(), time.Now().Add(time.Minute))
+	if err != nil {
+		t.Fatalf("DeleteRemoved: %v", err)
+	}
+	if containers != 1 || lines != 2 {
+		t.Fatalf("deleted %d containers / %d lines, want 1 / 2", containers, lines)
+	}
+	if got := storedMessages(t, store, "local", "gone"); len(got) != 0 {
+		t.Fatalf("local/gone still has %v", got)
+	}
+	if got := storedMessages(t, store, "local", "rebuilt"); len(got) != 2 {
+		t.Fatalf("local/rebuilt = %v, want both generations kept", got)
+	}
+	if got := storedMessages(t, store, "local", "live"); len(got) != 1 {
+		t.Fatalf("local/live = %v, want untouched", got)
+	}
+
+	// A cutoff in the past spares containers removed after it.
+	writeEntries(t, store, genKey{"local", "eee"}, "recent", entryAt(baseTime, "stdout", "just removed"))
+	markRemoved(t, store, genKey{"local", "eee"})
+	containers, _, err = store.DeleteRemoved(context.Background(), time.Now().Add(-time.Hour))
+	if err != nil {
+		t.Fatalf("DeleteRemoved: %v", err)
+	}
+	if containers != 0 {
+		t.Fatalf("deleted %d containers with a past cutoff, want 0", containers)
+	}
+}
