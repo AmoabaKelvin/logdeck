@@ -238,7 +238,7 @@ func TestSealedDedupWithFullCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var ref int64
 	if err := tx.QueryRow("SELECT id FROM containers WHERE container_id = 'api'").Scan(&ref); err != nil {
 		t.Fatal(err)
