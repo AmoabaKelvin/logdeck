@@ -171,9 +171,6 @@ export function LogViewer({
 		: containerId;
 	const streamHost = targets ? "aggregate" : host;
 
-	// History reads a single container's stored logs by name, so it is offered
-	// on the page variant only (the sheet stays live; aggregate views have no
-	// per-container store to read).
 	// The sheet is transformed, so a fixed child would fill it, not the viewport.
 	const canFullscreen = variant === "page";
 	const showFullscreen = canFullscreen && isFullscreen;
@@ -201,7 +198,9 @@ export function LogViewer({
 		};
 	}, [showFullscreen]);
 
-	const supportsHistory = variant === "page" && !targets;
+	// History reads a single container's stored logs by name; aggregate views
+	// have no per-container store to read.
+	const supportsHistory = !targets;
 	const { data: historyStatus } = useHistoryStatus(supportsHistory);
 	const historyEnabled = supportsHistory && historyStatus?.enabled === true;
 	const isHistory =
