@@ -10,7 +10,11 @@ import {
 import { ChevronDownIcon } from "@/components/ui/icons";
 
 import type { StateCounts } from "./container-utils";
-import { REMOVED_STATE, toTitleCase } from "./container-utils";
+import {
+	DEFAULT_STATE_FILTER,
+	REMOVED_STATE,
+	toTitleCase,
+} from "./container-utils";
 
 interface ContainersStateFilterProps {
 	stateCounts: StateCounts;
@@ -60,7 +64,11 @@ export function ContainersStateFilter({
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
-				<Button variant="outline" data-active={!isAll} className={className}>
+				<Button
+					variant="outline"
+					data-active={stateFilter !== DEFAULT_STATE_FILTER}
+					className={className}
+				>
 					{isAll ? "All states" : toTitleCase(stateFilter)}
 					<span className="tabular-nums text-muted-foreground">
 						{activeCount}

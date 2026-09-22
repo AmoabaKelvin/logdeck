@@ -21,6 +21,9 @@ export type ContainerActionType = "start" | "stop" | "restart" | "remove";
 // Containers that no longer exist on the host but still have stored logs are
 // surfaced as a synthetic dashboard state rather than a separate page.
 export const REMOVED_STATE = "removed";
+// Exited containers pile up once history is kept, so the dashboard opens on
+// running ones and everything else is a filter away.
+export const DEFAULT_STATE_FILTER = "running";
 
 export interface GroupedContainers {
 	project: string;
