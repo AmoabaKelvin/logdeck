@@ -2,6 +2,26 @@
 
 All notable changes to LogDeck are documented here.
 
+## [0.5.0] - 2026-09-22
+
+### Added
+
+**Settings page.** Settings uses the same layout as the containers and container pages: full width, ruled sections instead of cards, and a side nav in place of the tab pills. Inline forms for adding a host, token or channel sit in recessed wells and stack on phones. Log storage shows used space, the per-container cap and the stored container count as a readings strip, and the stored containers table is paginated, 10 per page. It used to render every row, which froze the page once the store held a few hundred containers.
+
+**Logs sheet.** Opening logs from the dashboard shows a slice of the container page: the name and state in the title, the same CPU, memory, uptime and ports strip, and the same Overview, Network, Environment and Limits panels. The live stream fills the rest of the sheet instead of a fixed 400px box. The old details card, label list and environment toggle are gone, since the panels cover them. Open page links to the full container page.
+
+### Changed
+
+- The dashboard opens on running containers. With log history kept, exited and removed containers were crowding out the default view. All states is one click away in the state filter.
+- Redis logs get a level from Redis's single-character marker, and Postgres DETAIL, HINT and STATEMENT lines fold into the ERROR or LOG line above them. Both used to show as separate UNKNOWN rows.
+- Multi-line stack traces stay in one row under the right level. A Go panic used to split into seven rows and a Python traceback into three, and an exception printed after an INFO line was folded into that INFO entry, so an ERROR filter never showed it. Exception class names like `TypeError` count as ERROR, phrases like `0 failed`, `err=nil` and `error handler` no longer count as a level, and access log lines take their level from the status code (5xx ERROR, 4xx WARN).
+- The README is a quick start with links; the full feature tour lives on logdeck.dev.
+
+### Fixed
+
+- A burst of parallel requests to an SSH host spawned an ssh process per request before the master socket was ready, which tripped sshd's MaxStartups and dropped connections. Dials to a host now go one at a time until the connection is up.
+- Replaying a batch of interleaved containers into the log store decompressed the same block once per line switch. Decoded blocks are now cached across a commit, capped at 16 MB.
+
 ## [0.4.0] - 2026-09-17
 
 ### Added
