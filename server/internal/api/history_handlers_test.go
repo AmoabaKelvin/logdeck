@@ -260,6 +260,88 @@ func TestHistoryContainers(t *testing.T) {
 	})
 }
 
+func TestHistoryContainersPaging(t *testing.T) {
+	store, seed, db := newHistoryStoreDB(t)
+	seed("local", "a1", "api", historyBase, "hello")
+	seed("local", "b1", "billing", historyBase, "hello")
+	seed("local", "c1", "cache", historyBase, "hello")
+	seed("remote", "d1", "api-worker", historyBase, "hello")
+	if _, err := db.Exec("UPDATE containers SET stored_bytes = 900 WHERE name = 'billing'"); err != nil {
+		t.Fatalf("set stored bytes: %v", err)
+	}
+	if _, err := db.Exec("UPDATE containers SET removed_ms = 1 WHERE name = 'cache'"); err != nil {
+		t.Fatalf("mark removed: %v", err)
+	}
+	router := newHistoryTestRouter(t, store)
+
+	type page struct {
+		Containers   []logstore.StoredContainer `json:"containers"`
+		Total        int                        `json:"total"`
+		StoredCount  int                        `json:"storedCount"`
+		RemovedCount int                        `json:"removedCount"`
+	}
+	get := func(t *testing.T, path string) page {
+		t.Helper()
+		w := doHistoryRequest(t, router, path)
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var body page
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatalf("parse response: %v", err)
+		}
+		return body
+	}
+	names := func(p page) string {
+		out := []string{}
+		for _, c := range p.Containers {
+			out = append(out, c.Name)
+		}
+		return strings.Join(out, ",")
+	}
+
+	t.Run("search matches name or host, total counts matches", func(t *testing.T) {
+		body := get(t, "/api/v1/history/containers?search=API")
+		if names(body) != "api,api-worker" || body.Total != 2 || body.StoredCount != 4 || body.RemovedCount != 1 {
+			t.Fatalf("unexpected page: %s total=%d stored=%d removed=%d", names(body), body.Total, body.StoredCount, body.RemovedCount)
+		}
+		if body := get(t, "/api/v1/history/containers?search=remote"); names(body) != "api-worker" {
+			t.Fatalf("host search: got %s", names(body))
+		}
+	})
+
+	t.Run("limit and offset slice the sorted list", func(t *testing.T) {
+		body := get(t, "/api/v1/history/containers?limit=2&offset=1")
+		if names(body) != "billing,cache" || body.Total != 4 {
+			t.Fatalf("unexpected page: %s total=%d", names(body), body.Total)
+		}
+		if body := get(t, "/api/v1/history/containers?limit=2&offset=10"); len(body.Containers) != 0 || body.Total != 4 {
+			t.Fatalf("offset past the end: %s total=%d", names(body), body.Total)
+		}
+	})
+
+	t.Run("sort by size puts the biggest first", func(t *testing.T) {
+		body := get(t, "/api/v1/history/containers?sort=size&limit=1")
+		if names(body) != "billing" {
+			t.Fatalf("expected billing first, got %s", names(body))
+		}
+	})
+
+	for _, path := range []string{
+		"/api/v1/history/containers?sort=age",
+		"/api/v1/history/containers?limit=-1",
+		"/api/v1/history/containers?limit=lots",
+		"/api/v1/history/containers?limit=501",
+		"/api/v1/history/containers?offset=-5",
+	} {
+		t.Run("rejects "+path, func(t *testing.T) {
+			if w := doHistoryRequest(t, router, path); w.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
 func TestHistoryLogsValidation(t *testing.T) {
 	store, seed := newHistoryStore(t)
 	seed("local", "abc123", "web", historyBase, "hello")

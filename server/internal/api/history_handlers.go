@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"regexp/syntax"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -124,10 +126,36 @@ func (ar *APIRouter) DeleteHistoryRemoved(w http.ResponseWriter, r *http.Request
 	})
 }
 
-// GetHistoryContainers lists every logical container the store knows about.
-// With persistence disabled the list is simply empty.
+// maxHistoryContainersLimit caps one page of GET /history/containers.
+const maxHistoryContainersLimit = 500
+
+// GetHistoryContainers lists the logical containers the store knows about.
+// search, sort, limit, and offset are optional: with none of them every
+// container comes back, sorted by host then name. total counts the containers
+// matching search; storedCount and removedCount ignore it. With persistence
+// disabled the list is simply empty.
 func (ar *APIRouter) GetHistoryContainers(w http.ResponseWriter, r *http.Request) {
-	containers := []logstore.StoredContainer{}
+	params := r.URL.Query()
+
+	sortBy := params.Get("sort")
+	if sortBy != "" && sortBy != "name" && sortBy != "size" {
+		http.Error(w, "invalid sort: expected name or size", http.StatusBadRequest)
+		return
+	}
+	limit, ok := parseNonNegativeInt(w, params, "limit")
+	if !ok {
+		return
+	}
+	if limit > maxHistoryContainersLimit {
+		http.Error(w, fmt.Sprintf("invalid limit: max is %d", maxHistoryContainersLimit), http.StatusBadRequest)
+		return
+	}
+	offset, ok := parseNonNegativeInt(w, params, "offset")
+	if !ok {
+		return
+	}
+
+	all := []logstore.StoredContainer{}
 	if ar.logStore != nil {
 		stored, err := ar.logStore.ListContainers(r.Context())
 		if err != nil {
@@ -135,12 +163,70 @@ func (ar *APIRouter) GetHistoryContainers(w http.ResponseWriter, r *http.Request
 			http.Error(w, "failed to list stored containers", http.StatusInternalServerError)
 			return
 		}
-		containers = stored
+		all = stored
+	}
+
+	removed := 0
+	for _, c := range all {
+		if c.Removed {
+			removed++
+		}
+	}
+
+	containers := filterStoredContainers(all, params.Get("search"))
+	if sortBy == "size" {
+		sort.SliceStable(containers, func(i, j int) bool {
+			if containers[i].StoredBytes != containers[j].StoredBytes {
+				return containers[i].StoredBytes > containers[j].StoredBytes
+			}
+			return containers[i].Name < containers[j].Name
+		})
+	}
+	total := len(containers)
+	containers = containers[min(offset, total):]
+	if limit > 0 {
+		containers = containers[:min(limit, len(containers))]
 	}
 
 	WriteJsonResponse(w, http.StatusOK, map[string]any{
-		"containers": containers,
+		"containers":   containers,
+		"total":        total,
+		"storedCount":  len(all),
+		"removedCount": removed,
 	})
+}
+
+// filterStoredContainers keeps the containers whose name, host, or compose
+// project contains search, ignoring case. The result is never nil.
+func filterStoredContainers(all []logstore.StoredContainer, search string) []logstore.StoredContainer {
+	needle := strings.ToLower(strings.TrimSpace(search))
+	if needle == "" {
+		return all
+	}
+	matched := []logstore.StoredContainer{}
+	for _, c := range all {
+		if strings.Contains(strings.ToLower(c.Name), needle) ||
+			strings.Contains(strings.ToLower(c.Host), needle) ||
+			strings.Contains(strings.ToLower(c.ComposeProject), needle) {
+			matched = append(matched, c)
+		}
+	}
+	return matched
+}
+
+// parseNonNegativeInt reads an optional integer query parameter, writing the
+// 400 itself when it is malformed or negative. Absent means 0.
+func parseNonNegativeInt(w http.ResponseWriter, params url.Values, name string) (int, bool) {
+	value := params.Get(name)
+	if value == "" {
+		return 0, true
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 0 {
+		http.Error(w, fmt.Sprintf("invalid %s: expected a non-negative integer", name), http.StatusBadRequest)
+		return 0, false
+	}
+	return parsed, true
 }
 
 // GetHistoryLogs returns one page of stored logs for a logical container.

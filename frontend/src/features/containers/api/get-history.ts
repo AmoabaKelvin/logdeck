@@ -85,6 +85,52 @@ export async function getHistoryContainers(): Promise<StoredContainer[]> {
 	return data.containers ?? [];
 }
 
+export interface StoredContainersPageParams {
+	search?: string;
+	sort?: "name" | "size";
+	limit?: number;
+	offset?: number;
+}
+
+export interface StoredContainersPage {
+	containers: StoredContainer[];
+	// Containers matching `search`; storedCount and removedCount ignore it.
+	total: number;
+	storedCount: number;
+	removedCount: number;
+}
+
+export async function getStoredContainersPage({
+	search,
+	sort,
+	limit,
+	offset,
+}: StoredContainersPageParams): Promise<StoredContainersPage> {
+	const query = new URLSearchParams();
+	if (search) query.set("search", search);
+	if (sort) query.set("sort", sort);
+	if (limit !== undefined) query.set("limit", String(limit));
+	if (offset) query.set("offset", String(offset));
+
+	const response = await authenticatedFetch(
+		`${BASE_URL}/containers?${query.toString()}`,
+		{ headers: { Accept: "application/json" } },
+	);
+
+	if (!response.ok) {
+		throw await readError(response, "Failed to fetch stored containers");
+	}
+
+	const data = await readJson<Partial<StoredContainersPage>>(response);
+	const containers = data.containers ?? [];
+	return {
+		containers,
+		total: data.total ?? containers.length,
+		storedCount: data.storedCount ?? containers.length,
+		removedCount: data.removedCount ?? 0,
+	};
+}
+
 export interface DeleteHistoryResult {
 	message: string;
 	linesDeleted: number;

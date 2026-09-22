@@ -342,10 +342,29 @@ func registerMCPTools(s *mcp.Server, a *app) []string {
 	})
 	register(tool)
 
-	tool = &mcp.Tool{Name: "history_containers", Description: "List every logical container that has stored logs.", Annotations: readOnlyAnnot()}
-	mcp.AddTool(s, tool, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+	type historyContainersInput struct {
+		Search string `json:"search,omitempty" jsonschema:"filter by name, host, or compose project (case-insensitive substring)"`
+		Sort   string `json:"sort,omitempty" jsonschema:"name (default) or size (biggest first)"`
+		Limit  int    `json:"limit,omitempty" jsonschema:"containers per page (max 500); omit for all"`
+		Offset int    `json:"offset,omitempty" jsonschema:"containers to skip"`
+	}
+	tool = &mcp.Tool{Name: "history_containers", Description: "List logical containers that have stored logs. total counts the matches.", Annotations: readOnlyAnnot()}
+	mcp.AddTool(s, tool, func(ctx context.Context, _ *mcp.CallToolRequest, in historyContainersInput) (*mcp.CallToolResult, any, error) {
+		query := url.Values{}
+		if in.Search != "" {
+			query.Set("search", in.Search)
+		}
+		if in.Sort != "" {
+			query.Set("sort", in.Sort)
+		}
+		if in.Limit > 0 {
+			query.Set("limit", strconv.Itoa(in.Limit))
+		}
+		if in.Offset > 0 {
+			query.Set("offset", strconv.Itoa(in.Offset))
+		}
 		var resp map[string]any
-		if err := a.client.get(ctx, "/history/containers", nil, &resp); err != nil {
+		if err := a.client.get(ctx, "/history/containers", query, &resp); err != nil {
 			return nil, nil, err
 		}
 		return mcpJSON(resp)

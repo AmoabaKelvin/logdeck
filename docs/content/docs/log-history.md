@@ -97,8 +97,24 @@ If LogDeck cannot open the database (a read-only volume, a missing mount), it lo
 The HTTP API exposes the store. These are read endpoints, so a `read`-scoped API token can call them.
 
 - `GET /api/v1/history/status`: whether persistence is available (`{"enabled": true}`).
-- `GET /api/v1/history/containers`: every logical container the store knows about, including removed ones, with their stored size.
+- `GET /api/v1/history/containers`: the logical containers the store knows about, including removed ones, with their stored size.
 - `GET /api/v1/history/logs`: one page of stored logs. Returns `503` when persistence is disabled.
+
+`/history/containers` returns every container when called bare. These optional query parameters filter and page it:
+
+| Parameter | Meaning                                                          |
+| --------- | ---------------------------------------------------------------- |
+| `search`  | Case-insensitive match on the name, host, or Compose project.    |
+| `sort`    | `name` (host, then name; the default) or `size` (biggest first). |
+| `limit`   | Containers per page, up to `500`. Omit for all.                  |
+| `offset`  | Containers to skip.                                              |
+
+The response carries `total` (containers matching `search`), `storedCount` (every stored container), and `removedCount` (stored containers that no longer exist on any host) next to `containers`.
+
+```bash
+curl -H "Authorization: Bearer ldk_..." \
+  "http://localhost:8123/api/v1/history/containers?search=api&sort=size&limit=20"
+```
 
 `/history/logs` takes these query parameters:
 

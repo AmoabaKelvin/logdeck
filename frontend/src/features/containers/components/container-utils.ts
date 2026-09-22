@@ -407,18 +407,6 @@ export function selectStackMembers(
 	];
 }
 
-/**
- * Stored containers ordered biggest-first: the storage table exists to show
- * which containers are eating the disk budget.
- */
-export function sortStoredContainersBySize(
-	stored: StoredContainer[],
-): StoredContainer[] {
-	return [...stored].sort(
-		(a, b) => b.storedBytes - a.storedBytes || a.name.localeCompare(b.name),
-	);
-}
-
 export function countContainerStates(
 	liveContainers: ContainerInfo[],
 	removedContainers: RemovedContainerInfo[],
