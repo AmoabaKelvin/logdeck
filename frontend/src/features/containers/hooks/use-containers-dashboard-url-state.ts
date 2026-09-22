@@ -14,7 +14,7 @@ import type {
 	SortDirection,
 	SortKey,
 } from "../components/container-utils";
-import { SORT_KEYS } from "../components/container-utils";
+import { DEFAULT_STATE_FILTER, SORT_KEYS } from "../components/container-utils";
 
 const parseAsSortDirection = createParser({
 	parse: (value): SortDirection | null => {
@@ -38,7 +38,7 @@ const parseAsGroupBy = createParser({
 
 const searchParamsConfig = {
 	search: parseAsString.withDefault(""),
-	state: parseAsString.withDefault("all"),
+	state: parseAsString.withDefault(DEFAULT_STATE_FILTER),
 	host: parseAsString.withDefault("all"),
 	sort: parseAsSortDirection.withDefault("desc"),
 	sortBy: parseAsStringLiteral(SORT_KEYS).withDefault("created"),
@@ -88,7 +88,7 @@ export function useContainersDashboardUrlState() {
 
 	const setStateFilter = useCallback(
 		(value: string) => {
-			const normalized = value || "all";
+			const normalized = value || DEFAULT_STATE_FILTER;
 			setParams({
 				state: normalized,
 				page: 1,

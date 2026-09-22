@@ -1,23 +1,14 @@
 import { useState } from "react";
 import { toast } from "sonner";
 
-import {
-	Card,
-	CardAction,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 
 import type { UpdateAuthPayload } from "../api/update-auth";
 import { useUpdateAuth } from "../hooks/use-settings";
 import type { AuthConfig } from "../types";
-import { EnvBadge } from "./env-badge";
 import { SaveButton } from "./save-button";
+import { EnvBadge, Field, SettingsSection } from "./settings-ui";
 
 interface AuthSectionProps {
 	config: AuthConfig;
@@ -59,70 +50,63 @@ export function AuthSection({ config }: AuthSectionProps) {
 	}
 
 	return (
-		<Card>
-			<CardHeader>
-				<div className="flex items-center gap-3">
-					<CardTitle>Authentication</CardTitle>
-					{isEnv && <EnvBadge />}
-				</div>
-				<CardDescription>
-					Protect the dashboard with username and password authentication.
-				</CardDescription>
-				<CardAction>
-					<Switch
-						id="auth-enabled"
-						aria-label="Enable authentication"
-						checked={enabled}
-						onCheckedChange={(checked) => {
-							setEnabled(checked);
-							if (!checked) setPassword("");
-						}}
-						disabled={isEnv}
-						className="relative after:absolute after:-inset-x-1 after:-inset-y-3"
-					/>
-				</CardAction>
-			</CardHeader>
+		<SettingsSection
+			title="Authentication"
+			description="Protect the dashboard with a username and password."
+			badge={isEnv && <EnvBadge />}
+			action={
+				<Switch
+					id="auth-enabled"
+					aria-label="Enable authentication"
+					checked={enabled}
+					onCheckedChange={(checked) => {
+						setEnabled(checked);
+						if (!checked) setPassword("");
+					}}
+					disabled={isEnv}
+					className="relative after:absolute after:-inset-x-1 after:-inset-y-3"
+				/>
+			}
+		>
 			{(enabled || hasChanges) && (
-				<CardContent className="space-y-4">
+				<div className="space-y-4">
 					{enabled && (
-						<div className="space-y-3 max-w-sm">
-							<div className="space-y-1.5">
-								<Label htmlFor="admin-username">Admin username</Label>
+						<div className="max-w-xs space-y-4">
+							<Field id="admin-username" label="Admin username">
 								<Input
 									id="admin-username"
+									name="adminUsername"
 									value={username}
 									onChange={(e) => setUsername(e.target.value)}
 									disabled={isEnv}
 									placeholder="admin"
 								/>
-							</div>
-							<div className="space-y-1.5">
-								<Label htmlFor="admin-password">
-									{config.enabled
-										? "New password (leave blank to keep current)"
-										: "Password"}
-								</Label>
+							</Field>
+							<Field
+								id="admin-password"
+								label={config.enabled ? "New password" : "Password"}
+								hint={
+									config.enabled ? "Leave blank to keep the current one." : null
+								}
+							>
 								<Input
 									id="admin-password"
+									name="newPassword"
 									type="password"
+									autoComplete="new-password"
 									value={password}
 									onChange={(e) => setPassword(e.target.value)}
 									disabled={isEnv}
-									placeholder={
-										config.enabled
-											? "Leave blank to keep current"
-											: "Enter password"
-									}
 								/>
-							</div>
+							</Field>
 						</div>
 					)}
 
 					{hasChanges && !isEnv && (
 						<SaveButton isPending={mutation.isPending} onClick={handleSave} />
 					)}
-				</CardContent>
+				</div>
 			)}
-		</Card>
+		</SettingsSection>
 	);
 }

@@ -18,6 +18,7 @@ import type { ContainerInfo, ContainerStatsMap } from "../types";
 import { ConfirmActionDialog } from "./confirm-action-dialog";
 import {
 	countContainerStates,
+	DEFAULT_STATE_FILTER,
 	getContainerUrlIdentifier,
 	groupByCompose,
 	REMOVED_STATE,
@@ -210,13 +211,13 @@ export function ContainersDashboard() {
 	// Grouping is a view preference, not a filter: it never hides a row.
 	const hasActiveFilters =
 		searchTerm.trim() !== "" ||
-		stateFilter !== "all" ||
+		stateFilter !== DEFAULT_STATE_FILTER ||
 		hostFilter !== "all" ||
 		dateRange !== undefined;
 
 	const clearFilters = useCallback(() => {
 		setSearchTerm("");
-		setStateFilter("all");
+		setStateFilter(DEFAULT_STATE_FILTER);
 		setHostFilter("all");
 		clearDateRange();
 	}, [setSearchTerm, setStateFilter, setHostFilter, clearDateRange]);

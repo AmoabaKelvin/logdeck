@@ -2,30 +2,26 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
 
 import { useTestDockerHost, useUpdateDockerHosts } from "../hooks/use-settings";
 import type { DockerHostsConfig } from "../types";
-import { EnvBadge } from "./env-badge";
 import { showResultToast } from "./mutation-toast";
 import { SaveButton } from "./save-button";
+import {
+	EnvBadge,
+	Field,
+	Note,
+	Outcome,
+	SettingsSection,
+	SettingsTable,
+	TBody,
+	Td,
+	Th,
+	THead,
+	Well,
+} from "./settings-ui";
 import { TruncatedValue } from "./truncated-value";
 
 interface DockerHostsSectionProps {
@@ -187,18 +183,20 @@ export function DockerHostsSection({ config }: DockerHostsSectionProps) {
 
 		if (isEditing && fileIndex !== undefined) {
 			return (
-				<TableRow key={testKey}>
-					<TableCell>
+				<tr key={testKey}>
+					<Td>
 						<Input
+							aria-label="Host name"
 							value={editingHost.name}
 							onChange={(e) =>
 								setEditingHost((prev) => ({ ...prev, name: e.target.value }))
 							}
 							className="h-8"
 						/>
-					</TableCell>
-					<TableCell>
+					</Td>
+					<Td>
 						<Input
+							aria-label="Host address"
 							value={editingHost.host}
 							onChange={(e) =>
 								setEditingHost((prev) => ({ ...prev, host: e.target.value }))
@@ -206,9 +204,9 @@ export function DockerHostsSection({ config }: DockerHostsSectionProps) {
 							className="h-8"
 							placeholder="unix:///var/run/docker.sock"
 						/>
-					</TableCell>
-					<TableCell />
-					<TableCell className="text-right">
+					</Td>
+					<Td />
+					<Td className="text-right">
 						<div className="flex items-center justify-end gap-1">
 							<Button variant="ghost" size="sm" onClick={handleSaveEdit}>
 								Done
@@ -217,32 +215,30 @@ export function DockerHostsSection({ config }: DockerHostsSectionProps) {
 								Cancel
 							</Button>
 						</div>
-					</TableCell>
-				</TableRow>
+					</Td>
+				</tr>
 			);
 		}
 
 		return (
-			<TableRow key={testKey}>
-				<TableCell className="font-medium">
+			<tr key={testKey}>
+				<Td className="font-medium">
 					<div className="flex flex-wrap items-center gap-2">
-						<TruncatedValue value={h.name} className="max-w-[160px]" />
+						<TruncatedValue value={h.name} className="max-w-40" />
 						{isEnvRow && <EnvBadge />}
 					</div>
-				</TableCell>
-				<TableCell className="font-mono text-xs text-muted-foreground">
-					<TruncatedValue value={h.host} className="max-w-[200px]" />
-				</TableCell>
-				<TableCell>
+				</Td>
+				<Td className="font-mono text-muted-foreground">
+					<TruncatedValue value={h.host} className="max-w-64" />
+				</Td>
+				<Td>
 					{testResults[testKey] && (
-						<span
-							className={`text-xs ${testResults[testKey].success ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
-						>
+						<Outcome ok={testResults[testKey].success}>
 							{testResults[testKey].message}
-						</span>
+						</Outcome>
 					)}
-				</TableCell>
-				<TableCell className="text-right">
+				</Td>
+				<Td className="text-right">
 					<div className="flex items-center justify-end gap-1">
 						<Button
 							variant="ghost"
@@ -274,8 +270,8 @@ export function DockerHostsSection({ config }: DockerHostsSectionProps) {
 							</>
 						)}
 					</div>
-				</TableCell>
-			</TableRow>
+				</Td>
+			</tr>
 		);
 	}
 
@@ -290,67 +286,63 @@ export function DockerHostsSection({ config }: DockerHostsSectionProps) {
 	];
 
 	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>Docker Hosts</CardTitle>
-				<CardDescription>
-					Configure which Docker or Podman sockets and remote hosts to connect
-					to.
-				</CardDescription>
-			</CardHeader>
-			<CardContent className="space-y-4">
+		<SettingsSection
+			title="Docker hosts"
+			description="The Docker or Podman sockets and remote engines LogDeck reads from."
+		>
+			<div className="space-y-4">
 				{allHosts.length > 0 && (
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>Name</TableHead>
-								<TableHead>Host</TableHead>
-								<TableHead>Status</TableHead>
-								<TableHead className="text-right">Actions</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
+					<SettingsTable>
+						<THead>
+							<Th>Name</Th>
+							<Th>Host</Th>
+							<Th>Status</Th>
+							<Th className="text-right">
+								<span className="sr-only">Actions</span>
+							</Th>
+						</THead>
+						<TBody>
 							{allHosts.map((h) =>
 								renderRow(h, h.isEnv, h.isEnv ? undefined : h.fileIndex),
 							)}
-						</TableBody>
-					</Table>
+						</TBody>
+					</SettingsTable>
 				)}
 
 				{allHosts.length === 0 && !isAdding && (
-					<p className="text-sm text-muted-foreground">
-						No Docker hosts configured.
-					</p>
+					<Note>No Docker hosts configured.</Note>
 				)}
 
 				{isAdding && (
-					<div className="flex items-end gap-3 border rounded-md p-3">
-						<div className="space-y-1.5 flex-1">
-							<Label htmlFor="new-docker-name">Name</Label>
-							<Input
-								id="new-docker-name"
-								value={newHost.name}
-								onChange={(e) =>
-									setNewHost((prev) => ({ ...prev, name: e.target.value }))
-								}
-								placeholder="my-server"
-								className="h-8"
-							/>
+					<Well>
+						<div className="grid gap-3 sm:grid-cols-[1fr_2fr]">
+							<Field id="new-docker-name" label="Name">
+								<Input
+									id="new-docker-name"
+									name="name"
+									value={newHost.name}
+									onChange={(e) =>
+										setNewHost((prev) => ({ ...prev, name: e.target.value }))
+									}
+									placeholder="my-server"
+									className="h-8"
+								/>
+							</Field>
+							<Field id="new-docker-host" label="Host">
+								<Input
+									id="new-docker-host"
+									name="host"
+									value={newHost.host}
+									onChange={(e) =>
+										setNewHost((prev) => ({ ...prev, host: e.target.value }))
+									}
+									placeholder="ssh://root@10.0.0.1"
+									className="h-8"
+								/>
+							</Field>
 						</div>
-						<div className="space-y-1.5 flex-[2]">
-							<Label htmlFor="new-docker-host">Host</Label>
-							<Input
-								id="new-docker-host"
-								value={newHost.host}
-								onChange={(e) =>
-									setNewHost((prev) => ({ ...prev, host: e.target.value }))
-								}
-								placeholder="ssh://root@10.0.0.1"
-								className="h-8"
-							/>
-						</div>
-						<div className="flex gap-1">
-							<Button size="sm" onClick={handleAddHost}>
+						<div className="mt-3 flex gap-1">
+							<Button size="sm" variant="outline" onClick={handleAddHost}>
 								Add
 							</Button>
 							<Button
@@ -364,7 +356,7 @@ export function DockerHostsSection({ config }: DockerHostsSectionProps) {
 								Cancel
 							</Button>
 						</div>
-					</div>
+					</Well>
 				)}
 
 				<div className="flex items-center gap-2">
@@ -384,7 +376,7 @@ export function DockerHostsSection({ config }: DockerHostsSectionProps) {
 						/>
 					)}
 				</div>
-			</CardContent>
-		</Card>
+			</div>
+		</SettingsSection>
 	);
 }

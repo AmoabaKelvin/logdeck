@@ -1,7 +1,6 @@
 import { parseAsStringLiteral, useQueryState } from "nuqs";
 
 import { Spinner } from "@/components/ui/spinner";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { useSettings } from "../hooks/use-settings";
 import { AlertsSection } from "./alerts-section";
@@ -11,90 +10,107 @@ import { CoolifyHostsSection } from "./coolify-hosts-section";
 import { DockerHostsSection } from "./docker-hosts-section";
 import { LogStorageSection } from "./log-storage-section";
 import { ReadOnlySection } from "./read-only-section";
+import { ErrorNote } from "./settings-ui";
 
 const SETTINGS_TABS = ["connections", "access", "alerts", "storage"] as const;
+type SettingsTab = (typeof SETTINGS_TABS)[number];
+
+const TAB_LABELS = {
+	connections: "Connections",
+	access: "Access",
+	alerts: "Alerts",
+	storage: "Log storage",
+} satisfies Record<SettingsTab, string>;
 
 const parseAsSettingsTab = parseAsStringLiteral(SETTINGS_TABS)
 	.withDefault("connections")
 	.withOptions({ history: "replace" });
 
+// The same quiet link the app header uses, so the two navs read as one.
+const navLinkClass =
+	"inline-flex shrink-0 items-center rounded-md px-2.5 py-2 text-sm whitespace-nowrap sm:py-1.5 lg:w-full";
+
 export function SettingsPage() {
 	const [tab, setTab] = useQueryState("tab", parseAsSettingsTab);
 	const { data, isLoading, error } = useSettings();
 
-	if (isLoading) {
-		return (
-			<div className="flex items-center justify-center py-20">
-				<Spinner className="size-6" />
-			</div>
-		);
-	}
-
-	if (error) {
-		return (
-			<div className="container mx-auto max-w-3xl px-4 py-8">
-				<p className="text-sm text-destructive">
-					Failed to load settings: {error.message}
-				</p>
-			</div>
-		);
-	}
-
-	if (!data) return null;
-
 	return (
-		<div className="container mx-auto max-w-3xl px-4 py-8 space-y-6">
+		<main className="app-width px-4 py-8 sm:px-6 lg:px-8">
 			<div>
 				<h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-				<p className="text-sm text-muted-foreground mt-1">
-					Manage LogDeck configuration. Sections marked as set via environment
-					variable can only be changed by updating the environment and
-					restarting.
+				<p className="mt-1 max-w-prose text-pretty text-base/6 text-muted-foreground sm:text-sm/6">
+					Hosts, access, alerts and storage. Anything set via environment
+					variable is shown here but changes only with a restart.
 				</p>
 			</div>
 
-			<Tabs
-				value={tab}
-				onValueChange={(value) => {
-					const next = SETTINGS_TABS.find((t) => t === value);
-					if (next) void setTab(next);
-				}}
-			>
-				<TabsList className="w-full sm:w-fit">
-					<TabsTrigger value="connections">Connections</TabsTrigger>
-					<TabsTrigger value="access">Access</TabsTrigger>
-					<TabsTrigger value="alerts">Alerts</TabsTrigger>
-					<TabsTrigger value="storage">Log storage</TabsTrigger>
-				</TabsList>
+			<div className="mt-8 lg:grid lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-x-12">
+				<nav
+					aria-label="Settings sections"
+					className="-mx-2.5 flex gap-0.5 overflow-x-auto border-b border-border/70 px-2.5 pb-3 lg:sticky lg:top-20 lg:mx-0 lg:flex-col lg:self-start lg:border-b-0 lg:px-0 lg:pb-0"
+				>
+					{SETTINGS_TABS.map((value) => {
+						const isActive = value === tab;
+						return (
+							<button
+								key={value}
+								type="button"
+								aria-current={isActive ? "page" : undefined}
+								onClick={() => void setTab(value)}
+								className={`${navLinkClass} ${
+									isActive
+										? "bg-muted text-foreground"
+										: "text-muted-foreground hover:text-foreground"
+								}`}
+							>
+								{TAB_LABELS[value]}
+							</button>
+						);
+					})}
+				</nav>
 
-				<TabsContent value="connections" className="space-y-6 pt-2">
-					<DockerHostsSection
-						key={JSON.stringify(data.dockerHosts)}
-						config={data.dockerHosts}
-					/>
-					<CoolifyHostsSection
-						key={JSON.stringify(data.coolifyHosts)}
-						config={data.coolifyHosts}
-					/>
-				</TabsContent>
-
-				<TabsContent value="access" className="space-y-6 pt-2">
-					<AuthSection
-						key={`${data.auth.enabled}-${data.auth.adminUsername}`}
-						config={data.auth}
-					/>
-					<ReadOnlySection config={data.readOnly} />
-					<ApiTokensSection />
-				</TabsContent>
-
-				<TabsContent value="alerts" className="pt-2">
-					<AlertsSection />
-				</TabsContent>
-
-				<TabsContent value="storage" className="pt-2">
-					<LogStorageSection config={data.logStore} />
-				</TabsContent>
-			</Tabs>
-		</div>
+				<div className="mt-6 max-w-4xl lg:mt-0">
+					{isLoading && (
+						<div className="flex items-center gap-2 py-2 text-base text-muted-foreground sm:text-sm">
+							<Spinner className="size-4" />
+							Loading settings…
+						</div>
+					)}
+					{error && (
+						<ErrorNote>Failed to load settings: {error.message}</ErrorNote>
+					)}
+					{data && (
+						<div className="divide-y divide-border/70">
+							{tab === "connections" && (
+								<>
+									<DockerHostsSection
+										key={JSON.stringify(data.dockerHosts)}
+										config={data.dockerHosts}
+									/>
+									<CoolifyHostsSection
+										key={JSON.stringify(data.coolifyHosts)}
+										config={data.coolifyHosts}
+									/>
+								</>
+							)}
+							{tab === "access" && (
+								<>
+									<AuthSection
+										key={`${data.auth.enabled}-${data.auth.adminUsername}`}
+										config={data.auth}
+									/>
+									<ReadOnlySection config={data.readOnly} />
+									<ApiTokensSection />
+								</>
+							)}
+							{tab === "alerts" && <AlertsSection />}
+							{tab === "storage" && (
+								<LogStorageSection config={data.logStore} />
+							)}
+						</div>
+					)}
+				</div>
+			</div>
+		</main>
 	);
 }

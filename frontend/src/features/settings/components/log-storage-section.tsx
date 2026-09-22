@@ -2,29 +2,15 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
 import { Trash2Icon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
 import {
 	formatBytes,
 	sortStoredContainersBySize,
 } from "@/features/containers/components/container-utils";
+import { ContainersPagination } from "@/features/containers/components/containers-pagination";
+import { Meter } from "@/features/containers/components/meter";
 import type { PurgeHistoryTarget } from "@/features/containers/components/purge-history-dialog";
 import { PurgeHistoryDialog } from "@/features/containers/components/purge-history-dialog";
 import { useDeleteHistoryContainer } from "@/features/containers/hooks/use-delete-history-container";
@@ -34,10 +20,22 @@ import { useHistoryStatus } from "@/features/containers/hooks/use-history-status
 import type { UpdateLogStoragePayload } from "../api/update-log-storage";
 import { useUpdateLogStorage } from "../hooks/use-settings";
 import type { LogStoreConfig } from "../types";
-import { EnvBadge } from "./env-badge";
 import { validateRetentionCaps } from "./log-storage-utils";
 import { showResultToast } from "./mutation-toast";
 import { SaveButton } from "./save-button";
+import {
+	EnvBadge,
+	ErrorNote,
+	Field,
+	Note,
+	SettingsSection,
+	SettingsSubsection,
+	SettingsTable,
+	TBody,
+	Td,
+	Th,
+	THead,
+} from "./settings-ui";
 
 const MB = 1024 * 1024;
 
@@ -54,6 +52,27 @@ function formatSpan(oldest: string, newest: string, storedBytes: number) {
 			day: "numeric",
 		});
 	return `${format(from)} → ${format(to)}`;
+}
+
+/** Label beside its reading — the same strip the container header uses. */
+function Stat({
+	label,
+	value,
+	children,
+}: {
+	label: string;
+	value: string;
+	children?: React.ReactNode;
+}) {
+	return (
+		<div className="flex min-w-0 items-center gap-2.5">
+			<span className="shrink-0 font-mono text-[0.625rem] uppercase tracking-wide text-muted-foreground">
+				{label}
+			</span>
+			<span className="truncate text-sm font-medium tabular-nums">{value}</span>
+			{children}
+		</div>
+	);
 }
 
 // The caps live in the settings payload, where each one carries its own source:
@@ -84,48 +103,60 @@ function RetentionCapsForm({ config }: { config: LogStoreConfig }) {
 	}
 
 	return (
-		<div className="space-y-3">
-			<div className="grid gap-4 sm:grid-cols-2">
-				<div className="space-y-1.5">
-					<div className="flex flex-wrap items-center gap-2">
-						<Label htmlFor="log-store-per-container">
-							Per-container cap (MB)
-						</Label>
-						{perContainerIsEnv && <EnvBadge />}
-					</div>
-					<Input
+		<SettingsSubsection title="Retention caps">
+			<div className="space-y-4">
+				<div className="grid max-w-md gap-4 sm:grid-cols-2">
+					<Field
 						id="log-store-per-container"
-						type="number"
-						min={1}
-						className="h-8"
-						value={perContainerMB}
-						disabled={perContainerIsEnv}
-						onChange={(e) => setPerContainerMB(e.target.value)}
-					/>
-				</div>
-				<div className="space-y-1.5">
-					<div className="flex flex-wrap items-center gap-2">
-						<Label htmlFor="log-store-total">Total cap (MB)</Label>
-						{totalIsEnv && <EnvBadge />}
-					</div>
-					<Input
+						label={
+							<span className="inline-flex flex-wrap items-center gap-2">
+								Per container (MB)
+								{perContainerIsEnv && <EnvBadge />}
+							</span>
+						}
+					>
+						<Input
+							id="log-store-per-container"
+							name="perContainerMB"
+							type="number"
+							min={1}
+							value={perContainerMB}
+							disabled={perContainerIsEnv}
+							onChange={(e) => setPerContainerMB(e.target.value)}
+						/>
+					</Field>
+					<Field
 						id="log-store-total"
-						type="number"
-						min={1}
-						className="h-8"
-						value={totalMB}
-						disabled={totalIsEnv}
-						onChange={(e) => setTotalMB(e.target.value)}
-					/>
+						label={
+							<span className="inline-flex flex-wrap items-center gap-2">
+								Total (MB)
+								{totalIsEnv && <EnvBadge />}
+							</span>
+						}
+					>
+						<Input
+							id="log-store-total"
+							name="totalMB"
+							type="number"
+							min={1}
+							value={totalMB}
+							disabled={totalIsEnv}
+							onChange={(e) => setTotalMB(e.target.value)}
+						/>
+					</Field>
 				</div>
+				<Note>
+					Lowering a cap evicts the oldest stored logs on the next retention
+					pass.
+				</Note>
+				{hasChanges && (
+					<SaveButton
+						isPending={updateMutation.isPending}
+						onClick={handleSave}
+					/>
+				)}
 			</div>
-			<p className="text-xs text-muted-foreground">
-				Lowering a cap evicts the oldest stored logs on the next retention pass.
-			</p>
-			{hasChanges && (
-				<SaveButton isPending={updateMutation.isPending} onClick={handleSave} />
-			)}
-		</div>
+		</SettingsSubsection>
 	);
 }
 
@@ -146,29 +177,27 @@ export function LogStorageSection({ config }: LogStorageSectionProps) {
 	const [purgeTarget, setPurgeTarget] = useState<PurgeHistoryTarget | null>(
 		null,
 	);
+	const [page, setPage] = useState(1);
+	const [pageSize, setPageSize] = useState(10);
 
 	// Persistence is off: there is nothing to report or reclaim.
 	if (!isEnabled) {
 		return (
-			<Card>
-				<CardHeader>
-					<CardTitle>Log storage</CardTitle>
-					<CardDescription>
-						Log persistence is disabled, so no logs are stored on disk. Enable
-						it in the environment and restart LogDeck to keep logs readable
-						after a container is removed.
-					</CardDescription>
-				</CardHeader>
-			</Card>
+			<SettingsSection
+				title="Log storage"
+				description="Log persistence is off, so nothing is kept on disk. Enable it in the environment and restart LogDeck to keep logs readable after a container is removed."
+			/>
 		);
 	}
 
 	const containers = sortStoredContainersBySize(storedContainers ?? []);
+	const totalPages = Math.max(1, Math.ceil(containers.length / pageSize));
+	const currentPage = Math.min(page, totalPages);
+	const startIndex = (currentPage - 1) * pageSize;
+	const pageItems = containers.slice(startIndex, startIndex + pageSize);
+
 	const usedBytes = status.dbSizeBytes ?? 0;
 	const totalBytes = status.totalMB ? status.totalMB * MB : 0;
-	const usedPercent = totalBytes
-		? Math.min(100, Math.round((usedBytes / totalBytes) * 100))
-		: 0;
 
 	function handleConfirmPurge() {
 		if (!purgeTarget) return;
@@ -179,36 +208,32 @@ export function LogStorageSection({ config }: LogStorageSectionProps) {
 	}
 
 	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>Log storage</CardTitle>
-				<CardDescription>
-					Logs are persisted on disk so they stay readable after a container is
-					removed. Deleting a container's history frees its space immediately
-					and cannot be undone.
-				</CardDescription>
-			</CardHeader>
-			<CardContent className="space-y-6">
-				<div className="space-y-2">
-					<div className="flex items-baseline justify-between text-sm">
-						<span className="font-medium">
-							{formatBytes(usedBytes)}
-							{status.totalMB ? ` of ${status.totalMB} MB used` : " used"}
-						</span>
-						{status.perContainerMB ? (
-							<span className="text-xs text-muted-foreground">
-								{status.perContainerMB} MB cap per container
-							</span>
-						) : null}
-					</div>
-					{status.totalMB ? (
-						<div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-							<div
-								className="h-full rounded-full bg-primary transition-all"
-								style={{ width: `${usedPercent}%` }}
-							/>
-						</div>
+		<SettingsSection
+			title="Log storage"
+			description="Logs are kept on disk so they stay readable after a container is removed. Deleting a container's history frees its space at once and cannot be undone."
+		>
+			<div className="space-y-8">
+				<div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+					<Stat label="Used" value={formatBytes(usedBytes)}>
+						{totalBytes > 0 && (
+							<>
+								<Meter used={usedBytes} limit={totalBytes} className="w-24" />
+								<span className="shrink-0 text-sm text-muted-foreground tabular-nums">
+									of {status.totalMB} MB
+								</span>
+							</>
+						)}
+					</Stat>
+					{status.perContainerMB ? (
+						<Stat label="Per container" value={`${status.perContainerMB} MB`} />
 					) : null}
+					{storedContainers && (
+						<Stat label="Stored" value={String(storedContainers.length)}>
+							<span className="shrink-0 text-sm text-muted-foreground">
+								{storedContainers.length === 1 ? "container" : "containers"}
+							</span>
+						</Stat>
+					)}
 				</div>
 
 				{config && (
@@ -218,87 +243,102 @@ export function LogStorageSection({ config }: LogStorageSectionProps) {
 					/>
 				)}
 
-				{isLoading && <Spinner className="size-4" />}
-				{error && (
-					<p className="text-sm text-destructive">
-						Failed to load stored containers: {error.message}
-					</p>
-				)}
+				<SettingsSubsection title="Stored containers">
+					<div className="space-y-4">
+						{isLoading && <Spinner className="size-4" />}
+						{error && (
+							<ErrorNote>
+								Failed to load stored containers: {error.message}
+							</ErrorNote>
+						)}
 
-				{!isLoading && !error && containers.length === 0 && (
-					<p className="text-sm text-muted-foreground">
-						No container logs stored yet.
-					</p>
-				)}
+						{!isLoading && !error && containers.length === 0 && (
+							<Note>No container logs stored yet.</Note>
+						)}
 
-				{containers.length > 0 && (
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>Container</TableHead>
-								<TableHead>Host</TableHead>
-								<TableHead>Project</TableHead>
-								<TableHead>Stored</TableHead>
-								<TableHead>Time span</TableHead>
-								<TableHead className="text-right">Actions</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{containers.map((container) => (
-								<TableRow key={`${container.host}/${container.name}`}>
-									<TableCell className="font-medium">
-										<div className="flex items-center gap-2">
-											{container.name}
-											{container.removed && (
-												<Badge
-													variant="outline"
-													className="text-muted-foreground text-[10px] px-1.5 h-4"
+						{containers.length > 0 && (
+							<SettingsTable>
+								<THead>
+									<Th>Container</Th>
+									<Th>Host</Th>
+									<Th>Project</Th>
+									<Th>Stored</Th>
+									<Th>Time span</Th>
+									<Th className="text-right">
+										<span className="sr-only">Actions</span>
+									</Th>
+								</THead>
+								<TBody>
+									{pageItems.map((container) => (
+										<tr key={`${container.host}/${container.name}`}>
+											<Td className="font-medium">
+												<div className="flex items-center gap-2">
+													{container.name}
+													{container.removed && (
+														<Badge className="border-transparent bg-muted font-normal text-muted-foreground">
+															Removed
+														</Badge>
+													)}
+												</div>
+											</Td>
+											<Td className="text-muted-foreground">
+												{container.host}
+											</Td>
+											<Td className="text-muted-foreground">
+												{container.composeProject ?? "—"}
+											</Td>
+											<Td className="font-mono tabular-nums">
+												{formatBytes(container.storedBytes)}
+											</Td>
+											<Td className="text-muted-foreground tabular-nums">
+												{formatSpan(
+													container.oldestTs,
+													container.newestTs,
+													container.storedBytes,
+												)}
+											</Td>
+											<Td className="text-right">
+												<Button
+													variant="ghost"
+													size="icon-sm"
+													disabled={purgeHistory.isPending}
+													onClick={() =>
+														setPurgeTarget({
+															name: container.name,
+															host: container.host,
+															removed: container.removed,
+														})
+													}
+													className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+													aria-label={`Delete stored logs for ${container.name}`}
 												>
-													Removed
-												</Badge>
-											)}
-										</div>
-									</TableCell>
-									<TableCell className="text-xs text-muted-foreground">
-										{container.host}
-									</TableCell>
-									<TableCell className="text-xs text-muted-foreground">
-										{container.composeProject ?? "—"}
-									</TableCell>
-									<TableCell className="font-mono text-xs">
-										{formatBytes(container.storedBytes)}
-									</TableCell>
-									<TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-										{formatSpan(
-											container.oldestTs,
-											container.newestTs,
-											container.storedBytes,
-										)}
-									</TableCell>
-									<TableCell className="text-right">
-										<Button
-											variant="ghost"
-											size="icon"
-											disabled={purgeHistory.isPending}
-											onClick={() =>
-												setPurgeTarget({
-													name: container.name,
-													host: container.host,
-													removed: container.removed,
-												})
-											}
-											className="size-8 text-destructive hover:text-destructive"
-											aria-label={`Delete stored logs for ${container.name}`}
-										>
-											<Trash2Icon className="size-4" />
-										</Button>
-									</TableCell>
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
-				)}
-			</CardContent>
+													<Trash2Icon className="size-4" />
+												</Button>
+											</Td>
+										</tr>
+									))}
+								</TBody>
+							</SettingsTable>
+						)}
+
+						{containers.length > pageSize && (
+							<ContainersPagination
+								totalItems={containers.length}
+								startIndex={startIndex + 1}
+								endIndex={startIndex + pageItems.length}
+								page={currentPage}
+								totalPages={totalPages}
+								pageSize={pageSize}
+								onPageChange={setPage}
+								onPageSizeChange={(size) => {
+									setPageSize(size);
+									setPage(1);
+								}}
+							/>
+						)}
+					</div>
+				</SettingsSubsection>
+			</div>
 
 			<PurgeHistoryDialog
 				target={purgeTarget}
@@ -308,6 +348,6 @@ export function LogStorageSection({ config }: LogStorageSectionProps) {
 					if (!open) setPurgeTarget(null);
 				}}
 			/>
-		</Card>
+		</SettingsSection>
 	);
 }
