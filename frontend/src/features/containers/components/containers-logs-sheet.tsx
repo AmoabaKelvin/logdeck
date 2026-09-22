@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { Link } from "@tanstack/react-router";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { ChevronDownIcon, ExternalLinkIcon } from "@/components/ui/icons";
+import { ExternalLinkIcon } from "@/components/ui/icons";
 import {
 	Sheet,
 	SheetContent,
@@ -10,21 +10,19 @@ import {
 	SheetHeader,
 	SheetTitle,
 } from "@/components/ui/sheet";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
 
-import type { ContainerInfo } from "../types";
-import { ContainerEnvPanel } from "./container-env-panel";
+import { useContainerInspect } from "../hooks/use-container-inspect";
+import type { ContainerInfo, ContainerStats } from "../types";
+import { ContainerVitals } from "./container-detail-header";
+import { ContainerDetailPanels } from "./container-detail-panels";
 import {
 	formatContainerName,
-	formatCreatedDate,
+	formatImageName,
+	formatRelativeCreated,
 	getContainerUrlIdentifier,
 	getHealthBadgeClass,
 	getStateBadgeClass,
-	isCoolifyManaged,
+	splitContainerStatus,
 	toTitleCase,
 } from "./container-utils";
 import { LogViewer } from "./log-viewer/log-viewer";
@@ -32,222 +30,132 @@ import { useLocalLogViewState } from "./log-viewer/use-log-view-state";
 
 interface ContainersLogsSheetProps {
 	container: ContainerInfo | null;
+	stats?: ContainerStats;
+	// CPU samples, for the same sparkline the detail page shows.
+	history?: number[];
+	hostAddress?: string;
 	isOpen: boolean;
 	isReadOnly?: boolean;
 	onOpenChange: (open: boolean) => void;
 	onContainerRecreated?: (newContainerId: string) => void;
 }
 
+/**
+ * A quick look at one container without leaving the list: the detail page's
+ * header, panels and live log stream, in a side sheet. The full page adds
+ * history, fullscreen and the container actions.
+ */
 export function ContainersLogsSheet({
 	container,
+	stats,
+	history = [],
+	hostAddress,
 	isOpen,
 	isReadOnly = false,
 	onOpenChange,
 	onContainerRecreated,
 }: ContainersLogsSheetProps) {
-	const [showLabels, setShowLabels] = useState(false);
-	const [showEnvVariables, setShowEnvVariables] = useState(false);
 	// Kept here (not inside LogViewer) so the sheet's view settings survive
 	// closing and reopening; LogViewer itself remounts per container.
 	const logViewState = useLocalLogViewState();
+	const { data: inspect, isError: isInspectError } = useContainerInspect(
+		isOpen ? container?.id : undefined,
+		container?.host,
+	);
 
-	// Collapse the detail sections whenever the sheet closes or the shown
-	// container changes.
-	const [shownFor, setShownFor] = useState({ isOpen, container });
-	if (shownFor.isOpen !== isOpen || shownFor.container !== container) {
-		setShownFor({ isOpen, container });
-		setShowLabels(false);
-		setShowEnvVariables(false);
-	}
+	const name = container ? formatContainerName(container.names) : "";
+	const { label } = container ? splitContainerStatus(container) : { label: "" };
+	const meta = container
+		? [
+				formatImageName(container.image),
+				container.host,
+				`created ${formatRelativeCreated(container.created)}`,
+			].join(" · ")
+		: "";
 
 	return (
 		<Sheet open={isOpen} onOpenChange={onOpenChange}>
-			<SheetContent className="sm:max-w-3xl w-full overflow-y-auto p-6">
-				<SheetHeader>
-					<SheetTitle>Container Logs</SheetTitle>
-					<SheetDescription>
-						{container && formatContainerName(container.names)}
-					</SheetDescription>
-				</SheetHeader>
-
+			<SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-4xl">
 				{container && (
-					<div className="mt-6 space-y-6 pr-2">
-						<Card>
-							<CardContent>
-								<div className="space-y-4">
-									<div className="flex items-center justify-between">
-										<h3 className="text-sm font-medium">Container Details</h3>
-										<Button
-											variant="outline"
-											size="sm"
-											onClick={() => {
-												const identifier = getContainerUrlIdentifier(container);
-												window.open(
-													`/containers/${encodeURIComponent(identifier)}/logs?host=${encodeURIComponent(container.host)}`,
-													"_blank",
-												);
-											}}
+					<>
+						<SheetHeader className="shrink-0 gap-0 px-4 pt-5 pr-14 sm:px-6">
+							<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+								<div className="min-w-0">
+									<div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+										<SheetTitle className="min-w-0 truncate text-lg font-semibold tracking-tight">
+											{name}
+										</SheetTitle>
+										<Badge
+											className={`border-transparent ${getStateBadgeClass(container.state)}`}
 										>
-											<ExternalLinkIcon className="mr-2 size-4" />
-											Open in new tab
-										</Button>
-									</div>
-
-									<div className="grid gap-3 text-sm">
-										<div className="grid grid-cols-3 gap-4">
-											<span className="text-muted-foreground">Name</span>
-											<span className="col-span-2 font-medium">
-												{formatContainerName(container.names)}
-											</span>
-										</div>
-										<div className="grid grid-cols-3 gap-4">
-											<span className="text-muted-foreground">ID</span>
-											<Tooltip>
-												<TooltipTrigger asChild>
-													<span className="col-span-2 font-mono text-xs truncate cursor-help">
-														{container.id}
-													</span>
-												</TooltipTrigger>
-												<TooltipContent className="max-w-md">
-													{container.id}
-												</TooltipContent>
-											</Tooltip>
-										</div>
-										<div className="grid grid-cols-3 gap-4">
-											<span className="text-muted-foreground">Image</span>
-											<Tooltip>
-												<TooltipTrigger asChild>
-													<span className="col-span-2 font-medium truncate cursor-help">
-														{container.image}
-													</span>
-												</TooltipTrigger>
-												<TooltipContent className="max-w-md break-all">
-													{container.image}
-												</TooltipContent>
-											</Tooltip>
-										</div>
-										<div className="grid grid-cols-3 gap-4">
-											<span className="text-muted-foreground">State</span>
-											<span className="col-span-2">
-												<Badge
-													className={`${getStateBadgeClass(container.state)} border-0`}
-												>
-													{toTitleCase(container.state)}
-												</Badge>
-											</span>
-										</div>
+											{label}
+										</Badge>
 										{container.health && (
-											<div className="grid grid-cols-3 gap-4">
-												<span className="text-muted-foreground">Health</span>
-												<span className="col-span-2">
-													<Badge
-														className={`${getHealthBadgeClass(container.health)} border-0`}
-													>
-														{toTitleCase(container.health)}
-													</Badge>
-												</span>
-											</div>
-										)}
-										<div className="grid grid-cols-3 gap-4">
-											<span className="text-muted-foreground">Status</span>
-											<span className="col-span-2 font-medium">
-												{container.status}
-											</span>
-										</div>
-										<div className="grid grid-cols-3 gap-4">
-											<span className="text-muted-foreground">Created</span>
-											<span className="col-span-2 font-medium">
-												{formatCreatedDate(container.created)}
-											</span>
-										</div>
-										<div className="grid grid-cols-3 gap-4">
-											<span className="text-muted-foreground">Command</span>
-											<span className="col-span-2 font-mono text-xs break-all">
-												{container.command}
-											</span>
-										</div>
-										{container.labels &&
-											Object.keys(container.labels).length > 0 && (
-												<div className="space-y-2 border-t pt-2">
-													<Button
-														variant="ghost"
-														size="sm"
-														onClick={() => setShowLabels((value) => !value)}
-														className="h-8 w-full justify-start text-muted-foreground hover:text-foreground"
-													>
-														<ChevronDownIcon
-															className={`mr-2 size-4 transition-transform ${
-																showLabels ? "rotate-180" : ""
-															}`}
-														/>
-														{showLabels ? "Hide" : "Show"} container labels (
-														{Object.keys(container.labels).length})
-													</Button>
-													{showLabels && (
-														<div className="max-h-[200px] space-y-2 overflow-y-auto rounded-md border bg-muted/30 p-3">
-															{Object.entries(container.labels).map(
-																([key, value]) => (
-																	<div
-																		key={key}
-																		className="rounded-md bg-background p-2 text-xs"
-																	>
-																		<div className="mb-1 font-semibold text-foreground">
-																			{key}
-																		</div>
-																		<div className="break-all font-mono text-muted-foreground">
-																			{value}
-																		</div>
-																	</div>
-																),
-															)}
-														</div>
-													)}
-												</div>
-											)}
-
-										<div className="space-y-2 border-t pt-2">
-											<Button
-												variant="ghost"
-												size="sm"
-												onClick={() => setShowEnvVariables((value) => !value)}
-												className="h-8 w-full justify-start text-muted-foreground hover:text-foreground"
+											<Badge
+												className={`border-transparent ${getHealthBadgeClass(container.health)}`}
 											>
-												<ChevronDownIcon
-													className={`mr-2 size-4 transition-transform ${
-														showEnvVariables ? "rotate-180" : ""
-													}`}
-												/>
-												{showEnvVariables ? "Hide" : "Show"} environment
-												variables
-											</Button>
-											{showEnvVariables && (
-												<div className="max-h-[300px] overflow-y-auto">
-													<ContainerEnvPanel
-														containerId={container.id}
-														containerHost={container.host}
-														isReadOnly={isReadOnly}
-														isCoolifyManaged={isCoolifyManaged(
-															container.labels,
-														)}
-														onContainerIdChange={onContainerRecreated}
-													/>
-												</div>
-											)}
-										</div>
+												{toTitleCase(container.health)}
+											</Badge>
+										)}
 									</div>
+									<SheetDescription className="mt-1 truncate text-base/6 text-muted-foreground sm:text-sm/6">
+										{meta}
+									</SheetDescription>
 								</div>
-							</CardContent>
-						</Card>
+								<Button
+									variant="outline"
+									size="sm"
+									asChild
+									className="sm:shrink-0"
+								>
+									<Link
+										to="/containers/$containerId/logs"
+										params={{
+											containerId: getContainerUrlIdentifier(container),
+										}}
+										search={{ host: container.host }}
+									>
+										Open page
+										<ExternalLinkIcon className="size-4" />
+									</Link>
+								</Button>
+							</div>
 
-						<LogViewer
-							key={container.id}
-							variant="sheet"
-							containerId={container.id}
-							host={container.host}
-							containerName={container.names?.[0]}
-							viewState={logViewState}
-						/>
-					</div>
+							<ContainerVitals
+								container={container}
+								isRemoved={false}
+								stats={stats}
+								history={history}
+								inspect={inspect}
+								className="mt-4 border-t border-border/70 pt-4"
+							/>
+						</SheetHeader>
+
+						<div className="shrink-0 px-4 pt-3 sm:px-6">
+							<ContainerDetailPanels
+								container={container}
+								containerId={container.id}
+								hostAddress={hostAddress}
+								isReadOnly={isReadOnly}
+								stats={stats}
+								inspect={inspect}
+								isInspectError={isInspectError}
+								onContainerRecreated={(id) => onContainerRecreated?.(id)}
+								panelClassName="max-h-[40dvh] overflow-y-auto"
+							/>
+						</div>
+
+						<div className="mt-3 flex min-h-0 flex-1 flex-col">
+							<LogViewer
+								key={container.id}
+								variant="sheet"
+								containerId={container.id}
+								host={container.host}
+								containerName={container.names?.[0]}
+								viewState={logViewState}
+							/>
+						</div>
+					</>
 				)}
 			</SheetContent>
 		</Sheet>

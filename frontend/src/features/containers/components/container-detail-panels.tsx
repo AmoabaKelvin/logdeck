@@ -36,6 +36,8 @@ interface ContainerDetailPanelsProps {
 	inspect: ContainerInspect | undefined;
 	isInspectError: boolean;
 	onContainerRecreated: (newContainerId: string) => void;
+	/** Extra classes for the open panel, e.g. a height cap inside a sheet. */
+	panelClassName?: string;
 }
 
 /**
@@ -93,7 +95,10 @@ function PanelBody({
  * disclosure row so the stream keeps the page. One panel at a time; clicking
  * the open one closes it again.
  */
-export function ContainerDetailPanels(props: ContainerDetailPanelsProps) {
+export function ContainerDetailPanels({
+	panelClassName = "",
+	...props
+}: ContainerDetailPanelsProps) {
 	const [openPanel, setOpenPanel] = useState<Panel | null>(null);
 
 	return (
@@ -113,7 +118,10 @@ export function ContainerDetailPanels(props: ContainerDetailPanelsProps) {
 			</div>
 
 			{openPanel && (
-				<div id={PANEL_ID} className="mt-3 border-t border-border/70 pt-5 pb-2">
+				<div
+					id={PANEL_ID}
+					className={`mt-3 border-t border-border/70 pt-5 pb-2 ${panelClassName}`}
+				>
 					<PanelBody {...props} panel={openPanel} />
 				</div>
 			)}

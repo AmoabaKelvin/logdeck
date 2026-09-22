@@ -402,6 +402,13 @@ export function ContainersDashboard() {
 
 			<ContainersLogsSheet
 				container={selectedContainer}
+				stats={selectedContainer ? statsMap[selectedContainer.id] : undefined}
+				history={
+					selectedContainer ? (statsHistory[selectedContainer.id] ?? []) : []
+				}
+				hostAddress={
+					hosts.find((host) => host.name === selectedContainer?.host)?.host
+				}
 				isOpen={isLogsSheetOpen}
 				isReadOnly={isReadOnly}
 				onOpenChange={handleLogsSheetOpenChange}
