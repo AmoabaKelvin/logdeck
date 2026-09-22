@@ -29,6 +29,7 @@ func TestLogStoreDefaults(t *testing.T) {
 		Enabled:        true,
 		PerContainerMB: DefaultLogStorePerContainerMB,
 		TotalMB:        DefaultLogStoreTotalMB,
+		RemovedDays:    DefaultLogStoreRemovedDays,
 	}
 	if got != want {
 		t.Fatalf("LogStore() = %+v, want %+v", got, want)
@@ -85,7 +86,7 @@ func TestLogStoreEnvOverridesFile(t *testing.T) {
 	t.Setenv("LOG_STORE_TOTAL_MB", "500")
 
 	got := manager.LogStore()
-	want := ResolvedLogStoreConfig{Enabled: false, PerContainerMB: 5, TotalMB: 500}
+	want := ResolvedLogStoreConfig{Enabled: false, PerContainerMB: 5, TotalMB: 500, RemovedDays: DefaultLogStoreRemovedDays}
 	if got != want {
 		t.Fatalf("LogStore() = %+v, want the env values %+v", got, want)
 	}
@@ -138,6 +139,7 @@ func TestLogStoreSources(t *testing.T) {
 		Enabled:        SourceFile,
 		PerContainerMB: SourceFile,
 		TotalMB:        SourceEnv,
+		RemovedDays:    SourceFile,
 	}
 	if got != want {
 		t.Fatalf("LogStoreSources() = %+v, want %+v", got, want)
@@ -166,5 +168,28 @@ func TestUpdateLogStoreDoesNotClobberEnvOverride(t *testing.T) {
 	t.Setenv("LOG_STORE_PER_CONTAINER_MB", "")
 	if got := manager.LogStore().PerContainerMB; got != 10 {
 		t.Fatalf("PerContainerMB = %d, want the persisted file value 10 once the env var is gone", got)
+	}
+}
+
+// Zero is a real value for the removed-container window (keep forever), so it
+// must come through from both the file and the environment.
+func TestLogStoreRemovedDays(t *testing.T) {
+	zero := 0
+	manager := writeLogStoreConfig(t, FileConfig{LogStore: &LogStoreConfig{RemovedDays: &zero}})
+	if got := manager.LogStore().RemovedDays; got != 0 {
+		t.Fatalf("RemovedDays = %d, want the file's 0", got)
+	}
+
+	t.Setenv("LOG_STORE_REMOVED_DAYS", "7")
+	if got := manager.LogStore().RemovedDays; got != 7 {
+		t.Fatalf("RemovedDays = %d, want the env value 7", got)
+	}
+	if got := manager.LogStoreSources().RemovedDays; got != SourceEnv {
+		t.Fatalf("RemovedDays source = %q, want env", got)
+	}
+
+	t.Setenv("LOG_STORE_REMOVED_DAYS", "-1")
+	if got := manager.LogStore().RemovedDays; got != 0 {
+		t.Fatalf("RemovedDays = %d, want the invalid env value ignored", got)
 	}
 }

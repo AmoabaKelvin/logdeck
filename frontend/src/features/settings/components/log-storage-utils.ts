@@ -34,3 +34,14 @@ export function validateRetentionCaps(
 
 	return null;
 }
+
+const MAX_REMOVED_DAYS = 3650;
+
+/** Whole days, 0 to ten years; 0 means removed containers' logs are kept. */
+export function validateRemovedDays(raw: string): string | null {
+	const value = raw.trim() === "" ? Number.NaN : Number(raw);
+	if (!Number.isInteger(value) || value < 0 || value > MAX_REMOVED_DAYS) {
+		return `Removed containers must be kept for a whole number of days between 0 and ${MAX_REMOVED_DAYS}`;
+	}
+	return null;
+}

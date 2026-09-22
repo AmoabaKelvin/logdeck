@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log"
 	"math"
 	"strings"
 	"time"
@@ -60,6 +61,21 @@ func (s *Store) retain(ctx context.Context) error {
 	limits := s.limits()
 	perCap := int64(limits.PerContainerMB) * bytesPerMB
 	totalCap := int64(limits.TotalMB) * bytesPerMB
+
+	// Containers that left the engine long enough ago go first: their history
+	// is only clutter by now, and freeing it may spare a live container's logs
+	// from the caps below.
+	if limits.RemovedDays > 0 {
+		cutoff := time.Now().Add(-time.Duration(limits.RemovedDays) * 24 * time.Hour)
+		containers, lines, err := s.DeleteRemoved(ctx, cutoff)
+		if err != nil {
+			return err
+		}
+		if containers > 0 {
+			log.Printf("logstore: expired %d removed containers (%d lines) older than %d days",
+				containers, lines, limits.RemovedDays)
+		}
+	}
 
 	groups, err := s.loadGroups(ctx)
 	if err != nil {

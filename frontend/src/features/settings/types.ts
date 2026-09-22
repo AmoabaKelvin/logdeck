@@ -46,6 +46,10 @@ export interface LogStoreConfig {
 	perContainerMBSource: ConfigSource;
 	totalMB: number;
 	totalMBSource: ConfigSource;
+	// Days a removed container's logs outlive it; 0 keeps them until a cap
+	// evicts them.
+	removedDays: number;
+	removedDaysSource: ConfigSource;
 }
 
 export interface SettingsResponse {

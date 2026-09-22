@@ -11,6 +11,9 @@ import (
 const (
 	DefaultLogStorePerContainerMB = 50
 	DefaultLogStoreTotalMB        = 1024
+	// DefaultLogStoreRemovedDays is how long a removed container's history is
+	// kept before the janitor drops it. Zero keeps it until a cap evicts it.
+	DefaultLogStoreRemovedDays = 30
 )
 
 // LogStoreConfig holds the log persistence settings. Persisted in the config
@@ -20,6 +23,7 @@ type LogStoreConfig struct {
 	Enabled        *bool `json:"enabled,omitempty"`
 	PerContainerMB *int  `json:"perContainerMB,omitempty"`
 	TotalMB        *int  `json:"totalMB,omitempty"`
+	RemovedDays    *int  `json:"removedDays,omitempty"`
 }
 
 // ResolvedLogStoreConfig is the effective log store configuration after the
@@ -28,6 +32,9 @@ type ResolvedLogStoreConfig struct {
 	Enabled        bool `json:"enabled"`
 	PerContainerMB int  `json:"perContainerMB"`
 	TotalMB        int  `json:"totalMB"`
+	// RemovedDays is how long a removed container's logs outlive it; 0 keeps
+	// them until a cap evicts them.
+	RemovedDays int `json:"removedDays"`
 }
 
 // LogStore returns the effective log store settings: environment variables
@@ -42,6 +49,7 @@ func (m *Manager) LogStore() ResolvedLogStoreConfig {
 		Enabled:        true,
 		PerContainerMB: DefaultLogStorePerContainerMB,
 		TotalMB:        DefaultLogStoreTotalMB,
+		RemovedDays:    DefaultLogStoreRemovedDays,
 	}
 
 	if file != nil {
@@ -55,6 +63,9 @@ func (m *Manager) LogStore() ResolvedLogStoreConfig {
 		if file.TotalMB != nil {
 			resolved.TotalMB = positiveMB("logStore.totalMB", *file.TotalMB, DefaultLogStoreTotalMB)
 		}
+		if file.RemovedDays != nil && *file.RemovedDays >= 0 {
+			resolved.RemovedDays = *file.RemovedDays
+		}
 	}
 
 	if v, ok := envBool("LOG_STORE_ENABLED"); ok {
@@ -65,6 +76,9 @@ func (m *Manager) LogStore() ResolvedLogStoreConfig {
 	}
 	if v, ok := envPositiveInt("LOG_STORE_TOTAL_MB"); ok {
 		resolved.TotalMB = v
+	}
+	if v, ok := envNonNegativeInt("LOG_STORE_REMOVED_DAYS"); ok {
+		resolved.RemovedDays = v
 	}
 
 	return resolved
@@ -77,6 +91,7 @@ type LogStoreSources struct {
 	Enabled        Source `json:"enabled"`
 	PerContainerMB Source `json:"perContainerMB"`
 	TotalMB        Source `json:"totalMB"`
+	RemovedDays    Source `json:"removedDays"`
 }
 
 // LogStoreSources reports which log store values are pinned by an environment
@@ -89,6 +104,7 @@ func (m *Manager) LogStoreSources() LogStoreSources {
 		Enabled:        SourceFile,
 		PerContainerMB: SourceFile,
 		TotalMB:        SourceFile,
+		RemovedDays:    SourceFile,
 	}
 	if _, ok := envBool("LOG_STORE_ENABLED"); ok {
 		sources.Enabled = SourceEnv
@@ -98,6 +114,9 @@ func (m *Manager) LogStoreSources() LogStoreSources {
 	}
 	if _, ok := envPositiveInt("LOG_STORE_TOTAL_MB"); ok {
 		sources.TotalMB = SourceEnv
+	}
+	if _, ok := envNonNegativeInt("LOG_STORE_REMOVED_DAYS"); ok {
+		sources.RemovedDays = SourceEnv
 	}
 	return sources
 }
@@ -160,6 +179,19 @@ func envPositiveInt(key string) (int, bool) {
 	value, err := strconv.Atoi(raw)
 	if err != nil || value <= 0 {
 		log.Printf("Warning: ignoring %s=%q (expected a positive integer)", key, raw)
+		return 0, false
+	}
+	return value, true
+}
+
+func envNonNegativeInt(key string) (int, bool) {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return 0, false
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 0 {
+		log.Printf("Warning: ignoring %s=%q (expected a non-negative integer)", key, raw)
 		return 0, false
 	}
 	return value, true

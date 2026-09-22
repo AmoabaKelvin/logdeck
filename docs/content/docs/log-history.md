@@ -58,6 +58,8 @@ When LogDeck holds stored logs for a container that no longer exists on any host
 
 A removed container shows how much log data LogDeck stores for it instead of CPU and memory, and offers a single action: **View stored logs**. Its log page opens locked to History. There is no live stream, no terminal, and no environment or resources tab, because there is no container left to inspect.
 
+Removed containers' logs are dropped 30 days after the container left the engine. Change the window under Settings, Log storage, or with `LOG_STORE_REMOVED_DAYS`; `0` keeps them until a retention cap evicts them. **Delete removed** on the same page clears them all at once.
+
 ## Retention and disk use
 
 Two caps bound the store. A sweep runs every minute to enforce them by evicting the **oldest lines first**:
@@ -86,6 +88,7 @@ Each environment variable overrides the matching config-file field:
 - `LOG_STORE_ENABLED`: `false` turns persistence off entirely. LogDeck creates no database file, History mode disappears from the UI, and the history endpoints report the store as disabled. Existing data stays on disk untouched. Default: `true`.
 - `LOG_STORE_PER_CONTAINER_MB`: per-container retention cap in MB. Must be a positive integer. LogDeck ignores anything else with a warning. Default: `50`.
 - `LOG_STORE_TOTAL_MB`: total retention cap in MB across the whole store. Must be a positive integer. Default: `1024`.
+- `LOG_STORE_REMOVED_DAYS`: how many days a removed container's logs are kept after it leaves the engine. `0` keeps them until a cap evicts them. Default: `30`.
 
 If LogDeck cannot open the database (a read-only volume, a missing mount), it logs a warning and keeps running _without_ stored logs. Persistence never blocks startup. Look for `Log persistence is ENABLED` in the server log, with the path and the caps, to confirm it came up.
 
