@@ -1,100 +1,59 @@
 # LogDeck
 
-**The self-hosted control plane for Docker & Podman.** Live logs that survive redeploys, full container management, and an MCP server so your AI assistant can read logs and act on your containers, all in a single Go binary with no external dependencies.
+Self-hosted logs, alerting and container management for Docker and Podman, in one Go binary. Logs are stored on disk so they survive restarts, rebuilds and removal. An MCP server and a CLI let scripts and AI agents read logs and act on containers.
 
-Point it at your $5 VPS, or a whole fleet of hosts, and manage everything running on it from one place. One tool in place of the usual "logs + metrics + management" stack, on Docker *and* Podman.
+**[Website](https://logdeck.dev)** · **[Live demo](https://logdeck.dev/demo)** · **[Docs](https://logdeck.dev/docs/getting-started)**
 
 ![LogDeck containers dashboard](./docs/containers.png)
-![LogDeck Container View and Logs](./docs/logs.png)
+![LogDeck container logs](./docs/logs.png)
 
 ## Quick start
 
 ```bash
 docker run -d --name logdeck \
-  -p 8080:8080 \
+  -p 8123:8080 \
   -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /proc:/host/proc:ro \
   -v logdeck-data:/data \
+  --restart unless-stopped \
   amoabakelvin/logdeck:latest
 ```
 
-Open `http://localhost:8080`. The `logdeck-data` volume holds your config, stored logs, and alert history, so keep it or you lose all of that on recreate. For multi-host, SSH hosts, auth, and host system stats, use the [docker-compose.yml](./docker-compose.yml).
+Open http://localhost:8123. Keep the `logdeck-data` volume: it holds the config, the stored logs and the alert history.
 
-## Why LogDeck
+LogDeck starts without a login. Turn on authentication in Settings before exposing it beyond your machine. For Compose, multiple hosts, SSH and Podman, see the [installation guide](https://logdeck.dev/docs/installation).
 
-Most self-hosters end up bolting together a log viewer, a metrics tool, and a management UI. LogDeck is all of that in one binary, and three things set it apart:
+## What it does
 
-- **Your logs don't vanish on redeploy.** Every container is tailed into a local store, so history survives the `docker compose up --build` that gives a container a new ID, and removed containers stay readable. A plain live viewer only shows you what the engine still holds.
-- **An AI copilot, built in.** The MCP server ships inside the same free binary, so Claude or Cursor can read your logs and act on your containers, with nothing to bolt on and nothing hosted elsewhere.
-- **One free, open binary.** Logs, container and Compose management, alerting, stats, and multi-host support for Docker and Podman, all GPLv3, with no open-core paywall and no external services. Small enough for the $5 VPS it's built for.
+- Streams logs live and keeps them on disk, so `docker compose up --build` and removed containers no longer lose history
+- Searches by text, regex and level across everything stored, with time ranges and pinned lines
+- Starts, stops, restarts and removes containers or whole Compose stacks, with an interactive terminal
+- Edits environment variables, memory and CPU limits and restart policies without recreating the container
+- Alerts on container death, OOM kills and log patterns, to Slack, Discord, ntfy, Gotify, Telegram or any webhook
+- Shows live CPU and memory per container, per host and for the machine running LogDeck
+- Connects to many Docker or Podman hosts over a socket, TCP or SSH from one UI
+- Ships a `logdeck` CLI and an MCP server so scripts and AI assistants see what the UI sees
 
-## Features
+The [features page](https://logdeck.dev/docs/features) has the full list.
 
-### AI & MCP
+## CLI and MCP
 
-`logdeck mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io) server over stdio, so an assistant like Claude Desktop, Cursor, or Claude Code can work with your containers directly:
+```bash
+curl -fsSL https://raw.githubusercontent.com/AmoabaKelvin/logdeck/main/install.sh | sh
+logdeck grep "connection refused"   # search recent logs of every running container
+logdeck mcp                          # MCP server over stdio for Claude, Cursor, Claude Code
+```
 
-- Read logs, search across hosts, inspect containers, and check events and stats
-- Take action: start/stop/restart, run a command, edit environment variables, manage settings
-- Capability follows your API token: hand it a read token and it can only look; hand it an admin token and it can act.
+Both authenticate with a scoped API token from Settings: `read` can only look, `admin` can act. See the [CLI reference](https://logdeck.dev/docs/cli) and the [MCP guide](https://logdeck.dev/docs/mcp).
 
-See the [MCP guide](https://logdeck.dev/docs/mcp).
+## Learn more
 
-### Logs & History
+- [Log history](https://logdeck.dev/docs/log-history): how storage, retention and the Removed filter work
+- [Alerting](https://logdeck.dev/docs/alerting): rules, channels and cooldowns
+- [Configuration](https://logdeck.dev/docs/configuration): every environment variable and the config file
+- [Multi-host](./multi-host.md) and [Podman](./podman.md) setup notes
+- [LogDeck vs Dozzle](https://logdeck.dev/compare/dozzle)
 
-Real-time streaming with the search and persistence a `tail -f` never gives you:
+## License
 
-- Live streaming (tail -f style) with play/pause, auto-scroll, toggleable timestamps and wrapping, and JSON/TXT download
-- Full-text search with highlight/exclude modes and match navigation, log-level filtering (TRACE→PANIC), time-range presets, collapsible JSON lines, and line pinning
-- **Persistent history.** Every container on every host is tailed into a local SQLite store, so history outlives the container that produced it. It survives restarts and rebuilds that change the container ID (`docker compose up --build`), and removed containers stay readable under a **Removed** filter. A **Live | History** toggle searches everything stored, server-side. Retention caps (50 MB/container, 1024 MB total by default) evict oldest-first.
-
-See the [Log History guide](https://logdeck.dev/docs/log-history).
-
-### Container & Compose Management
-
-- Start, stop, restart, and remove containers, with confirmation on destructive actions and health badges
-- Whole-stack Compose controls (start/stop/restart from the group header) and aggregated stack logs merged by timestamp with color-coded container badges, working with Docker Compose and podman-compose
-- Interactive WebSocket terminal (XTerm.js, 10k-line scrollback, copy-to-clipboard)
-- View and edit environment variables, with bulk import from `.env` files
-- Edit memory limits, CPU limits, and restart policies live via the engine's update API, with no recreate and no downtime
-- Read-only mode for monitoring-only deployments
-
-### Alerting & Stats
-
-- Event rules on container death (non-zero exit) and OOM kills; log rules on level, regex, or both
-- Rate thresholds ("5 matches in 60 seconds") with per-rule cooldowns that report suppressed counts, targeted by host, container name, or Compose project
-- One JSON webhook that Slack and Discord incoming webhooks accept unchanged, plus alert history with every delivery result
-- Live CPU/memory per container with five-minute sparkline trends, per-host engine stats, and system stats for the machine running LogDeck
-
-See the [Alerting guide](https://logdeck.dev/docs/alerting).
-
-### Multi-Host, Docker & Podman
-
-- Connect to local Unix sockets, remote SSH (key auth), or TCP endpoints; filter and view by host or across all hosts, with real-time state sync
-- Works with Podman via its Docker-compatible API: automatic detection of local Docker and Podman sockets (rootless and rootful); logs, stats, lifecycle, events, and the terminal all work unchanged; mix Docker and Podman hosts in one setup
-- Read-only views of images, volumes, and networks across all hosts
-- Automatic container discovery, Compose-project grouping, state/name/image filtering, and shareable URL state
-
-For setup, see the [Multi-Host](./multi-host.md) and [Podman](./podman.md) guides. (Health badges are Docker-only, since Podman's list API doesn't embed health.)
-
-### Command-Line Interface
-
-A scriptable `logdeck` CLI over the server's HTTP API, built for automation and agents:
-
-- List, inspect, read/follow/search logs, and check stats from the terminal
-- `logdeck grep` searches the recent logs of every running container across all hosts
-- Lifecycle actions, resource limits, Compose controls, and alert management (`logdeck alerts`)
-- Table output for humans, JSON/NDJSON (`-o json`) for machines
-
-See the [CLI reference](https://logdeck.dev/docs/cli).
-
-### Authentication & Security
-
-- Optional authentication: enable it from Settings, pin it with environment variables, or run open. JWT session login with a rate-limited endpoint.
-- **Scoped API tokens** (`ldk_...`) for the CLI, MCP, and external tools: `admin` (full access) or `read` (logs, history, stats, events, and details, with no mutations, terminal, env, or settings)
-- Read-only mode blocks container/stack actions, env and resource edits, and the terminal
-
-### Configuration & Storage
-
-LogDeck reads environment variables and a JSON config file that the Settings page writes; environment variables win and pin the value so the UI cannot change it. Everything it persists lives in one directory (`/data` by default, `CONFIG_PATH` to move it): `config.json`, `logs.db` (the SQLite log store), and `alerts-history.json`. **Mount it as a volume** or all of it is lost when the container is recreated.
-
-See the [Configuration guide](https://logdeck.dev/docs/configuration) for every environment variable.
+GPL-3.0. Free, no open-core paywall, no external services.

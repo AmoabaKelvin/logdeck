@@ -154,14 +154,12 @@ export function LogList({
 	return (
 		// The page variant fills whatever height the route's flex column leaves
 		// it, down to a floor that keeps the list usable when a detail panel is
-		// open; the sheet gets a fixed window.
+		// open; the sheet and fullscreen are always a fixed-height column.
 		<div
 			className={
-				isFullscreen
-					? "relative flex min-h-0 flex-1 flex-col"
-					: variant === "page"
-						? "relative flex flex-col lg:min-h-0 lg:flex-1"
-						: "relative"
+				variant === "page" && !isFullscreen
+					? "relative flex flex-col lg:min-h-0 lg:flex-1"
+					: "relative flex min-h-0 flex-1 flex-col"
 			}
 		>
 			<SelectionActionBar
@@ -175,11 +173,9 @@ export function LogList({
 			<div
 				ref={parentRef}
 				className={
-					isFullscreen
-						? "min-h-0 w-full flex-1 overflow-auto overscroll-contain"
-						: variant === "page"
-							? "h-[60dvh] w-full overflow-auto lg:h-auto lg:min-h-[26rem] lg:flex-1"
-							: "h-[400px] w-full overflow-auto"
+					variant === "page" && !isFullscreen
+						? "h-[60dvh] w-full overflow-auto lg:h-auto lg:min-h-[26rem] lg:flex-1"
+						: "min-h-0 w-full flex-1 overflow-auto overscroll-contain"
 				}
 			>
 				{body}

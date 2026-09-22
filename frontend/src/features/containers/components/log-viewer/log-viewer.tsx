@@ -995,10 +995,14 @@ export function LogViewer({
 		);
 	}
 
+	// The sheet is a fixed-height column, so the list takes what the header
+	// leaves, the same way the page does on a wide screen.
 	return (
-		<div className="space-y-3">
-			{toolbar}
-			<div className="border-t border-border/70">{logList}</div>
+		<div className="flex min-h-0 flex-1 flex-col">
+			<div className="shrink-0 border-y border-border/70 px-4 py-3 sm:px-6">
+				{toolbar}
+			</div>
+			<div className="flex min-h-0 flex-1 flex-col px-2 sm:px-4">{logList}</div>
 			{shortcutHelpDialog}
 		</div>
 	);

@@ -90,38 +90,33 @@ function formatPorts(container: ContainerInfo): {
 	};
 }
 
-export function ContainerDetailHeader({
-	name,
+/**
+ * The readings strip under a container's name. A running container is worth
+ * watching; a stopped one is worth explaining. Same strip, different readings.
+ * Shared by the detail page and the logs sheet so both read the same way.
+ */
+export function ContainerVitals({
 	container,
 	isRemoved,
-	isReadOnly,
 	stats,
 	history,
 	inspect,
-	isActionPending,
-	onStart,
-	onStop,
-	onRestart,
-	onDelete,
-	onOpenShell,
-}: ContainerDetailHeaderProps) {
+	className = "",
+}: {
+	container: ContainerInfo | undefined;
+	isRemoved: boolean;
+	stats: ContainerStats | undefined;
+	history: number[];
+	inspect: ContainerInspect | undefined;
+	className?: string;
+}) {
 	const state = container?.state.toLowerCase();
 	const isRunning = state === "running" || state === "paused";
-	const { label, duration } = container
+	const { duration } = container
 		? splitContainerStatus(container)
-		: { label: "", duration: null };
+		: { duration: null };
 	const ports = container ? formatPorts(container) : null;
 
-	const meta = container
-		? [
-				formatImageName(container.image),
-				container.host,
-				`created ${formatRelativeCreated(container.created)}`,
-			]
-		: [];
-
-	// A running container is worth watching; a stopped one is worth explaining.
-	// Same strip, different readings.
 	const vitals: StatProps[] = [];
 	if (container && !isRemoved) {
 		if (isRunning) {
@@ -161,6 +156,43 @@ export function ContainerDetailHeader({
 			vitals.push({ label: "Ports", value: ports.value, detail: ports.detail });
 		}
 	}
+
+	if (vitals.length === 0) return null;
+	return (
+		<div className={`flex flex-wrap items-center gap-x-8 gap-y-3 ${className}`}>
+			{vitals.map((vital) => (
+				<Stat key={vital.label} {...vital} />
+			))}
+		</div>
+	);
+}
+
+export function ContainerDetailHeader({
+	name,
+	container,
+	isRemoved,
+	isReadOnly,
+	stats,
+	history,
+	inspect,
+	isActionPending,
+	onStart,
+	onStop,
+	onRestart,
+	onDelete,
+	onOpenShell,
+}: ContainerDetailHeaderProps) {
+	const state = container?.state.toLowerCase();
+	const isRunning = state === "running" || state === "paused";
+	const { label } = container ? splitContainerStatus(container) : { label: "" };
+
+	const meta = container
+		? [
+				formatImageName(container.image),
+				container.host,
+				`created ${formatRelativeCreated(container.created)}`,
+			]
+		: [];
 
 	return (
 		<header>
@@ -267,13 +299,14 @@ export function ContainerDetailHeader({
 				)}
 			</div>
 
-			{vitals.length > 0 && (
-				<div className="mt-5 flex flex-wrap items-center gap-x-8 gap-y-3 border-t border-border/70 pt-4">
-					{vitals.map((vital) => (
-						<Stat key={vital.label} {...vital} />
-					))}
-				</div>
-			)}
+			<ContainerVitals
+				container={container}
+				isRemoved={isRemoved}
+				stats={stats}
+				history={history}
+				inspect={inspect}
+				className="mt-5 border-t border-border/70 pt-4"
+			/>
 		</header>
 	);
 }
