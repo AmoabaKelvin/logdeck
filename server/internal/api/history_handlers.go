@@ -100,6 +100,30 @@ func (ar *APIRouter) DeleteHistoryContainer(w http.ResponseWriter, r *http.Reque
 	})
 }
 
+// DeleteHistoryRemoved purges the stored logs of every container that no
+// longer exists on any host. Guarded like DeleteHistoryContainer.
+func (ar *APIRouter) DeleteHistoryRemoved(w http.ResponseWriter, r *http.Request) {
+	if ar.logStore == nil {
+		WriteJsonResponse(w, http.StatusServiceUnavailable, map[string]string{
+			"error": "log persistence is disabled",
+		})
+		return
+	}
+
+	containers, lines, err := ar.logStore.DeleteRemoved(r.Context(), time.Now())
+	if err != nil {
+		log.Printf("history: deleting removed containers failed: %v", err)
+		http.Error(w, "failed to delete stored logs", http.StatusInternalServerError)
+		return
+	}
+
+	WriteJsonResponse(w, http.StatusOK, map[string]any{
+		"message":           "stored logs deleted",
+		"containersDeleted": containers,
+		"linesDeleted":      lines,
+	})
+}
+
 // GetHistoryContainers lists every logical container the store knows about.
 // With persistence disabled the list is simply empty.
 func (ar *APIRouter) GetHistoryContainers(w http.ResponseWriter, r *http.Request) {

@@ -52,6 +52,14 @@ func newHistoryTestRouterWithAuth(t *testing.T, store *logstore.Store, authSvc *
 // own, created by Open.
 func newHistoryStore(t *testing.T) (*logstore.Store, func(host, containerID, name string, ts time.Time, message string)) {
 	t.Helper()
+	store, seed, _ := newHistoryStoreDB(t)
+	return store, seed
+}
+
+// newHistoryStoreDB also hands back the seed connection, for tests that need
+// to touch rows the seed function does not (removal stamps, for instance).
+func newHistoryStoreDB(t *testing.T) (*logstore.Store, func(host, containerID, name string, ts time.Time, message string), *sql.DB) {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), "logs.db")
 	store, err := logstore.Open(path, func() config.ResolvedLogStoreConfig {
 		return config.ResolvedLogStoreConfig{Enabled: true, PerContainerMB: 50, TotalMB: 1024}
@@ -97,7 +105,7 @@ func newHistoryStore(t *testing.T) (*logstore.Store, func(host, containerID, nam
 		}
 	}
 
-	return store, seed
+	return store, seed, db
 }
 
 func doHistoryRequest(t *testing.T, router http.Handler, path string) *httptest.ResponseRecorder {
@@ -496,6 +504,40 @@ func TestDeleteHistoryContainer(t *testing.T) {
 			t.Fatalf("unexpected error message: %q", body.Error)
 		}
 	})
+}
+
+func TestDeleteHistoryRemoved(t *testing.T) {
+	store, seed, db := newHistoryStoreDB(t)
+	seed("local", "abc123", "gone", historyBase, "old line")
+	seed("local", "xyz789", "web", historyBase, "live line")
+	if _, err := db.Exec("UPDATE containers SET removed_ms = ? WHERE container_id = 'abc123'",
+		historyBase.UnixMilli()); err != nil {
+		t.Fatalf("mark removed: %v", err)
+	}
+	router := newHistoryTestRouter(t, store)
+
+	w := doHistoryDelete(t, router, "/api/v1/history/removed", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var body struct {
+		ContainersDeleted int   `json:"containersDeleted"`
+		LinesDeleted      int64 `json:"linesDeleted"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("parse response: %v", err)
+	}
+	if body.ContainersDeleted != 1 || body.LinesDeleted != 1 {
+		t.Fatalf("deleted %d containers / %d lines, want 1 / 1", body.ContainersDeleted, body.LinesDeleted)
+	}
+	if logs := historyLogs(t, router, "/api/v1/history/logs?container=web"); logs.Count != 1 {
+		t.Fatalf("expected the live container to keep its line, got %d", logs.Count)
+	}
+
+	// Disabled persistence answers 503 like the per-container purge.
+	if w := doHistoryDelete(t, newHistoryTestRouter(t, nil), "/api/v1/history/removed", ""); w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 with persistence off, got %d", w.Code)
+	}
 }
 
 func TestDeleteHistoryContainerRequiresAuth(t *testing.T) {

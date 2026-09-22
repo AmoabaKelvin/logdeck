@@ -1,8 +1,18 @@
 import { useState } from "react";
 import { toast } from "sonner";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Trash2Icon } from "@/components/ui/icons";
+import { SearchIcon, Trash2Icon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -13,7 +23,10 @@ import { ContainersPagination } from "@/features/containers/components/container
 import { Meter } from "@/features/containers/components/meter";
 import type { PurgeHistoryTarget } from "@/features/containers/components/purge-history-dialog";
 import { PurgeHistoryDialog } from "@/features/containers/components/purge-history-dialog";
-import { useDeleteHistoryContainer } from "@/features/containers/hooks/use-delete-history-container";
+import {
+	useDeleteHistoryContainer,
+	useDeleteRemovedHistory,
+} from "@/features/containers/hooks/use-delete-history-container";
 import { useHistoryContainers } from "@/features/containers/hooks/use-history-containers";
 import { useHistoryStatus } from "@/features/containers/hooks/use-history-status";
 
@@ -174,9 +187,12 @@ export function LogStorageSection({ config }: LogStorageSectionProps) {
 		error,
 	} = useHistoryContainers(isEnabled);
 	const purgeHistory = useDeleteHistoryContainer();
+	const purgeRemoved = useDeleteRemovedHistory();
 	const [purgeTarget, setPurgeTarget] = useState<PurgeHistoryTarget | null>(
 		null,
 	);
+	const [isPurgeRemovedOpen, setIsPurgeRemovedOpen] = useState(false);
+	const [search, setSearch] = useState("");
 	const [page, setPage] = useState(1);
 	const [pageSize, setPageSize] = useState(10);
 
@@ -190,7 +206,16 @@ export function LogStorageSection({ config }: LogStorageSectionProps) {
 		);
 	}
 
-	const containers = sortStoredContainersBySize(storedContainers ?? []);
+	const allContainers = sortStoredContainersBySize(storedContainers ?? []);
+	const removedCount = allContainers.filter((c) => c.removed).length;
+	const needle = search.trim().toLowerCase();
+	const containers = needle
+		? allContainers.filter((c) =>
+				[c.name, c.host, c.composeProject ?? ""].some((v) =>
+					v.toLowerCase().includes(needle),
+				),
+			)
+		: allContainers;
 	const totalPages = Math.max(1, Math.ceil(containers.length / pageSize));
 	const currentPage = Math.min(page, totalPages);
 	const startIndex = (currentPage - 1) * pageSize;
@@ -243,8 +268,42 @@ export function LogStorageSection({ config }: LogStorageSectionProps) {
 					/>
 				)}
 
-				<SettingsSubsection title="Stored containers">
+				<SettingsSubsection
+					title="Stored containers"
+					action={
+						removedCount > 0 && (
+							<Button
+								variant="ghost"
+								size="sm"
+								disabled={purgeRemoved.isPending}
+								onClick={() => setIsPurgeRemovedOpen(true)}
+								className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+							>
+								<Trash2Icon className="size-4" />
+								Delete removed ({removedCount})
+							</Button>
+						)
+					}
+				>
 					<div className="space-y-4">
+						{allContainers.length > 0 && (
+							<div className="relative max-w-xs">
+								<SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+								<Input
+									type="search"
+									name="search"
+									aria-label="Filter stored containers"
+									placeholder="Filter by name, host or project"
+									value={search}
+									onChange={(e) => {
+										setSearch(e.target.value);
+										setPage(1);
+									}}
+									className="pl-8"
+								/>
+							</div>
+						)}
+
 						{isLoading && <Spinner className="size-4" />}
 						{error && (
 							<ErrorNote>
@@ -253,7 +312,11 @@ export function LogStorageSection({ config }: LogStorageSectionProps) {
 						)}
 
 						{!isLoading && !error && containers.length === 0 && (
-							<Note>No container logs stored yet.</Note>
+							<Note>
+								{needle
+									? "No stored containers match."
+									: "No container logs stored yet."}
+							</Note>
 						)}
 
 						{containers.length > 0 && (
@@ -339,6 +402,33 @@ export function LogStorageSection({ config }: LogStorageSectionProps) {
 					</div>
 				</SettingsSubsection>
 			</div>
+
+			<AlertDialog
+				open={isPurgeRemovedOpen}
+				onOpenChange={setIsPurgeRemovedOpen}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>
+							Delete logs of removed containers?
+						</AlertDialogTitle>
+						<AlertDialogDescription>
+							This permanently deletes the stored history of {removedCount}{" "}
+							{removedCount === 1 ? "container" : "containers"} that no longer
+							exist on any host. Those logs cannot be recovered afterwards.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogAction
+							onClick={() => purgeRemoved.mutate()}
+							className="bg-destructive text-white hover:bg-destructive/90"
+						>
+							Delete logs
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 
 			<PurgeHistoryDialog
 				target={purgeTarget}

@@ -155,3 +155,28 @@ export async function getHistoryLogs({
 	const data = await readJson<HistoryLogsPage>(response);
 	return { ...data, logs: data.logs ?? [] };
 }
+
+export interface DeleteRemovedResult {
+	message: string;
+	containersDeleted: number;
+	linesDeleted: number;
+}
+
+// Drops the stored logs of every container that no longer exists on any host.
+export async function deleteRemovedHistory(): Promise<DeleteRemovedResult> {
+	const response = await authenticatedFetch(`${BASE_URL}/removed`, {
+		method: "DELETE",
+		headers: { Accept: "application/json" },
+	});
+
+	if (!response.ok) {
+		throw await readError(response, "Failed to delete removed containers");
+	}
+
+	const data = await readJson<Partial<DeleteRemovedResult>>(response);
+	return {
+		message: data.message ?? "Stored logs deleted",
+		containersDeleted: data.containersDeleted ?? 0,
+		linesDeleted: data.linesDeleted ?? 0,
+	};
+}
