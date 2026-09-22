@@ -1,43 +1,58 @@
-name: Release CLI
+name: Release
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to rebuild and publish, e.g. v0.6.0
+        required: true
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
-  build-and-release:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.rp.outputs.release_created }}
+      tag: ${{ inputs.tag || steps.rp.outputs.tag_name }}
+    steps:
+      - id: rp
+        if: github.event_name == 'push'
+        uses: googleapis/release-please-action@v5
+
+  goreleaser:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag }}
+          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
           go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
 
-      - name: Build binaries
-        working-directory: server
-        run: |
-          VERSION="${GITHUB_REF_NAME}"
-          mkdir -p ../dist
-          for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64; do
-            GOOS="${target%/*}"
-            GOARCH="${target#*/}"
-            out="logdeck"
-            CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
-              go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
-              -o "$out" ./cmd/logdeck
-            # Unversioned asset names keep releases/latest/download URLs stable
-            tar -czf "../dist/logdeck_${GOOS}_${GOARCH}.tar.gz" "$out"
-            rm "$out"
-          done
-          cd ../dist && shasum -a 256 *.tar.gz > checksums.txt
-
-      - name: Create release
-        uses: softprops/action-gh-release@v2
+      - uses: goreleaser/goreleaser-action@v7
         with:
-          files: dist/*
-          generate_release_notes: true
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Tags created with GITHUB_TOKEN don't trigger other workflows, so call Docker Publish directly
+  docker:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/docker-publish.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag }}
+    secrets: inherit
