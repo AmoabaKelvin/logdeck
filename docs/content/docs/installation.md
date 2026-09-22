@@ -116,7 +116,7 @@ Every variable is optional, and LogDeck runs with none of them set. The [configu
 - [`DOCKER_HOSTS`](/docs/configuration#docker_hosts): hosts to manage, as `name=host` entries with `unix://`, `tcp://`, or `ssh://` URLs. When unset, LogDeck auto-detects a local Docker or Podman socket.
 - [`CONFIG_PATH`](/docs/configuration#config_path): path to the JSON config file. Its directory also holds the log store and alert history. Default `/data/config.json`.
 - [`READONLY_MODE`](/docs/configuration#readonly_mode): `true` blocks container actions, stack actions, environment and resource edits, and the web terminal.
-- [`LOG_STORE_ENABLED`, `LOG_STORE_PER_CONTAINER_MB`, `LOG_STORE_TOTAL_MB`](/docs/configuration#log-persistence): log persistence is on by default, and these turn it off or change its retention caps. Defaults `true`, `50` MB, and `1024` MB.
+- [`LOG_STORE_ENABLED`, `LOG_STORE_PER_CONTAINER_MB`, `LOG_STORE_TOTAL_MB`, `LOG_STORE_REMOVED_DAYS`](/docs/configuration#log-persistence): log persistence is on by default, and these turn it off, change its retention caps, or set how long removed containers' logs are kept. Defaults `true`, `50` MB, `1024` MB, and `30` days.
 - [`JWT_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`](/docs/configuration#authentication): pin authentication from the environment. Leave them unset to run without authentication, or to enable it from the Settings page instead.
 - [`COOLIFY_CONFIGS`](/docs/configuration#coolify-integration): per-host Coolify configuration in `hostName|apiURL|apiToken` format. Host names must match those in `DOCKER_HOSTS`.
 

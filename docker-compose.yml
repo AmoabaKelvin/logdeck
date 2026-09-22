@@ -21,6 +21,7 @@ services:
       # they are also editable in Settings.
       # - LOG_STORE_PER_CONTAINER_MB=50
       # - LOG_STORE_TOTAL_MB=1024
+      # - LOG_STORE_REMOVED_DAYS=30
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /root/.ssh:/root/.ssh:ro

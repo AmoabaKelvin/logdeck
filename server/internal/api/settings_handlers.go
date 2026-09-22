@@ -87,6 +87,8 @@ func (ar *APIRouter) GetSettings(w http.ResponseWriter, r *http.Request) {
 			"perContainerMBSource": logStoreSources.PerContainerMB,
 			"totalMB":              logStore.TotalMB,
 			"totalMBSource":        logStoreSources.TotalMB,
+			"removedDays":          logStore.RemovedDays,
+			"removedDaysSource":    logStoreSources.RemovedDays,
 		},
 		"coolifyHosts": map[string]any{
 			"source":   sources.CoolifyHosts,
@@ -233,6 +235,9 @@ func (ar *APIRouter) UpdateReadOnly(w http.ResponseWriter, r *http.Request) {
 // log database, but enough to keep a typo from requesting a petabyte.
 const maxLogStoreMB = 1024 * 1024
 
+// maxLogStoreRemovedDays bounds the removed-container window at ten years.
+const maxLogStoreRemovedDays = 3650
+
 // UpdateLogStorage handles PUT /api/v1/settings/log-storage. Every field is
 // optional; only the ones provided change. The janitor re-reads the caps on
 // each pass, so a new cap takes effect without a restart.
@@ -241,6 +246,7 @@ func (ar *APIRouter) UpdateLogStorage(w http.ResponseWriter, r *http.Request) {
 		Enabled        *bool `json:"enabled"`
 		PerContainerMB *int  `json:"perContainerMB"`
 		TotalMB        *int  `json:"totalMB"`
+		RemovedDays    *int  `json:"removedDays"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -258,6 +264,7 @@ func (ar *APIRouter) UpdateLogStorage(w http.ResponseWriter, r *http.Request) {
 		{req.Enabled != nil, sources.Enabled, "enabled is set via the LOG_STORE_ENABLED environment variable and cannot be changed from the UI"},
 		{req.PerContainerMB != nil, sources.PerContainerMB, "perContainerMB is set via the LOG_STORE_PER_CONTAINER_MB environment variable and cannot be changed from the UI"},
 		{req.TotalMB != nil, sources.TotalMB, "totalMB is set via the LOG_STORE_TOTAL_MB environment variable and cannot be changed from the UI"},
+		{req.RemovedDays != nil, sources.RemovedDays, "removedDays is set via the LOG_STORE_REMOVED_DAYS environment variable and cannot be changed from the UI"},
 	}
 	for _, f := range pinned {
 		if f.provided && f.source == config.SourceEnv {
@@ -275,6 +282,9 @@ func (ar *APIRouter) UpdateLogStorage(w http.ResponseWriter, r *http.Request) {
 	if req.TotalMB != nil {
 		effective.TotalMB = *req.TotalMB
 	}
+	if req.RemovedDays != nil {
+		effective.RemovedDays = *req.RemovedDays
+	}
 	if err := validateLogStoreCaps(effective); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -289,6 +299,9 @@ func (ar *APIRouter) UpdateLogStorage(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.TotalMB != nil {
 			current.TotalMB = req.TotalMB
+		}
+		if req.RemovedDays != nil {
+			current.RemovedDays = req.RemovedDays
 		}
 		return current, nil
 	})
@@ -312,6 +325,9 @@ func validateLogStoreCaps(cfg config.ResolvedLogStoreConfig) error {
 	}
 	if cfg.PerContainerMB > cfg.TotalMB {
 		return fmt.Errorf("perContainerMB (%d) cannot exceed totalMB (%d)", cfg.PerContainerMB, cfg.TotalMB)
+	}
+	if cfg.RemovedDays < 0 || cfg.RemovedDays > maxLogStoreRemovedDays {
+		return fmt.Errorf("removedDays must be between 0 and %d", maxLogStoreRemovedDays)
 	}
 	return nil
 }

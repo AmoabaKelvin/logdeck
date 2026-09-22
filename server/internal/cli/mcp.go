@@ -431,8 +431,9 @@ func registerSettingsTools(s *mcp.Server, a *app, register func(*mcp.Tool)) {
 		Enabled        *bool `json:"enabled,omitempty" jsonschema:"turn log persistence on or off"`
 		PerContainerMB *int  `json:"perContainerMB,omitempty" jsonschema:"per-container retention cap in MB"`
 		TotalMB        *int  `json:"totalMB,omitempty" jsonschema:"total retention cap in MB across all containers"`
+		RemovedDays    *int  `json:"removedDays,omitempty" jsonschema:"days a removed container's logs are kept; 0 keeps them until a cap evicts them"`
 	}
-	tool = &mcp.Tool{Name: "set_log_storage", Description: "Update log persistence: enable or disable it, or change the retention caps. Omitted fields are left unchanged. Lowering a cap makes the next sweep evict stored logs.", Annotations: destructiveAnnot()}
+	tool = &mcp.Tool{Name: "set_log_storage", Description: "Update log persistence: enable or disable it, change the retention caps, or how long removed containers' logs are kept. Omitted fields are left unchanged. Lowering a cap makes the next sweep evict stored logs.", Annotations: destructiveAnnot()}
 	mcp.AddTool(s, tool, func(ctx context.Context, _ *mcp.CallToolRequest, in logStorageInput) (*mcp.CallToolResult, any, error) {
 		body := map[string]any{}
 		if in.Enabled != nil {
@@ -444,8 +445,11 @@ func registerSettingsTools(s *mcp.Server, a *app, register func(*mcp.Tool)) {
 		if in.TotalMB != nil {
 			body["totalMB"] = *in.TotalMB
 		}
+		if in.RemovedDays != nil {
+			body["removedDays"] = *in.RemovedDays
+		}
 		if len(body) == 0 {
-			return nil, nil, fmt.Errorf("set at least one of enabled, perContainerMB, or totalMB")
+			return nil, nil, fmt.Errorf("set at least one of enabled, perContainerMB, totalMB, or removedDays")
 		}
 		return putJSON(ctx, a, "/settings/log-storage", body)
 	})

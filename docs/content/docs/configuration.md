@@ -238,10 +238,17 @@ Optional. Retention cap for the whole store, in MB.
 
 Default: `1024`
 
+### `LOG_STORE_REMOVED_DAYS`
+
+Optional. How many days a removed container's logs are kept after it leaves the engine. `0` keeps them until a retention cap evicts them.
+
+Default: `30`
+
 ```bash
 LOG_STORE_ENABLED=true
 LOG_STORE_PER_CONTAINER_MB=50
 LOG_STORE_TOTAL_MB=1024
+LOG_STORE_REMOVED_DAYS=30
 ```
 
 ## Proxies and CORS
