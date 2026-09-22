@@ -11,16 +11,8 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
 import { PencilIcon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
 	Select,
 	SelectContent,
@@ -28,17 +20,8 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
 
 import type { AlertChannel } from "../api/get-alert-channels";
 import type { AlertHistoryEntry } from "../api/get-alert-history";
@@ -65,28 +48,35 @@ import {
 	EMPTY_CHANNEL_DRAFT,
 } from "./channel-utils";
 import { showResultToast } from "./mutation-toast";
+import {
+	ErrorNote,
+	Field,
+	Note,
+	Outcome,
+	SettingsSection,
+	SettingsSubsection,
+	SettingsTable,
+	TBody,
+	Td,
+	Th,
+	THead,
+	Well,
+} from "./settings-ui";
 
 const HISTORY_LIMIT = 50;
 
 export function AlertsSection() {
 	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>Alerts</CardTitle>
-				<CardDescription>
-					Get notified when containers die, run out of memory, become unhealthy,
-					or log errors. Alerts are delivered to every enabled channel and
-					recorded in the history below.
-				</CardDescription>
-			</CardHeader>
-			<CardContent className="space-y-6">
+		<SettingsSection
+			title="Alerts"
+			description="Get told when a container dies, runs out of memory, turns unhealthy or logs errors. Every enabled channel receives each alert, and the history keeps a record."
+		>
+			<div className="space-y-8">
 				<ChannelsBlock />
-				<Separator />
 				<RulesBlock />
-				<Separator />
 				<HistoryBlock />
-			</CardContent>
-		</Card>
+			</div>
+		</SettingsSection>
 	);
 }
 
@@ -113,22 +103,22 @@ function ChannelDraftFields({
 	return (
 		<>
 			{needsURL && (
-				<div className="space-y-1.5">
-					<Label htmlFor="channel-url">{urlLabel}</Label>
+				<Field id="channel-url" label={urlLabel}>
 					<Input
 						id="channel-url"
+						name="url"
 						value={draft.url}
 						onChange={(e) => set("url", e.target.value)}
 						placeholder={urlPlaceholder}
 						className="h-8"
 					/>
-				</div>
+				</Field>
 			)}
 			{needsToken && (
-				<div className="space-y-1.5">
-					<Label htmlFor="channel-token">{tokenLabel}</Label>
+				<Field id="channel-token" label={tokenLabel}>
 					<Input
 						id="channel-token"
+						name="token"
 						type="password"
 						autoComplete="new-password"
 						value={draft.token}
@@ -136,19 +126,19 @@ function ChannelDraftFields({
 						placeholder={tokenLabel}
 						className="h-8"
 					/>
-				</div>
+				</Field>
 			)}
 			{needsTarget && (
-				<div className="space-y-1.5">
-					<Label htmlFor="channel-target">Chat id</Label>
+				<Field id="channel-target" label="Chat id">
 					<Input
 						id="channel-target"
+						name="target"
 						value={draft.target}
 						onChange={(e) => set("target", e.target.value)}
 						placeholder="-1001234567890"
 						className="h-8"
 					/>
-				</div>
+				</Field>
 			)}
 		</>
 	);
@@ -178,10 +168,9 @@ function AddChannelForm({ onDone }: { onDone: () => void }) {
 	}
 
 	return (
-		<div className="space-y-3 border rounded-md p-3">
-			<div className="flex flex-wrap items-end gap-3">
-				<div className="space-y-1.5">
-					<Label htmlFor="channel-type">Type</Label>
+		<Well>
+			<div className="grid gap-3 sm:grid-cols-[auto_1fr]">
+				<Field id="channel-type" label="Type">
 					<Select
 						value={draft.type}
 						onValueChange={(value) => {
@@ -190,7 +179,7 @@ function AddChannelForm({ onDone }: { onDone: () => void }) {
 								setDraft({ ...EMPTY_CHANNEL_DRAFT, type, name: draft.name });
 						}}
 					>
-						<SelectTrigger id="channel-type" className="h-8 w-32">
+						<SelectTrigger id="channel-type" className="h-8 w-full sm:w-32">
 							<SelectValue />
 						</SelectTrigger>
 						<SelectContent>
@@ -201,28 +190,36 @@ function AddChannelForm({ onDone }: { onDone: () => void }) {
 							))}
 						</SelectContent>
 					</Select>
-				</div>
-				<div className="space-y-1.5 flex-1 min-w-40">
-					<Label htmlFor="channel-name">
-						Name{" "}
-						<span className="font-normal text-muted-foreground">
-							(optional)
-						</span>
-					</Label>
+				</Field>
+				<Field
+					id="channel-name"
+					label={
+						<>
+							Name{" "}
+							<span className="font-normal text-muted-foreground">
+								(optional)
+							</span>
+						</>
+					}
+				>
 					<Input
 						id="channel-name"
+						name="name"
 						value={draft.name}
 						onChange={(e) => set("name", e.target.value)}
 						placeholder="Team Slack"
 						className="h-8"
 						maxLength={64}
 					/>
-				</div>
+				</Field>
 			</div>
-			<ChannelDraftFields draft={draft} set={set} />
-			<div className="flex gap-1">
+			<div className="mt-3 grid gap-3">
+				<ChannelDraftFields draft={draft} set={set} />
+			</div>
+			<div className="mt-3 flex gap-1">
 				<Button
 					size="sm"
+					variant="outline"
 					disabled={createMutation.isPending}
 					onClick={handleAdd}
 				>
@@ -239,7 +236,7 @@ function AddChannelForm({ onDone }: { onDone: () => void }) {
 					Cancel
 				</Button>
 			</div>
-		</div>
+		</Well>
 	);
 }
 
@@ -297,129 +294,133 @@ function ChannelsBlock() {
 	}
 
 	return (
-		<div className="space-y-3">
-			<h3 className="text-sm font-medium">Channels</h3>
+		<SettingsSubsection
+			title="Channels"
+			action={
+				!isAdding && (
+					<Button variant="outline" size="sm" onClick={() => setIsAdding(true)}>
+						Add channel
+					</Button>
+				)
+			}
+		>
+			<div className="space-y-3">
+				{isLoading && <Spinner className="size-4" />}
+				{error && (
+					<ErrorNote>Failed to load channels: {error.message}</ErrorNote>
+				)}
 
-			{isLoading && <Spinner className="size-4" />}
-			{error && (
-				<p className="text-sm text-destructive">
-					Failed to load channels: {error.message}
-				</p>
-			)}
+				{!isLoading && !error && channels.length === 0 && !isAdding && (
+					<Note>
+						No channels yet, so alerts are only recorded in the history.
+					</Note>
+				)}
 
-			{!isLoading && !error && channels.length === 0 && !isAdding && (
-				<p className="text-sm text-muted-foreground">
-					No channels configured — alerts are recorded in history only.
-				</p>
-			)}
-
-			{channels.length > 0 && (
-				<Table>
-					<TableHeader>
-						<TableRow>
-							<TableHead>Type</TableHead>
-							<TableHead>Destination</TableHead>
-							<TableHead>Enabled</TableHead>
-							<TableHead className="text-right">Actions</TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{channels.map((channel) => {
-							const testing =
-								testMutation.isPending && testMutation.variables === channel.id;
-							return (
-								<TableRow key={channel.id}>
-									<TableCell className="font-medium">
-										{channel.name || channelTypeLabel(channel.type)}
-										{channel.name && (
-											<span className="ml-1.5 text-xs text-muted-foreground">
-												{channelTypeLabel(channel.type)}
-											</span>
-										)}
-									</TableCell>
-									<TableCell className="text-xs text-muted-foreground font-mono break-all">
-										{channelDestination(channel)}
-									</TableCell>
-									<TableCell>
-										<Switch
-											checked={channel.enabled}
-											onCheckedChange={(checked) =>
-												handleToggle(channel, checked)
-											}
-											disabled={updateMutation.isPending}
-											aria-label={`Toggle ${channelTypeLabel(channel.type)} channel`}
-										/>
-									</TableCell>
-									<TableCell className="text-right">
-										<div className="flex items-center justify-end gap-1">
-											<Button
-												variant="ghost"
-												size="sm"
-												disabled={testing}
-												onClick={() => handleTest(channel)}
-											>
-												{testing ? (
-													<>
-														<Spinner className="size-3" />
-														Sending...
-													</>
-												) : (
-													"Test"
+				{channels.length > 0 && (
+					<SettingsTable>
+						<THead>
+							<Th>Channel</Th>
+							<Th>Destination</Th>
+							<Th>Enabled</Th>
+							<Th className="text-right">
+								<span className="sr-only">Actions</span>
+							</Th>
+						</THead>
+						<TBody>
+							{channels.map((channel) => {
+								const testing =
+									testMutation.isPending &&
+									testMutation.variables === channel.id;
+								return (
+									<tr key={channel.id}>
+										<Td className="font-medium">
+											<div className="flex items-baseline gap-1.5">
+												{channel.name || channelTypeLabel(channel.type)}
+												{channel.name && (
+													<span className="font-normal text-muted-foreground">
+														{channelTypeLabel(channel.type)}
+													</span>
 												)}
-											</Button>
-											<Button
-												variant="ghost"
-												size="sm"
-												disabled={deleteMutation.isPending}
-												onClick={() => setChannelToDelete(channel)}
-												className="text-destructive hover:text-destructive"
-											>
-												Delete
-											</Button>
-										</div>
-									</TableCell>
-								</TableRow>
-							);
-						})}
-					</TableBody>
-				</Table>
-			)}
+											</div>
+										</Td>
+										<Td className="font-mono text-muted-foreground">
+											{channelDestination(channel)}
+										</Td>
+										<Td>
+											<Switch
+												checked={channel.enabled}
+												onCheckedChange={(checked) =>
+													handleToggle(channel, checked)
+												}
+												disabled={updateMutation.isPending}
+												aria-label={`Toggle ${channelTypeLabel(channel.type)} channel`}
+											/>
+										</Td>
+										<Td className="text-right">
+											<div className="flex items-center justify-end gap-1">
+												<Button
+													variant="ghost"
+													size="sm"
+													disabled={testing}
+													onClick={() => handleTest(channel)}
+												>
+													{testing ? (
+														<>
+															<Spinner className="size-3" />
+															Sending...
+														</>
+													) : (
+														"Test"
+													)}
+												</Button>
+												<Button
+													variant="ghost"
+													size="sm"
+													disabled={deleteMutation.isPending}
+													onClick={() => setChannelToDelete(channel)}
+													className="text-destructive hover:text-destructive"
+												>
+													Delete
+												</Button>
+											</div>
+										</Td>
+									</tr>
+								);
+							})}
+						</TBody>
+					</SettingsTable>
+				)}
 
-			{isAdding ? (
-				<AddChannelForm onDone={() => setIsAdding(false)} />
-			) : (
-				<Button variant="outline" size="sm" onClick={() => setIsAdding(true)}>
-					Add channel
-				</Button>
-			)}
+				{isAdding && <AddChannelForm onDone={() => setIsAdding(false)} />}
 
-			<AlertDialog
-				open={channelToDelete !== null}
-				onOpenChange={(open) => {
-					if (!open) setChannelToDelete(null);
-				}}
-			>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>Delete channel?</AlertDialogTitle>
-						<AlertDialogDescription>
-							Alerts will no longer be delivered to this{" "}
-							{channelToDelete ? channelTypeLabel(channelToDelete.type) : ""}{" "}
-							channel. This cannot be undone.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction
-							onClick={handleDelete}
-							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-						>
-							Delete
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
-		</div>
+				<AlertDialog
+					open={channelToDelete !== null}
+					onOpenChange={(open) => {
+						if (!open) setChannelToDelete(null);
+					}}
+				>
+					<AlertDialogContent>
+						<AlertDialogHeader>
+							<AlertDialogTitle>Delete channel?</AlertDialogTitle>
+							<AlertDialogDescription>
+								Alerts will no longer be delivered to this{" "}
+								{channelToDelete ? channelTypeLabel(channelToDelete.type) : ""}{" "}
+								channel. This cannot be undone.
+							</AlertDialogDescription>
+						</AlertDialogHeader>
+						<AlertDialogFooter>
+							<AlertDialogCancel>Cancel</AlertDialogCancel>
+							<AlertDialogAction
+								onClick={handleDelete}
+								className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+							>
+								Delete
+							</AlertDialogAction>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialog>
+			</div>
+		</SettingsSubsection>
 	);
 }
 
@@ -497,124 +498,121 @@ function RulesBlock() {
 	}
 
 	return (
-		<div className="space-y-3">
-			<h3 className="text-sm font-medium">Rules</h3>
+		<SettingsSubsection
+			title="Rules"
+			action={
+				<Button variant="outline" size="sm" onClick={openCreate}>
+					Create rule
+				</Button>
+			}
+		>
+			<div className="space-y-3">
+				{isLoading && <Spinner className="size-4" />}
+				{error && (
+					<ErrorNote>Failed to load alert rules: {error.message}</ErrorNote>
+				)}
 
-			{isLoading && <Spinner className="size-4" />}
-			{error && (
-				<p className="text-sm text-destructive">
-					Failed to load alert rules: {error.message}
-				</p>
-			)}
+				{!isLoading && !error && rules.length === 0 && (
+					<Note>No alert rules yet.</Note>
+				)}
 
-			{!isLoading && !error && rules.length === 0 && (
-				<p className="text-sm text-muted-foreground">
-					No alert rules created yet.
-				</p>
-			)}
+				{rules.length > 0 && (
+					<SettingsTable>
+						<THead>
+							<Th>Name</Th>
+							<Th>Type</Th>
+							<Th>Target</Th>
+							<Th>Trigger</Th>
+							<Th>Enabled</Th>
+							<Th className="text-right">
+								<span className="sr-only">Actions</span>
+							</Th>
+						</THead>
+						<TBody>
+							{rules.map((rule) => (
+								<tr key={rule.id}>
+									<Td className="font-medium">{rule.name}</Td>
+									<Td className="text-muted-foreground">{rule.type}</Td>
+									<Td className="text-muted-foreground">
+										{renderTarget(rule)}
+									</Td>
+									<Td className="font-mono text-muted-foreground">
+										{renderTrigger(rule)}
+									</Td>
+									<Td>
+										<Switch
+											checked={rule.enabled}
+											onCheckedChange={(checked) => handleToggle(rule, checked)}
+											disabled={updateMutation.isPending}
+											aria-label={`Toggle rule ${rule.name}`}
+										/>
+									</Td>
+									<Td className="text-right">
+										<div className="flex items-center justify-end gap-1">
+											<Button
+												variant="ghost"
+												size="sm"
+												onClick={() => openEdit(rule)}
+												aria-label={`Edit rule ${rule.name}`}
+											>
+												<PencilIcon className="size-4" />
+											</Button>
+											<Button
+												variant="ghost"
+												size="sm"
+												disabled={deleteMutation.isPending}
+												onClick={() => setRuleToDelete(rule)}
+												className="text-destructive hover:text-destructive"
+											>
+												Delete
+											</Button>
+										</div>
+									</Td>
+								</tr>
+							))}
+						</TBody>
+					</SettingsTable>
+				)}
 
-			{rules.length > 0 && (
-				<Table>
-					<TableHeader>
-						<TableRow>
-							<TableHead>Name</TableHead>
-							<TableHead>Type</TableHead>
-							<TableHead>Target</TableHead>
-							<TableHead>Trigger</TableHead>
-							<TableHead>Enabled</TableHead>
-							<TableHead className="text-right">Actions</TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{rules.map((rule) => (
-							<TableRow key={rule.id}>
-								<TableCell className="font-medium">{rule.name}</TableCell>
-								<TableCell className="text-xs text-muted-foreground">
-									{rule.type}
-								</TableCell>
-								<TableCell className="text-xs text-muted-foreground">
-									{renderTarget(rule)}
-								</TableCell>
-								<TableCell className="text-xs text-muted-foreground font-mono">
-									{renderTrigger(rule)}
-								</TableCell>
-								<TableCell>
-									<Switch
-										checked={rule.enabled}
-										onCheckedChange={(checked) => handleToggle(rule, checked)}
-										disabled={updateMutation.isPending}
-										aria-label={`Toggle rule ${rule.name}`}
-									/>
-								</TableCell>
-								<TableCell className="text-right">
-									<div className="flex items-center justify-end gap-1">
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() => openEdit(rule)}
-											aria-label={`Edit rule ${rule.name}`}
-										>
-											<PencilIcon className="size-3.5" />
-										</Button>
-										<Button
-											variant="ghost"
-											size="sm"
-											disabled={deleteMutation.isPending}
-											onClick={() => setRuleToDelete(rule)}
-											className="text-destructive hover:text-destructive"
-										>
-											Delete
-										</Button>
-									</div>
-								</TableCell>
-							</TableRow>
-						))}
-					</TableBody>
-				</Table>
-			)}
+				<AlertRuleDialog
+					open={isDialogOpen}
+					onOpenChange={setIsDialogOpen}
+					rule={editingRule}
+				/>
 
-			<Button variant="outline" size="sm" onClick={openCreate}>
-				Create rule
-			</Button>
-
-			<AlertRuleDialog
-				open={isDialogOpen}
-				onOpenChange={setIsDialogOpen}
-				rule={editingRule}
-			/>
-
-			<AlertDialog
-				open={ruleToDelete !== null}
-				onOpenChange={(open) => {
-					if (!open) setRuleToDelete(null);
-				}}
-			>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>Delete alert rule?</AlertDialogTitle>
-						<AlertDialogDescription>
-							The rule "{ruleToDelete?.name}" will stop firing alerts
-							immediately. This cannot be undone.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction
-							onClick={handleDelete}
-							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-						>
-							Delete
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
-		</div>
+				<AlertDialog
+					open={ruleToDelete !== null}
+					onOpenChange={(open) => {
+						if (!open) setRuleToDelete(null);
+					}}
+				>
+					<AlertDialogContent>
+						<AlertDialogHeader>
+							<AlertDialogTitle>Delete alert rule?</AlertDialogTitle>
+							<AlertDialogDescription>
+								The rule "{ruleToDelete?.name}" will stop firing alerts
+								immediately. This cannot be undone.
+							</AlertDialogDescription>
+						</AlertDialogHeader>
+						<AlertDialogFooter>
+							<AlertDialogCancel>Cancel</AlertDialogCancel>
+							<AlertDialogAction
+								onClick={handleDelete}
+								className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+							>
+								Delete
+							</AlertDialogAction>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialog>
+			</div>
+		</SettingsSubsection>
 	);
 }
 
 function DeliveryStatus({ entry }: { entry: AlertHistoryEntry }) {
 	if (!entry.delivery) {
-		return <span className="text-xs text-muted-foreground">—</span>;
+		return <span className="text-muted-foreground">—</span>;
 	}
 	const ok = entry.delivery.status === "ok";
 	const detail = ok
@@ -626,19 +624,9 @@ function DeliveryStatus({ entry }: { entry: AlertHistoryEntry }) {
 				.filter(Boolean)
 				.join(": ");
 	return (
-		<span
-			title={detail}
-			className={`inline-flex items-center gap-1.5 text-xs ${
-				ok
-					? "text-green-600 dark:text-green-400"
-					: "text-red-600 dark:text-red-400"
-			}`}
-		>
-			<span
-				className={`size-1.5 rounded-full ${ok ? "bg-green-500" : "bg-red-500"}`}
-			/>
+		<Outcome ok={ok} title={detail}>
 			{entry.delivery.status}
-		</span>
+		</Outcome>
 	);
 }
 
@@ -655,10 +643,10 @@ function HistoryBlock() {
 	}
 
 	return (
-		<div className="space-y-3">
-			<div className="flex items-center justify-between">
-				<h3 className="text-sm font-medium">History</h3>
-				{alerts.length > 0 && (
+		<SettingsSubsection
+			title="History"
+			action={
+				alerts.length > 0 && (
 					<Button
 						variant="ghost"
 						size="sm"
@@ -667,81 +655,77 @@ function HistoryBlock() {
 					>
 						Clear
 					</Button>
+				)
+			}
+		>
+			<div className="space-y-3">
+				{isLoading && <Spinner className="size-4" />}
+				{error && (
+					<ErrorNote>Failed to load alert history: {error.message}</ErrorNote>
 				)}
+
+				{!isLoading && !error && alerts.length === 0 && (
+					<Note>No alerts fired yet.</Note>
+				)}
+
+				{alerts.length > 0 && (
+					<div className="max-h-96 overflow-y-auto">
+						<SettingsTable>
+							<THead>
+								<Th>Time</Th>
+								<Th>Rule</Th>
+								<Th>Container</Th>
+								<Th>Reason</Th>
+								<Th>Delivery</Th>
+							</THead>
+							<TBody>
+								{alerts.map((entry) => (
+									<tr key={entry.id}>
+										<Td className="text-muted-foreground tabular-nums">
+											{new Date(entry.firedAt).toLocaleString()}
+										</Td>
+										<Td className="font-medium">{entry.ruleName}</Td>
+										<Td className="font-mono text-muted-foreground">
+											{entry.containerName}@{entry.host}
+										</Td>
+										<Td className="text-muted-foreground">
+											{entry.reason}
+											{entry.suppressed > 0 && (
+												<span className="text-muted-foreground/70">
+													{` (+${entry.suppressed} suppressed)`}
+												</span>
+											)}
+										</Td>
+										<Td>
+											<DeliveryStatus entry={entry} />
+										</Td>
+									</tr>
+								))}
+							</TBody>
+						</SettingsTable>
+					</div>
+				)}
+
+				<AlertDialog open={isClearOpen} onOpenChange={setIsClearOpen}>
+					<AlertDialogContent>
+						<AlertDialogHeader>
+							<AlertDialogTitle>Clear alert history?</AlertDialogTitle>
+							<AlertDialogDescription>
+								All recorded alerts will be removed. This cannot be undone.
+							</AlertDialogDescription>
+						</AlertDialogHeader>
+						<AlertDialogFooter>
+							<AlertDialogCancel>Cancel</AlertDialogCancel>
+							<AlertDialogAction
+								onClick={handleClear}
+								className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+							>
+								Clear
+							</AlertDialogAction>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialog>
 			</div>
-
-			{isLoading && <Spinner className="size-4" />}
-			{error && (
-				<p className="text-sm text-destructive">
-					Failed to load alert history: {error.message}
-				</p>
-			)}
-
-			{!isLoading && !error && alerts.length === 0 && (
-				<p className="text-sm text-muted-foreground">No alerts fired yet.</p>
-			)}
-
-			{alerts.length > 0 && (
-				<div className="max-h-80 overflow-y-auto rounded-md border">
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>Time</TableHead>
-								<TableHead>Rule</TableHead>
-								<TableHead>Container</TableHead>
-								<TableHead>Reason</TableHead>
-								<TableHead>Delivery</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{alerts.map((entry) => (
-								<TableRow key={entry.id}>
-									<TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-										{new Date(entry.firedAt).toLocaleString()}
-									</TableCell>
-									<TableCell className="font-medium">
-										{entry.ruleName}
-									</TableCell>
-									<TableCell className="text-xs text-muted-foreground font-mono">
-										{entry.containerName}@{entry.host}
-									</TableCell>
-									<TableCell className="text-xs text-muted-foreground">
-										{entry.reason}
-										{entry.suppressed > 0 && (
-											<span className="ml-1.5 text-muted-foreground/70">
-												(+{entry.suppressed} suppressed)
-											</span>
-										)}
-									</TableCell>
-									<TableCell>
-										<DeliveryStatus entry={entry} />
-									</TableCell>
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
-				</div>
-			)}
-
-			<AlertDialog open={isClearOpen} onOpenChange={setIsClearOpen}>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>Clear alert history?</AlertDialogTitle>
-						<AlertDialogDescription>
-							All recorded alerts will be removed. This cannot be undone.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction
-							onClick={handleClear}
-							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-						>
-							Clear
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
-		</div>
+		</SettingsSubsection>
 	);
 }

@@ -12,16 +12,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
 import { CheckIcon, CopyIcon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
 	Select,
 	SelectContent,
@@ -30,14 +22,6 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
 
 import {
 	useApiTokens,
@@ -46,6 +30,18 @@ import {
 } from "../hooks/use-settings";
 import type { APIToken, APITokenScope, CreatedAPIToken } from "../types";
 import { showResultToast } from "./mutation-toast";
+import {
+	ErrorNote,
+	Field,
+	Note,
+	SettingsSection,
+	SettingsTable,
+	TBody,
+	Td,
+	Th,
+	THead,
+	Well,
+} from "./settings-ui";
 
 export function ApiTokensSection() {
 	const { data, isLoading, error } = useApiTokens();
@@ -103,90 +99,90 @@ export function ApiTokensSection() {
 	}
 
 	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>API Access</CardTitle>
-				<CardDescription>
-					Generate long-lived tokens for the LogDeck CLI and other external
-					tools. Send a token as{" "}
-					<code className="font-mono text-xs">
-						Authorization: Bearer &lt;token&gt;
-					</code>{" "}
-					to authenticate API requests.
-				</CardDescription>
-			</CardHeader>
-			<CardContent className="space-y-4">
+		<SettingsSection
+			title="API access"
+			description={
+				<>
+					Long-lived tokens for the LogDeck CLI and other tools. Send one as{" "}
+					<code className="font-mono">Authorization: Bearer &lt;token&gt;</code>
+					.
+				</>
+			}
+		>
+			<div className="space-y-4">
 				{createdToken && (
-					<div className="space-y-2 border rounded-md p-3 bg-muted/50">
-						<p className="text-sm font-medium">
+					<Well>
+						<p className="text-base font-medium sm:text-sm">
 							Token "{createdToken.name}" created
 						</p>
-						<div className="flex items-center gap-2">
-							<code className="flex-1 font-mono text-xs break-all rounded bg-background border px-2 py-1.5">
+						<p className="mt-1 text-base/6 text-amber-700 sm:text-sm/6 dark:text-amber-400">
+							Copy it now. It will not be shown again.
+						</p>
+						<div className="mt-3 flex items-center gap-2">
+							<code className="min-w-0 flex-1 break-all rounded-md bg-background px-2.5 py-1.5 font-mono text-sm">
 								{createdToken.token}
 							</code>
-							<Button variant="outline" size="sm" onClick={handleCopy}>
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={handleCopy}
+								className="shrink-0"
+							>
 								{copied ? (
-									<CheckIcon className="size-3.5" />
+									<CheckIcon className="size-4" />
 								) : (
-									<CopyIcon className="size-3.5" />
+									<CopyIcon className="size-4" />
 								)}
 								{copied ? "Copied" : "Copy"}
 							</Button>
 						</div>
-						<p className="text-xs text-amber-600 dark:text-amber-400">
-							Copy this token now. It will not be shown again.
-						</p>
 						<Button
 							variant="ghost"
 							size="sm"
 							onClick={() => setCreatedToken(null)}
+							className="mt-3"
 						>
 							Done
 						</Button>
-					</div>
+					</Well>
 				)}
 
 				{isLoading && <Spinner className="size-4" />}
 				{error && (
-					<p className="text-sm text-destructive">
-						Failed to load API tokens: {error.message}
-					</p>
+					<ErrorNote>Failed to load API tokens: {error.message}</ErrorNote>
 				)}
 
 				{!isLoading && !error && tokens.length === 0 && (
-					<p className="text-sm text-muted-foreground">
-						No API tokens created yet.
-					</p>
+					<Note>No API tokens created yet.</Note>
 				)}
 
 				{tokens.length > 0 && (
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>Name</TableHead>
-								<TableHead>Token</TableHead>
-								<TableHead>Scope</TableHead>
-								<TableHead>Created</TableHead>
-								<TableHead className="text-right">Actions</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
+					<SettingsTable>
+						<THead>
+							<Th>Name</Th>
+							<Th>Token</Th>
+							<Th>Scope</Th>
+							<Th>Created</Th>
+							<Th className="text-right">
+								<span className="sr-only">Actions</span>
+							</Th>
+						</THead>
+						<TBody>
 							{tokens.map((t) => (
-								<TableRow key={t.prefix}>
-									<TableCell className="font-medium">{t.name}</TableCell>
-									<TableCell className="font-mono text-xs text-muted-foreground">
+								<tr key={t.prefix}>
+									<Td className="font-medium">{t.name}</Td>
+									<Td className="font-mono text-muted-foreground">
 										{t.prefix}…
-									</TableCell>
-									<TableCell>
-										<Badge variant="secondary" className="text-xs font-normal">
+									</Td>
+									<Td>
+										<Badge className="border-transparent bg-muted font-normal text-muted-foreground">
 											{t.scope === "read" ? "Read-only" : "Admin"}
 										</Badge>
-									</TableCell>
-									<TableCell className="text-xs text-muted-foreground">
+									</Td>
+									<Td className="text-muted-foreground">
 										{new Date(t.createdAt).toLocaleDateString()}
-									</TableCell>
-									<TableCell className="text-right">
+									</Td>
+									<Td className="text-right">
 										<Button
 											variant="ghost"
 											size="sm"
@@ -196,49 +192,55 @@ export function ApiTokensSection() {
 										>
 											Revoke
 										</Button>
-									</TableCell>
-								</TableRow>
+									</Td>
+								</tr>
 							))}
-						</TableBody>
-					</Table>
+						</TBody>
+					</SettingsTable>
 				)}
 
 				{isCreating ? (
-					<div className="flex items-end gap-3 border rounded-md p-3">
-						<div className="space-y-1.5 flex-1">
-							<Label htmlFor="new-token-name">Name</Label>
-							<Input
-								id="new-token-name"
-								value={newName}
-								onChange={(e) => setNewName(e.target.value)}
-								onKeyDown={(e) => {
-									if (e.key === "Enter") handleCreate();
-								}}
-								placeholder="my-cli"
-								className="h-8"
-								maxLength={64}
-							/>
+					<Well>
+						<div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+							<Field id="new-token-name" label="Name">
+								<Input
+									id="new-token-name"
+									name="name"
+									value={newName}
+									onChange={(e) => setNewName(e.target.value)}
+									onKeyDown={(e) => {
+										if (e.key === "Enter") handleCreate();
+									}}
+									placeholder="my-cli"
+									className="h-8"
+									maxLength={64}
+								/>
+							</Field>
+							<Field id="new-token-scope" label="Scope">
+								<Select
+									value={newScope}
+									onValueChange={(value) => {
+										if (value === "admin" || value === "read")
+											setNewScope(value);
+									}}
+								>
+									<SelectTrigger
+										id="new-token-scope"
+										className="h-8 w-full sm:w-32"
+									>
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="admin">Admin</SelectItem>
+										<SelectItem value="read">Read-only</SelectItem>
+									</SelectContent>
+								</Select>
+							</Field>
 						</div>
-						<div className="space-y-1.5">
-							<Label htmlFor="new-token-scope">Scope</Label>
-							<Select
-								value={newScope}
-								onValueChange={(value) => {
-									if (value === "admin" || value === "read") setNewScope(value);
-								}}
-							>
-								<SelectTrigger id="new-token-scope" className="h-8 w-32">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="admin">Admin</SelectItem>
-									<SelectItem value="read">Read-only</SelectItem>
-								</SelectContent>
-							</Select>
-						</div>
-						<div className="flex gap-1">
+						<div className="mt-3 flex gap-1">
 							<Button
 								size="sm"
+								variant="outline"
 								disabled={createMutation.isPending}
 								onClick={handleCreate}
 							>
@@ -263,7 +265,7 @@ export function ApiTokensSection() {
 								Cancel
 							</Button>
 						</div>
-					</div>
+					</Well>
 				) : (
 					<Button
 						variant="outline"
@@ -273,7 +275,7 @@ export function ApiTokensSection() {
 						Create token
 					</Button>
 				)}
-			</CardContent>
+			</div>
 
 			<AlertDialog
 				open={tokenToRevoke !== null}
@@ -300,6 +302,6 @@ export function ApiTokensSection() {
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
-		</Card>
+		</SettingsSection>
 	);
 }
