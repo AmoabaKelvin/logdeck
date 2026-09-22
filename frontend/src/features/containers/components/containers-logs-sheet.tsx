@@ -42,8 +42,8 @@ interface ContainersLogsSheetProps {
 
 /**
  * A quick look at one container without leaving the list: the detail page's
- * header, panels and live log stream, in a side sheet. The full page adds
- * history, fullscreen and the container actions.
+ * header, panels and log viewer, in a side sheet. The full page adds
+ * fullscreen and the container actions.
  */
 export function ContainersLogsSheet({
 	container,
