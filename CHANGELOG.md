@@ -2,6 +2,27 @@
 
 All notable changes to LogDeck are documented here.
 
+## [0.6.0](https://github.com/AmoabaKelvin/logdeck/compare/v0.5.0...v0.6.0) (2026-09-23)
+
+
+### Features
+
+* **dashboard:** history toggle in the logs sheet ([e3df945](https://github.com/AmoabaKelvin/logdeck/commit/e3df945cbd72a9b734bc6554fb8d5d9b377b9b29))
+* **dashboard:** history toggle in the logs sheet ([72d8256](https://github.com/AmoabaKelvin/logdeck/commit/72d825605065f97a1d658c3bedc2bae305fe1098))
+* **history:** add a delete-all for stored logs ([3f36964](https://github.com/AmoabaKelvin/logdeck/commit/3f3696476877cee86ce5b60ea82510cbb776f660))
+* **history:** page and search stored containers server-side ([03ac0fc](https://github.com/AmoabaKelvin/logdeck/commit/03ac0fc80814aa05bb641fb0ccad850c00440875))
+* **history:** server-side paging and delete-all for stored logs ([1dbb9d5](https://github.com/AmoabaKelvin/logdeck/commit/1dbb9d5062bcb325bcbc44f65057ce461ca86ac0))
+* **logstore:** expire removed containers' logs after 30 days ([c2c565b](https://github.com/AmoabaKelvin/logdeck/commit/c2c565b5ee55fa514ec02dc4b942fd39df6622d5))
+* **logstore:** expire removed containers' logs after 30 days ([5292142](https://github.com/AmoabaKelvin/logdeck/commit/52921429db1cb91b4c69c83dd80e5b99352d74ad))
+* **settings:** filter stored containers, delete all removed at once ([23d3239](https://github.com/AmoabaKelvin/logdeck/commit/23d32399fc56b95f78e21f482d6932ee5597b9a8))
+* **settings:** filter stored containers, delete all removed at once ([999370b](https://github.com/AmoabaKelvin/logdeck/commit/999370bf241cf50498fdfccbc926fa23368e058b))
+
+
+### Bug Fixes
+
+* **frontend:** run the unit tests again, and in CI ([d7bb912](https://github.com/AmoabaKelvin/logdeck/commit/d7bb9122be056102966877d6c259f37f55a6e0ca))
+* **frontend:** run the unit tests again, and in CI ([8e6efbc](https://github.com/AmoabaKelvin/logdeck/commit/8e6efbcb727f420c9a795faa701b5687909badcd))
+
 ## [0.5.0] - 2026-09-22
 
 ### Added
