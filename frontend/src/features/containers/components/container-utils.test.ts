@@ -11,7 +11,6 @@ import {
 	parseDurationSeconds,
 	selectVisibleContainers,
 	sortContainers,
-	sortStoredContainersBySize,
 	splitContainerStatus,
 	synthesizeRemovedContainers,
 } from "./container-utils";
@@ -211,33 +210,6 @@ describe("selectStackMembers", () => {
 
 	it("returns nothing for a project with no members", () => {
 		expect(selectStackMembers([live()], [], "shop")).toEqual([]);
-	});
-});
-
-describe("sortStoredContainersBySize", () => {
-	it("orders stored containers by size descending", () => {
-		const sorted = sortStoredContainersBySize([
-			stored({ name: "small", storedBytes: 10 }),
-			stored({ name: "large", storedBytes: 900 }),
-			stored({ name: "medium", storedBytes: 100 }),
-		]);
-
-		expect(sorted.map((entry) => entry.name)).toEqual([
-			"large",
-			"medium",
-			"small",
-		]);
-	});
-
-	it("breaks size ties by name and leaves the input untouched", () => {
-		const input = [
-			stored({ name: "b", storedBytes: 5 }),
-			stored({ name: "a", storedBytes: 5 }),
-		];
-		const sorted = sortStoredContainersBySize(input);
-
-		expect(sorted.map((entry) => entry.name)).toEqual(["a", "b"]);
-		expect(input.map((entry) => entry.name)).toEqual(["b", "a"]);
 	});
 });
 

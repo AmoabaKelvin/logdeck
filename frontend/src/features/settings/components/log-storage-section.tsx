@@ -15,19 +15,18 @@ import { Button } from "@/components/ui/button";
 import { SearchIcon, Trash2Icon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import {
-	formatBytes,
-	sortStoredContainersBySize,
-} from "@/features/containers/components/container-utils";
+import { formatBytes } from "@/features/containers/components/container-utils";
 import { ContainersPagination } from "@/features/containers/components/containers-pagination";
 import { Meter } from "@/features/containers/components/meter";
 import type { PurgeHistoryTarget } from "@/features/containers/components/purge-history-dialog";
 import { PurgeHistoryDialog } from "@/features/containers/components/purge-history-dialog";
 import {
+	useDeleteAllHistory,
 	useDeleteHistoryContainer,
 	useDeleteRemovedHistory,
 } from "@/features/containers/hooks/use-delete-history-container";
-import { useHistoryContainers } from "@/features/containers/hooks/use-history-containers";
+import { useDebouncedValue } from "@/features/containers/hooks/use-debounced-value";
+import { useStoredContainersPage } from "@/features/containers/hooks/use-history-containers";
 import { useHistoryStatus } from "@/features/containers/hooks/use-history-status";
 
 import type { UpdateLogStoragePayload } from "../api/update-log-storage";
@@ -210,20 +209,30 @@ interface LogStorageSectionProps {
 export function LogStorageSection({ config }: LogStorageSectionProps) {
 	const { data: status } = useHistoryStatus();
 	const isEnabled = status?.enabled === true;
-	const {
-		data: storedContainers,
-		isLoading,
-		error,
-	} = useHistoryContainers(isEnabled);
-	const purgeHistory = useDeleteHistoryContainer();
-	const purgeRemoved = useDeleteRemovedHistory();
-	const [purgeTarget, setPurgeTarget] = useState<PurgeHistoryTarget | null>(
-		null,
-	);
-	const [isPurgeRemovedOpen, setIsPurgeRemovedOpen] = useState(false);
 	const [search, setSearch] = useState("");
 	const [page, setPage] = useState(1);
 	const [pageSize, setPageSize] = useState(10);
+	const needle = useDebouncedValue(search.trim(), 250);
+	const {
+		data: stored,
+		isLoading,
+		error,
+	} = useStoredContainersPage(
+		{
+			search: needle,
+			sort: "size",
+			limit: pageSize,
+			offset: (page - 1) * pageSize,
+		},
+		isEnabled,
+	);
+	const purgeHistory = useDeleteHistoryContainer();
+	const purgeRemoved = useDeleteRemovedHistory();
+	const purgeAll = useDeleteAllHistory();
+	const [purgeTarget, setPurgeTarget] = useState<PurgeHistoryTarget | null>(
+		null,
+	);
+	const [bulkPurge, setBulkPurge] = useState<"removed" | "all" | null>(null);
 
 	// Persistence is off: there is nothing to report or reclaim.
 	if (!isEnabled) {
@@ -235,20 +244,14 @@ export function LogStorageSection({ config }: LogStorageSectionProps) {
 		);
 	}
 
-	const allContainers = sortStoredContainersBySize(storedContainers ?? []);
-	const removedCount = allContainers.filter((c) => c.removed).length;
-	const needle = search.trim().toLowerCase();
-	const containers = needle
-		? allContainers.filter((c) =>
-				[c.name, c.host, c.composeProject ?? ""].some((v) =>
-					v.toLowerCase().includes(needle),
-				),
-			)
-		: allContainers;
-	const totalPages = Math.max(1, Math.ceil(containers.length / pageSize));
-	const currentPage = Math.min(page, totalPages);
-	const startIndex = (currentPage - 1) * pageSize;
-	const pageItems = containers.slice(startIndex, startIndex + pageSize);
+	const pageItems = stored?.containers ?? [];
+	const total = stored?.total ?? 0;
+	const removedCount = stored?.removedCount ?? 0;
+	const storedCount = stored?.storedCount ?? 0;
+	const totalPages = Math.max(1, Math.ceil(total / pageSize));
+	const startIndex = (page - 1) * pageSize;
+	// Deleting the last row of the last page leaves the page past the end.
+	if (stored && page > totalPages) setPage(totalPages);
 
 	const usedBytes = status.dbSizeBytes ?? 0;
 	const totalBytes = status.totalMB ? status.totalMB * MB : 0;
@@ -281,10 +284,10 @@ export function LogStorageSection({ config }: LogStorageSectionProps) {
 					{status.perContainerMB ? (
 						<Stat label="Per container" value={`${status.perContainerMB} MB`} />
 					) : null}
-					{storedContainers && (
-						<Stat label="Stored" value={String(storedContainers.length)}>
+					{stored && (
+						<Stat label="Stored" value={String(stored.storedCount)}>
 							<span className="shrink-0 text-sm text-muted-foreground">
-								{storedContainers.length === 1 ? "container" : "containers"}
+								{stored.storedCount === 1 ? "container" : "containers"}
 							</span>
 						</Stat>
 					)}
@@ -300,22 +303,36 @@ export function LogStorageSection({ config }: LogStorageSectionProps) {
 				<SettingsSubsection
 					title="Stored containers"
 					action={
-						removedCount > 0 && (
-							<Button
-								variant="ghost"
-								size="sm"
-								disabled={purgeRemoved.isPending}
-								onClick={() => setIsPurgeRemovedOpen(true)}
-								className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-							>
-								<Trash2Icon className="size-4" />
-								Delete removed ({removedCount})
-							</Button>
+						storedCount > 0 && (
+							<div className="flex items-center gap-1">
+								{removedCount > 0 && (
+									<Button
+										variant="ghost"
+										size="sm"
+										disabled={purgeRemoved.isPending}
+										onClick={() => setBulkPurge("removed")}
+										className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+									>
+										<Trash2Icon className="size-4" />
+										Delete removed ({removedCount})
+									</Button>
+								)}
+								<Button
+									variant="ghost"
+									size="sm"
+									disabled={purgeAll.isPending}
+									onClick={() => setBulkPurge("all")}
+									className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+								>
+									<Trash2Icon className="size-4" />
+									Delete all
+								</Button>
+							</div>
 						)
 					}
 				>
 					<div className="space-y-4">
-						{allContainers.length > 0 && (
+						{(stored?.storedCount ?? 0) > 0 && (
 							<div className="relative max-w-xs">
 								<SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
 								<Input
@@ -340,7 +357,7 @@ export function LogStorageSection({ config }: LogStorageSectionProps) {
 							</ErrorNote>
 						)}
 
-						{!isLoading && !error && containers.length === 0 && (
+						{!isLoading && !error && total === 0 && (
 							<Note>
 								{needle
 									? "No stored containers match."
@@ -348,7 +365,7 @@ export function LogStorageSection({ config }: LogStorageSectionProps) {
 							</Note>
 						)}
 
-						{containers.length > 0 && (
+						{pageItems.length > 0 && (
 							<SettingsTable>
 								<THead>
 									<Th>Container</Th>
@@ -413,12 +430,12 @@ export function LogStorageSection({ config }: LogStorageSectionProps) {
 							</SettingsTable>
 						)}
 
-						{containers.length > pageSize && (
+						{total > pageSize && (
 							<ContainersPagination
-								totalItems={containers.length}
+								totalItems={total}
 								startIndex={startIndex + 1}
 								endIndex={startIndex + pageItems.length}
-								page={currentPage}
+								page={page}
 								totalPages={totalPages}
 								pageSize={pageSize}
 								onPageChange={setPage}
@@ -433,24 +450,43 @@ export function LogStorageSection({ config }: LogStorageSectionProps) {
 			</div>
 
 			<AlertDialog
-				open={isPurgeRemovedOpen}
-				onOpenChange={setIsPurgeRemovedOpen}
+				open={bulkPurge !== null}
+				onOpenChange={(open) => {
+					if (!open) setBulkPurge(null);
+				}}
 			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
 						<AlertDialogTitle>
-							Delete logs of removed containers?
+							{bulkPurge === "all"
+								? "Delete all stored logs?"
+								: "Delete logs of removed containers?"}
 						</AlertDialogTitle>
 						<AlertDialogDescription>
-							This permanently deletes the stored history of {removedCount}{" "}
-							{removedCount === 1 ? "container" : "containers"} that no longer
-							exist on any host. Those logs cannot be recovered afterwards.
+							{bulkPurge === "all" ? (
+								<>
+									This permanently deletes the stored history of all{" "}
+									{storedCount} {storedCount === 1 ? "container" : "containers"}
+									, including removed ones. Running containers start a fresh
+									history with their next line. The deleted logs cannot be
+									recovered.
+								</>
+							) : (
+								<>
+									This permanently deletes the stored history of {removedCount}{" "}
+									{removedCount === 1 ? "container" : "containers"} that no
+									longer exist on any host. Those logs cannot be recovered
+									afterwards.
+								</>
+							)}
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
 						<AlertDialogCancel>Cancel</AlertDialogCancel>
 						<AlertDialogAction
-							onClick={() => purgeRemoved.mutate()}
+							onClick={() =>
+								bulkPurge === "all" ? purgeAll.mutate() : purgeRemoved.mutate()
+							}
 							className="bg-destructive text-white hover:bg-destructive/90"
 						>
 							Delete logs
