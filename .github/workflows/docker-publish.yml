@@ -5,7 +5,6 @@ on:
     branches: [main]
     tags: ['v*']
   workflow_dispatch:
-  # Called by release.yml, since tags it creates don't trigger this workflow
   workflow_call:
     inputs:
       tag:
