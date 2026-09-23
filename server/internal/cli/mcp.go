@@ -689,9 +689,13 @@ func mcpJSON(v any) (*mcp.CallToolResult, any, error) {
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(data)}}}, nil, nil
 }
 
-func readOnlyAnnot() *mcp.ToolAnnotations    { return &mcp.ToolAnnotations{ReadOnlyHint: true} }
-func lifecycleAnnot() *mcp.ToolAnnotations   { return &mcp.ToolAnnotations{DestructiveHint: boolPtr(false)} }
-func destructiveAnnot() *mcp.ToolAnnotations { return &mcp.ToolAnnotations{DestructiveHint: boolPtr(true)} }
+func readOnlyAnnot() *mcp.ToolAnnotations { return &mcp.ToolAnnotations{ReadOnlyHint: true} }
+func lifecycleAnnot() *mcp.ToolAnnotations {
+	return &mcp.ToolAnnotations{DestructiveHint: boolPtr(false)}
+}
+func destructiveAnnot() *mcp.ToolAnnotations {
+	return &mcp.ToolAnnotations{DestructiveHint: boolPtr(true)}
+}
 
 func boolPtr(b bool) *bool { return &b }
 
