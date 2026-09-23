@@ -24,6 +24,15 @@ jobs:
           mkdir -p internal/static/dist
           touch internal/static/dist/index.html
 
+      - name: Format (gofmt)
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "Run gofmt -w on:"
+            echo "$unformatted"
+            exit 1
+          fi
+
       - name: Lint
         uses: golangci/golangci-lint-action@v7
         with:
