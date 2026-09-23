@@ -24,6 +24,8 @@ type LogEntry struct {
 	// single-container payload unchanged.
 	ContainerID   string `json:"containerId,omitempty"`
 	ContainerName string `json:"containerName,omitempty"`
+	// Set on stored entries, where the same name can exist on several hosts.
+	Host string `json:"host,omitempty"`
 }
 
 // LogLevel represents the severity of a log entry
@@ -46,27 +48,31 @@ const exceptionName = `[A-Z]\w*(?:Error|Exception)\b`
 // levelWords is the keyword fallback, most severe first, so a message
 // mentioning several levels is classified by the worst one. Phrases are failure
 // wording with no level keyword; they are plain substrings because as regex
-// alternations they slowed every match.
+// alternations they slowed every match. Words are substrings every match of
+// the regexes contains, so a level whose words are absent skips its regexes.
 var levelWords = []struct {
 	level   LogLevel
+	words   []string
 	regexes []*regexp.Regexp
 	phrases []string
 }{
-	{level: LogLevelPanic, regexes: mustCompileAll(`(?i)\b(panic|panicked|emergency)\b`)},
-	{level: LogLevelFatal, regexes: mustCompileAll(`(?i)\b(fatal|critical|crit)\b`)},
+	{level: LogLevelPanic, words: []string{"panic", "emergency"}, regexes: mustCompileAll(`(?i)\b(panic|panicked|emergency)\b`)},
+	{level: LogLevelFatal, words: []string{"fatal", "crit"}, regexes: mustCompileAll(`(?i)\b(fatal|critical|crit)\b`)},
 	{
 		level:   LogLevelError,
+		words:   []string{"err", "fail", "exception", "traceback"},
 		regexes: mustCompileAll(`(?i)\b(error|err|fail|failed|exception|traceback)\b`, `\b`+exceptionName),
 		phrases: []string{"connection refused", "permission denied", "access denied", "out of memory", "segmentation fault"},
 	},
 	{
 		level:   LogLevelWarn,
+		words:   []string{"warn", "wrn"},
 		regexes: mustCompileAll(`(?i)\b(warn|warning|wrn)\b`),
 		phrases: []string{"deprecated", "timed out", "unable to", "could not"},
 	},
-	{level: LogLevelInfo, regexes: mustCompileAll(`(?i)\b(info|inf|notice|log)\b`)},
-	{level: LogLevelDebug, regexes: mustCompileAll(`(?i)\b(debug|dbg)\b`)},
-	{level: LogLevelTrace, regexes: mustCompileAll(`(?i)\b(trace|trc)\b`)},
+	{level: LogLevelInfo, words: []string{"inf", "notice", "log"}, regexes: mustCompileAll(`(?i)\b(info|inf|notice|log)\b`)},
+	{level: LogLevelDebug, words: []string{"debug", "dbg"}, regexes: mustCompileAll(`(?i)\b(debug|dbg)\b`)},
+	{level: LogLevelTrace, words: []string{"trace", "trc"}, regexes: mustCompileAll(`(?i)\b(trace|trc)\b`)},
 }
 
 func mustCompileAll(patterns ...string) []*regexp.Regexp {
@@ -86,11 +92,13 @@ var notALevelRegex = regexp.MustCompile(`(?i)\b(?:no|0|zero|without)\s+(?:errors
 	`|\bstack (?:back)?trace\b`)
 
 // notALevelHints are the substrings notALevelRegex needs, as levelKeywords is
-// for the level regexes.
+// for the level regexes. Its "error <noun>" branch is checked by noun instead,
+// since nearly every ERROR line contains "error ".
 var notALevelHints = []string{
-	"no ", "0 ", "zero ", "without ", "nil", "null", "none", "false", `""`, "''",
-	"error ", "error_", "error-", "stack ",
+	"no ", "0 ", "zero ", "without ", "nil", "null", "none", "false", `""`, "''", "stack ",
 }
+
+var notALevelErrorNouns = []string{"handl", "page", "report", "track", "rate", "count", "boundar"}
 
 // Common timestamp formats found in Docker logs
 var timestampFormats = []string{
@@ -127,7 +135,27 @@ var structuredFieldRegex = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_.-]*)\s*[:=
 // timestamps; without one, the line itself starts the raw), a message the app
 // stamped itself ("2026-09-14 12:53:29.888 | WARN", "[2026-09-14 12:53:30]
 // INFO").
-var indentedRawRegex = regexp.MustCompile(`^(?:\d{4}-\d{2}-\d{2}T\S+ )?[ \t]`)
+// isIndentedRaw matches `^(?:\d{4}-\d{2}-\d{2}T\S+ )?[ \t]` by hand, since it
+// runs on every grouped line.
+func isIndentedRaw(raw string) bool {
+	if len(raw) > 11 && isDigits(raw[0:4]) && raw[4] == '-' && isDigits(raw[5:7]) &&
+		raw[7] == '-' && isDigits(raw[8:10]) && raw[10] == 'T' {
+		if i := strings.IndexAny(raw[11:], " \t\n\f\r"); i > 0 && raw[11+i] == ' ' && len(raw) > 12+i {
+			return raw[12+i] == ' ' || raw[12+i] == '\t'
+		}
+	}
+	return raw != "" && (raw[0] == ' ' || raw[0] == '\t')
+}
+
+func isDigits(s string) bool {
+	for i := range len(s) {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 var appStampedRegex = regexp.MustCompile(`^\W{0,2}\d{4}[-/]\d{2}[-/]\d{2}[T ]\d{2}:\d{2}:\d{2}`)
 
 // stackLineRegex matches an unindented line that can only belong to a trace.
@@ -146,6 +174,19 @@ var exceptionHeaderRegex = regexp.MustCompile(`^(?:[\w$]+\.)*` + exceptionName)
 // It puts two spaces after the colon; a multi-line STATEMENT ends at the colon.
 // The group is the backend PID of the default "%m [%p] " line prefix.
 var postgresDetailRegex = regexp.MustCompile(`(?:^|\[(\d+)\] |[\]\s])(?:DETAIL|HINT|QUERY|CONTEXT|LOCATION|STATEMENT|BACKTRACE):(?:  |$)`)
+
+// The regex is unanchored and runs on every grouped line, so lines without a
+// keyword are ruled out with substring checks first.
+var postgresDetailKeywords = []string{"DETAIL:", "HINT:", "QUERY:", "CONTEXT:", "LOCATION:", "STATEMENT:", "BACKTRACE:"}
+
+func mayBePostgresDetail(message string) bool {
+	for _, keyword := range postgresDetailKeywords {
+		if strings.Contains(message, keyword) {
+			return true
+		}
+	}
+	return false
+}
 
 // How far an unstamped spill-over line may trail a stamped entry and still fold into it.
 const continuationWindow = 2 * time.Second
@@ -199,13 +240,14 @@ func DetectLogLevel(message string) LogLevel {
 	if !containsAny(lower, levelKeywords) {
 		return LogLevelUnknown
 	}
-	if containsAny(lower, notALevelHints) {
+	if containsAny(lower, notALevelHints) ||
+		(strings.Contains(lower, "error") && containsAny(lower, notALevelErrorNouns)) {
 		message = notALevelRegex.ReplaceAllString(message, "")
 		lower = strings.ToLower(message)
 	}
 	for _, words := range levelWords {
 		for _, regex := range words.regexes {
-			if regex.MatchString(message) {
+			if containsAny(lower, words.words) && regex.MatchString(message) {
 				return words.level
 			}
 		}
@@ -252,9 +294,12 @@ func extractExplicitLogLevel(message, lower string) (LogLevel, bool) {
 	}
 
 	if containsAny(lower, levelKeyNames) {
-		if matches := otelSeverityNumberRegex.FindStringSubmatch(message); len(matches) == 2 {
-			if level, ok := normalizeOtelSeverityNumber(matches[1]); ok {
-				return level, true
+		// The OTel regex needs severity_number or severitynumber.
+		if strings.Contains(lower, "severity") {
+			if matches := otelSeverityNumberRegex.FindStringSubmatch(message); len(matches) == 2 {
+				if level, ok := normalizeOtelSeverityNumber(matches[1]); ok {
+					return level, true
+				}
 			}
 		}
 
@@ -265,7 +310,8 @@ func extractExplicitLogLevel(message, lower string) (LogLevel, bool) {
 		}
 	}
 
-	if containsAny(lower, levelKeywords) {
+	// Every prefix the regex accepts starts with a bracket or a level word.
+	if strings.IndexByte("[(<tdviwnefcp", lower[0]) >= 0 && containsAny(lower, levelKeywords) {
 		if matches := prefixedLevelRegex.FindStringSubmatch(message); len(matches) == 2 {
 			if level, ok := normalizeLogLevel(matches[1]); ok {
 				return level, true
@@ -447,7 +493,11 @@ func CleanMessage(message string) string {
 	if i := strings.LastIndexByte(message, '\r'); i >= 0 {
 		message = message[i+1:]
 	}
-	return strings.TrimSpace(ansiRegex.ReplaceAllString(message, ""))
+	// ReplaceAllString copies the message even when nothing matches.
+	if strings.Contains(message, "\x1b[") {
+		message = ansiRegex.ReplaceAllString(message, "")
+	}
+	return strings.TrimSpace(message)
 }
 
 // ParseLogLine parses a Docker log line into a structured LogEntry
@@ -473,7 +523,7 @@ func GroupRelatedLogEntries(entries []LogEntry) []LogEntry {
 
 	for _, entry := range entries {
 		if len(grouped) > 0 && IsContinuationLogEntry(entry, grouped[len(grouped)-1]) {
-			appendContinuationLine(&grouped[len(grouped)-1], entry)
+			AppendContinuationLine(&grouped[len(grouped)-1], entry)
 			continue
 		}
 
@@ -501,16 +551,18 @@ func GroupRelatedLogEntries(entries []LogEntry) []LogEntry {
 //     that event (progress bar, access log, bare print).
 func IsContinuationLogEntry(entry LogEntry, previous LogEntry) bool {
 	message := strings.TrimSpace(entry.Message)
-	if message == "" || indentedRawRegex.MatchString(entry.Raw) {
+	if message == "" || isIndentedRaw(entry.Raw) {
 		return true
 	}
 	if strings.TrimSpace(previous.Message) == "" {
 		return false
 	}
 
-	if matches := postgresDetailRegex.FindStringSubmatch(message); matches != nil {
-		// Backends interleave: only fold into a line from the same PID.
-		return matches[1] == "" || strings.Contains(previous.Message, "["+matches[1]+"] ")
+	if mayBePostgresDetail(message) {
+		if matches := postgresDetailRegex.FindStringSubmatch(message); matches != nil {
+			// Backends interleave: only fold into a line from the same PID.
+			return matches[1] == "" || strings.Contains(previous.Message, "["+matches[1]+"] ")
+		}
 	}
 
 	if isProblemLevel(previous.Level) {
@@ -538,7 +590,8 @@ func IsContinuationLogEntry(entry LogEntry, previous LogEntry) bool {
 		entry.Timestamp.Sub(previous.Timestamp) <= continuationWindow
 }
 
-func appendContinuationLine(entry *LogEntry, continuation LogEntry) {
+// AppendContinuationLine folds continuation into entry.
+func AppendContinuationLine(entry *LogEntry, continuation LogEntry) {
 	message := strings.TrimSpace(continuation.Message)
 	if message != "" {
 		if entry.Message == "" {

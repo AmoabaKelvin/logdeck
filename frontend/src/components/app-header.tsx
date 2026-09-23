@@ -14,9 +14,10 @@ const NAV_ITEMS = [
 	{ to: "/images", label: "Images", exact: false },
 	{ to: "/volumes", label: "Volumes", exact: false },
 	{ to: "/networks", label: "Networks", exact: false },
+	{ to: "/search", label: "Search", exact: false },
 ] as const;
 
-// text-sm on mobile so all four labels fit a 390px row; the vertical
+// text-sm on mobile keeps the labels on one phone-width row; the vertical
 // padding carries the touch target instead.
 const navLinkClass =
 	"rounded-md px-2.5 py-2 text-sm whitespace-nowrap text-muted-foreground hover:text-foreground sm:py-1.5";

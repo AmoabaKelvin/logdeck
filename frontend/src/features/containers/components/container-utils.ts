@@ -71,6 +71,12 @@ export function formatContainerName(names: string[]) {
 	return primary.startsWith("/") ? primary.slice(1) : primary;
 }
 
+// Every stack member carries the project name; repeating it on every log line
+// would just eat the column. "logdeck-api-1" reads as "api-1".
+export function stripProjectPrefix(name: string, project: string) {
+	return name.startsWith(`${project}-`) ? name.slice(project.length + 1) : name;
+}
+
 const SHORT_DIGEST_LENGTH = 12;
 
 const shortenDigest = (reference: string) =>

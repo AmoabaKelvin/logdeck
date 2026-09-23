@@ -280,8 +280,9 @@ func registerMCPTools(s *mcp.Server, a *app) []string {
 	registerListTool(s, a, register, "list_networks", "List networks across all hosts.", "/networks", "networks")
 
 	type historySearchInput struct {
-		Container string `json:"container" jsonschema:"logical container name"`
+		Container string `json:"container,omitempty" jsonschema:"logical container name; omit to search every container"`
 		Host      string `json:"host,omitempty" jsonschema:"host name"`
+		Project   string `json:"project,omitempty" jsonschema:"Compose project name"`
 		Search    string `json:"search,omitempty" jsonschema:"text or regex to match"`
 		Regex     bool   `json:"regex,omitempty" jsonschema:"treat search as a regular expression"`
 		Levels    string `json:"levels,omitempty" jsonschema:"comma-separated levels (e.g. ERROR,WARN)"`
@@ -290,12 +291,17 @@ func registerMCPTools(s *mcp.Server, a *app) []string {
 		Limit     int    `json:"limit,omitempty" jsonschema:"max lines per page (default 100, max 500)"`
 		Cursor    string `json:"cursor,omitempty" jsonschema:"nextCursor from a previous page to fetch older lines"`
 	}
-	tool = &mcp.Tool{Name: "history_search", Description: "Search persisted (stored) logs for a container. Pages backwards; follow nextCursor for older lines.", Annotations: readOnlyAnnot()}
+	tool = &mcp.Tool{Name: "history_search", Description: "Search persisted (stored) logs of one container, a Compose project, or every container. Pages backwards; follow nextCursor for older lines. A page can hold fewer lines than asked, even none, when its scan budget ran out: scannedTo says how far back it searched.", Annotations: readOnlyAnnot()}
 	mcp.AddTool(s, tool, func(ctx context.Context, _ *mcp.CallToolRequest, in historySearchInput) (*mcp.CallToolResult, any, error) {
 		query := url.Values{}
-		query.Set("container", in.Container)
+		if in.Container != "" {
+			query.Set("container", in.Container)
+		}
 		if in.Host != "" {
 			query.Set("host", in.Host)
+		}
+		if in.Project != "" {
+			query.Set("project", in.Project)
 		}
 		if in.Search != "" {
 			query.Set("search", in.Search)

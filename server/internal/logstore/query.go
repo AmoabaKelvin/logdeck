@@ -2,13 +2,13 @@ package logstore
 
 import (
 	"context"
-	"encoding/base64"
+	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -24,6 +24,12 @@ const (
 	// backwards until it holds a full page or history runs out; a page is never
 	// both empty and continuable.
 	scanChunk = 1000
+	// scanBudget bounds how many rows one Query reads, so a rare term cannot
+	// hold a request for seconds; the page resumes where it stopped.
+	scanBudget = 200_000
+	// firstChunk is what each stream of a multi-container page reads first;
+	// a stream the merge keeps returning to doubles its chunk.
+	firstChunk = 64
 )
 
 // ErrInvalidCursor is returned when LogQuery.Cursor is not a cursor this store
@@ -46,12 +52,13 @@ type StoredContainer struct {
 	ExcludedReason string    `json:"excludedReason,omitempty"`
 }
 
-// LogQuery selects stored lines for one logical container. Host is optional
-// (empty matches the name on any host); Since/Until, Levels, and Search are
-// all optional filters.
+// LogQuery selects stored lines. Every field is optional: Container, Host,
+// and Project narrow which containers are read (none reads them all), and
+// Since/Until, Levels, and Search filter their lines.
 type LogQuery struct {
 	Host      string
 	Container string // logical container name
+	Project   string // Compose project
 	Since     time.Time
 	Until     time.Time
 	Levels    []string // level names, e.g. "ERROR"; empty = all levels
@@ -67,6 +74,9 @@ type LogQuery struct {
 type LogPage struct {
 	Entries    []models.LogEntry `json:"entries"`
 	NextCursor string            `json:"nextCursor,omitempty"`
+	// ScannedTo is set when Query hit its scan budget before filling the page:
+	// everything newer has been searched, and NextCursor carries on below it.
+	ScannedTo time.Time `json:"scannedTo,omitzero"`
 }
 
 // ListContainers returns every logical container in the store, newest data
@@ -198,20 +208,29 @@ func (s *Store) lineSpans(ctx context.Context) (map[int64]lineSpan, error) {
 // generation is one stored container generation resolved for a query.
 type generation struct {
 	ref  int64
+	host string
 	id   string
 	name string
 }
 
-// Query returns one page of stored lines for a logical container. Every
-// generation of the name is read as one timeline, which is what makes history
-// survive a container rebuild: the caller asks for "web" and gets the lines of
-// every engine container that has ever been called "web" on that host.
+// Query returns one page of stored lines, merged by timestamp across the
+// containers it reads. Every generation of a name is part of its timeline,
+// which is what makes history survive a rebuild: the caller asks for "web" and
+// gets the lines of every engine container that has ever been called "web".
+// It reads at most scanBudget rows; a page cut short by that carries ScannedTo.
+func (s *Store) Query(ctx context.Context, q LogQuery) (LogPage, error) {
+	return s.readPage(ctx, q, scanBudget)
+}
+
+// readPage merges one stream per generation, newest entry first. Each
+// generation is grouped on its own, so however two containers' lines
+// interleave, one's continuation lines never fold into the other's entry.
 //
 // Rows are read unfiltered and only then grouped and filtered, which is the
 // order the live path uses. Filtering rows in SQL first would delete the
 // continuation lines of every multi-line entry — they classify as UNKNOWN — and
 // a level-filtered stack trace would come back as its first line with no body.
-func (s *Store) Query(ctx context.Context, q LogQuery) (LogPage, error) {
+func (s *Store) readPage(ctx context.Context, q LogQuery, budget int) (LogPage, error) {
 	limit := q.Limit
 	if limit <= 0 {
 		limit = DefaultQueryLimit
@@ -223,303 +242,109 @@ func (s *Store) Query(ctx context.Context, q LogQuery) (LogPage, error) {
 		return LogPage{}, err
 	}
 
-	generations, err := s.generations(ctx, q.Host, q.Container)
+	var cursor *pageCursor
+	if q.Cursor != "" {
+		if cursor, err = decodeCursor(q.Cursor); err != nil {
+			return LogPage{}, err
+		}
+	}
+
+	// The whole page reads one snapshot, so a line sealed mid-page is never
+	// read twice or missed, and the read lock is taken once rather than per
+	// statement.
+	conn, err := s.db.Conn(ctx)
 	if err != nil {
 		return LogPage{}, err
 	}
-	if len(generations) == 0 {
-		return LogPage{Entries: []models.LogEntry{}}, nil
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, "BEGIN"); err != nil {
+		return LogPage{}, err
 	}
-
-	refs := make([]int64, len(generations))
-	byRef := make(map[int64]generation, len(generations))
-	for i, gen := range generations {
-		refs[i] = gen.ref
-		byRef[gen.ref] = gen
-	}
-
-	var (
-		from   cursorPos
-		hasPos bool
-	)
-	if q.Cursor != "" {
-		tsNS, seq, err := decodeCursor(q.Cursor)
-		if err != nil {
-			return LogPage{}, err
-		}
-		from, hasPos = cursorPos{tsNS: tsNS, seq: seq}, true
-	}
+	defer func() { _, _ = conn.ExecContext(context.Background(), "ROLLBACK") }()
 
 	// One extra entry beyond the page is what proves an older page exists, and
-	// one more row covers the entry held back at the chunk boundary below, so an
-	// unfiltered query still settles in a single round.
-	chunk := limit + 2
+	// one more row covers the entry held back at the chunk boundary, so an
+	// unfiltered page of one generation still settles in a single round.
+	r := &pageRead{conn: conn, q: q, match: match, chunk: limit + 2}
 	if match.active() {
-		chunk = max(chunk, scanChunk)
+		r.chunk = max(r.chunk, scanChunk)
 	}
 
-	var (
-		entries []models.LogEntry // matched, oldest-first
-		anchors []cursorPos
-		// carry holds the rows of the oldest entry of the previous round. That
-		// entry can still grow — its parent line may be one row older than the
-		// chunk reached — so it is regrouped with the next, older chunk instead of
-		// being filtered while incomplete.
-		carry []storedRow
-	)
+	streams, err := s.openStreams(ctx, r, cursor)
+	if err != nil {
+		return LogPage{}, err
+	}
+
+	var entries []models.LogEntry // newest-first
+	start := cursorPos{tsNS: math.MaxInt64}
+	if cursor != nil {
+		start = cursor.pos
+	}
+	scanned := 0
 	for {
-		rows, err := s.scanRows(ctx, refs, q, from, hasPos, chunk, byRef)
+		st := newestStream(streams)
+		if st == nil {
+			return newPage(entries, ""), nil
+		}
+		if len(st.pending) > 0 {
+			if len(entries) == limit {
+				return newPage(entries, encodeCursor(st.ceiling(), streams)), nil
+			}
+			entries = append(entries, st.pending[0].entry)
+			st.pending = st.pending[1:]
+			continue
+		}
+		// The budget only stops a page that has moved past its own cursor. A
+		// resumed page starts every stream at the cursor, so stopping before
+		// each has read once would hand the same cursor back forever.
+		if scanned >= budget && start.newer(st.ceiling()) {
+			page := newPage(entries, encodeCursor(st.ceiling(), streams))
+			page.ScannedTo = time.Unix(0, st.ceiling().tsNS).UTC()
+			return page, nil
+		}
+		// Each chunk's statements run uncancellable: the driver starts a watcher
+		// goroutine per cancellable statement, so the page checks between chunks.
+		if err := ctx.Err(); err != nil {
+			return LogPage{}, err
+		}
+		n, err := s.advance(context.WithoutCancel(ctx), r, st)
 		if err != nil {
 			return LogPage{}, err
 		}
-		// The scan resumes from the oldest row actually read this round; the
-		// carried rows were read before it and are newer.
-		exhausted := len(rows) < chunk
-		if !exhausted {
-			from, hasPos = rows[len(rows)-1].pos, true
-		}
-
-		// Rows are newest-first, so the carried rows lead the chunk they continue
-		// into.
-		combined := rows
-		if len(carry) > 0 {
-			combined = make([]storedRow, 0, len(carry)+len(rows))
-			combined = append(combined, carry...)
-			combined = append(combined, rows...)
-		}
-
-		// Each round groups only the rows it just read (plus the carried entry),
-		// so a filter that matches nothing for many rounds costs one grouping per
-		// row rather than one per row per round.
-		grouped, groupAnchors, open := groupRows(combined)
-		carry = nil
-		if !exhausted && len(grouped) > 0 {
-			carry = combined[open:]
-			grouped, groupAnchors = grouped[1:], groupAnchors[1:]
-		}
-
-		matched, matchedAnchors := match.filter(grouped, groupAnchors)
-		// This round read strictly older rows than the last, and pages are
-		// oldest-first.
-		entries = append(matched, entries...)
-		anchors = append(matchedAnchors, anchors...)
-
-		// Stop once the page is provably full, or once history runs out — never
-		// hand back a page that is empty but still carries a cursor.
-		if len(entries) > limit || exhausted {
-			return newPage(entries, anchors, limit), nil
-		}
+		scanned += n
 	}
 }
 
-// newPage keeps the newest limit entries of the scanned window. Pages walk
-// backwards through history, so an entry older than the page is not truncated
-// data: it is the proof that another page exists, and its position is the
-// cursor the next page resumes from.
-func newPage(entries []models.LogEntry, anchors []cursorPos, limit int) LogPage {
-	if len(entries) <= limit {
-		if entries == nil {
-			entries = []models.LogEntry{}
-		}
-		return LogPage{Entries: entries}
+func newPage(entries []models.LogEntry, cursor string) LogPage {
+	if entries == nil {
+		entries = []models.LogEntry{}
 	}
-	cut := len(entries) - limit
-	return LogPage{
-		Entries:    entries[cut:],
-		NextCursor: encodeCursor(anchors[cut].tsNS, anchors[cut].seq),
-	}
+	slices.Reverse(entries)
+	return LogPage{Entries: entries, NextCursor: cursor}
 }
 
-// cursorPos is the keyset position of one stored line: its timestamp and its
-// store-wide sequence number. seq keeps the position stable when the line moves
-// from the hot table into a sealed block, where it no longer has a rowid.
-type cursorPos struct {
-	tsNS int64
-	seq  int64
-}
-
-// newer reports whether p sorts before other in the newest-first order pages
-// are read in.
-func (p cursorPos) newer(other cursorPos) bool {
-	if p.tsNS != other.tsNS {
-		return p.tsNS > other.tsNS
-	}
-	return p.seq > other.seq
-}
-
-// storedRow is one scanned row: the entry it parses to and where it sits.
-type storedRow struct {
-	entry models.LogEntry
-	pos   cursorPos
-}
-
-// scanRows reads one chunk of lines, newest-first, strictly older than from.
-//
-// Lines live in two places — the hot table holds what has not been sealed yet,
-// sealed blocks hold everything older — and a generation's hot lines are not
-// always newer than another generation's sealed ones. So both sources are read
-// and merged. Taking the newest chunk of the union is exact: each source
-// contributed its own newest chunk, so nothing that belongs in the result was
-// left behind.
-func (s *Store) scanRows(ctx context.Context, refs []int64, q LogQuery, from cursorPos, hasPos bool, chunk int, byRef map[int64]generation) ([]storedRow, error) {
-	hot, err := s.scanHotRows(ctx, refs, q, from, hasPos, chunk, byRef)
-	if err != nil {
-		return nil, err
-	}
-	sealed, err := s.scanSealedRows(ctx, refs, q, from, hasPos, chunk, byRef)
-	if err != nil {
-		return nil, err
-	}
-
-	merged := make([]storedRow, 0, len(hot)+len(sealed))
-	merged = append(merged, hot...)
-	merged = append(merged, sealed...)
-	sort.SliceStable(merged, func(i, j int) bool {
-		return merged[i].pos.newer(merged[j].pos)
-	})
-	if len(merged) > chunk {
-		merged = merged[:chunk]
-	}
-	return merged, nil
-}
-
-// scanHotRows reads unsealed lines straight out of log_lines.
-func (s *Store) scanHotRows(ctx context.Context, refs []int64, q LogQuery, from cursorPos, hasPos bool, chunk int, byRef map[int64]generation) ([]storedRow, error) {
-	statement, args := buildSelect(refs, q, from, hasPos, chunk)
-
-	rows, err := s.db.QueryContext(ctx, statement, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	scanned := make([]storedRow, 0, chunk)
-	for rows.Next() {
-		var (
-			seq    int64
-			ref    int64
-			tsNS   int64
-			stream int
-			raw    string
-		)
-		if err := rows.Scan(&seq, &ref, &tsNS, &stream, &raw); err != nil {
-			return nil, err
-		}
-		scanned = append(scanned, storedRow{
-			entry: entryFromRow(tsNS, stream, raw, byRef[ref]),
-			pos:   cursorPos{tsNS: tsNS, seq: seq},
-		})
-	}
-	return scanned, rows.Err()
-}
-
-// scanSealedRows reads compressed blocks newest-first, stopping as soon as it
-// holds a full chunk of lines. Blocks outside the query's time window, or
-// entirely newer than the cursor, are ruled out by their stored bounds and are
-// never decompressed.
-func (s *Store) scanSealedRows(ctx context.Context, refs []int64, q LogQuery, from cursorPos, hasPos bool, chunk int, byRef map[int64]generation) ([]storedRow, error) {
-	placeholders, args := refArgs(refs)
-	where := []string{"container_ref IN (" + placeholders + ")"}
-	if !q.Since.IsZero() {
-		where = append(where, "ts_max_ns >= ?")
-		args = append(args, q.Since.UnixNano())
-	}
-	if !q.Until.IsZero() {
-		where = append(where, "ts_min_ns <= ?")
-		args = append(args, q.Until.UnixNano())
-	}
-	if hasPos {
-		// A block every one of whose lines is newer than the cursor holds
-		// nothing this page can use.
-		where = append(where, "(ts_min_ns < ? OR (ts_min_ns = ? AND seq_min < ?))")
-		args = append(args, from.tsNS, from.tsNS, from.seq)
-	}
-
-	rows, err := s.db.QueryContext(ctx,
-		"SELECT container_ref, ts_max_ns, seq_max, payload FROM log_blocks WHERE "+
-			strings.Join(where, " AND ")+" ORDER BY ts_max_ns DESC, seq_max DESC", args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
+// generations resolves the generation rows a query reads: every generation of
+// the logical container name, or of every container when name is empty. host
+// and project narrow the set when they are set.
+func generations(ctx context.Context, conn *sql.Conn, host, name, project string) ([]generation, error) {
+	statement := "SELECT id, host, container_id, name FROM containers"
 	var (
-		scanned []storedRow
-		scratch []byte
+		where []string
+		args  []any
 	)
-	for rows.Next() {
-		var (
-			ref     int64
-			tsMax   int64
-			seqMax  int64
-			payload []byte
-		)
-		if err := rows.Scan(&ref, &tsMax, &seqMax, &payload); err != nil {
-			return nil, err
-		}
-
-		// Blocks arrive ordered by their newest line, but a backfill re-read
-		// makes their time ranges overlap, so a later block can still hold lines
-		// newer than ones already collected. Stopping on count alone would drop
-		// those, and the cursor would then page straight past them. Stop only
-		// once this block's newest possible position is older than the chunk
-		// boundary, which is the point nothing further can qualify.
-		if len(scanned) >= chunk {
-			sort.SliceStable(scanned, func(i, j int) bool {
-				return scanned[i].pos.newer(scanned[j].pos)
-			})
-			scanned = scanned[:chunk]
-			if !(cursorPos{tsNS: tsMax, seq: seqMax}).newer(scanned[chunk-1].pos) {
-				break
-			}
-		}
-
-		lines, next, err := s.codec.unpack(payload, scratch)
-		if err != nil {
-			return nil, err
-		}
-		scratch = next
-
-		gen := byRef[ref]
-		for i := len(lines) - 1; i >= 0; i-- { // newest-first within the block
-			l := lines[i]
-			pos := cursorPos{tsNS: l.tsNS, seq: l.seq}
-			if hasPos && !from.newer(pos) {
-				continue
-			}
-			if !q.Since.IsZero() && l.tsNS < q.Since.UnixNano() {
-				continue
-			}
-			if !q.Until.IsZero() && l.tsNS > q.Until.UnixNano() {
-				continue
-			}
-			scanned = append(scanned, storedRow{
-				entry: entryFromRow(l.tsNS, l.stream, l.raw, gen),
-				pos:   pos,
-			})
+	for _, filter := range []struct{ column, value string }{
+		{"host", host}, {"name", name}, {"compose_project", project},
+	} {
+		if filter.value != "" {
+			where = append(where, filter.column+" = ?")
+			args = append(args, filter.value)
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return scanned, nil
-}
-
-// generations resolves a logical container name to its generation rows. An
-// empty host matches the name on every host.
-func (s *Store) generations(ctx context.Context, host, name string) ([]generation, error) {
-	if name == "" {
-		return nil, nil
+	if len(where) > 0 {
+		statement += " WHERE " + strings.Join(where, " AND ")
 	}
 
-	statement := "SELECT id, container_id, name FROM containers WHERE name = ?"
-	args := []any{name}
-	if host != "" {
-		statement += " AND host = ?"
-		args = append(args, host)
-	}
-
-	rows, err := s.db.QueryContext(ctx, statement, args...)
+	rows, err := conn.QueryContext(ctx, statement, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -528,40 +353,12 @@ func (s *Store) generations(ctx context.Context, host, name string) ([]generatio
 	var generations []generation
 	for rows.Next() {
 		var gen generation
-		if err := rows.Scan(&gen.ref, &gen.id, &gen.name); err != nil {
+		if err := rows.Scan(&gen.ref, &gen.host, &gen.id, &gen.name); err != nil {
 			return nil, err
 		}
 		generations = append(generations, gen)
 	}
 	return generations, rows.Err()
-}
-
-// buildSelect renders the keyset page query: newest-first over every generation
-// of the container, bounded by the time window and the cursor. Only filters that
-// cannot delete part of a multi-line entry live in SQL — level and search are
-// applied in Go, on grouped entries.
-func buildSelect(refs []int64, q LogQuery, from cursorPos, hasPos bool, chunk int) (string, []any) {
-	placeholders, args := refArgs(refs)
-	where := []string{"container_ref IN (" + placeholders + ")"}
-
-	if !q.Since.IsZero() {
-		where = append(where, "ts_ns >= ?")
-		args = append(args, q.Since.UnixNano())
-	}
-	if !q.Until.IsZero() {
-		where = append(where, "ts_ns <= ?")
-		args = append(args, q.Until.UnixNano())
-	}
-	if hasPos {
-		where = append(where, "(ts_ns < ? OR (ts_ns = ? AND seq < ?))")
-		args = append(args, from.tsNS, from.tsNS, from.seq)
-	}
-	args = append(args, chunk)
-
-	statement := "SELECT seq, container_ref, ts_ns, stream, raw FROM log_lines WHERE " +
-		strings.Join(where, " AND ") +
-		" ORDER BY ts_ns DESC, seq DESC LIMIT ?"
-	return statement, args
 }
 
 // matcher applies the level and search filters to grouped entries, with the
@@ -607,22 +404,6 @@ func (m matcher) matches(entry models.LogEntry) bool {
 	return true
 }
 
-// filter keeps the matching entries and their anchors, in order.
-func (m matcher) filter(entries []models.LogEntry, anchors []cursorPos) ([]models.LogEntry, []cursorPos) {
-	if !m.active() {
-		return entries, anchors
-	}
-	keptEntries := make([]models.LogEntry, 0, len(entries))
-	keptAnchors := make([]cursorPos, 0, len(anchors))
-	for i, entry := range entries {
-		if m.matches(entry) {
-			keptEntries = append(keptEntries, entry)
-			keptAnchors = append(keptAnchors, anchors[i])
-		}
-	}
-	return keptEntries, keptAnchors
-}
-
 // levelSeverities maps level names to the severities stored on each row,
 // dropping duplicates. An unrecognized name maps to UNKNOWN, matching the
 // live path's classification.
@@ -638,84 +419,4 @@ func levelSeverities(levels []string) []int {
 		}
 	}
 	return severities
-}
-
-// entryFromRow rebuilds a log entry from a stored row. The raw line is parsed
-// by the very same function the live path uses, so message cleaning and level
-// classification cannot drift; only the timestamp is taken from the stored
-// engine timestamp rather than re-derived, which keeps an app-embedded
-// timestamp inside the line from overriding it.
-func entryFromRow(tsNS int64, stream int, raw string, gen generation) models.LogEntry {
-	name := "stdout"
-	if stream == streamStderr {
-		name = "stderr"
-	}
-	entry := models.ParseLogLine(raw, name)
-	entry.Timestamp = time.Unix(0, tsNS).UTC()
-	entry.ContainerID = gen.id
-	entry.ContainerName = gen.name
-	return entry
-}
-
-// groupRows folds continuation lines into their parent entry exactly like the
-// live historical path, but only within a run of lines from the same
-// generation, so a rebuild boundary can never merge two containers' lines.
-//
-// Rows arrive newest-first; entries come back oldest-first, each paired with the
-// position of its *first* row. That is what the next page resumes from: a
-// continuation line is always newer than its parent, so resuming at the parent
-// keeps the entry whole rather than splitting its body across two pages.
-//
-// The third return is the index in rows at which the oldest entry begins. It is
-// the entry whose parent may lie beyond the scanned rows, so a caller that has
-// not reached the end of history hands those rows to the next, older chunk.
-func groupRows(rows []storedRow) ([]models.LogEntry, []cursorPos, int) {
-	entries := make([]models.LogEntry, 0, len(rows))
-	anchors := make([]cursorPos, 0, len(rows))
-	open := len(rows) - 1 // the oldest row starts the oldest entry
-
-	for i := len(rows) - 1; i >= 0; i-- {
-		row := rows[i]
-		if last := len(entries) - 1; last >= 0 && entries[last].ContainerID == row.entry.ContainerID {
-			// The live grouper decides; a folded pair comes back as one entry.
-			if merged := models.GroupRelatedLogEntries([]models.LogEntry{entries[last], row.entry}); len(merged) == 1 {
-				entries[last] = merged[0]
-				if last == 0 {
-					open = i // a continuation line of the oldest entry
-				}
-				continue
-			}
-		}
-		entries = append(entries, row.entry)
-		anchors = append(anchors, row.pos)
-	}
-	return entries, anchors, open
-}
-
-// encodeCursor renders the keyset position of the oldest entry on a page.
-// (ts_ns, seq) is unique and immutable — a line keeps its sequence number when
-// it is sealed into a block — so pages stay stable while new lines are ingested
-// and while older ones are compressed.
-func encodeCursor(tsNS, seq int64) string {
-	return base64.RawURLEncoding.EncodeToString(fmt.Appendf(nil, "%d:%d", tsNS, seq))
-}
-
-func decodeCursor(cursor string) (int64, int64, error) {
-	decoded, err := base64.RawURLEncoding.DecodeString(cursor)
-	if err != nil {
-		return 0, 0, ErrInvalidCursor
-	}
-	tsPart, seqPart, ok := strings.Cut(string(decoded), ":")
-	if !ok {
-		return 0, 0, ErrInvalidCursor
-	}
-	tsNS, err := strconv.ParseInt(tsPart, 10, 64)
-	if err != nil {
-		return 0, 0, ErrInvalidCursor
-	}
-	seq, err := strconv.ParseInt(seqPart, 10, 64)
-	if err != nil {
-		return 0, 0, ErrInvalidCursor
-	}
-	return tsNS, seq, nil
 }

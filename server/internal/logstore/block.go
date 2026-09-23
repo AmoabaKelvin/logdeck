@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -198,27 +199,51 @@ func (c *blockCodec) pack(lines []sealedLine) (payload, filter []byte, summary b
 // unpack decompresses a block back into its lines, rebuilding each raw line
 // exactly as the engine sent it.
 func (c *blockCodec) unpack(payload []byte, scratch []byte) ([]sealedLine, []byte, error) {
-	buf, err := c.dec.DecodeAll(payload, scratch[:0])
-	if err != nil {
-		return nil, scratch, fmt.Errorf("decompress log block: %w", err)
+	b := decodedBlock{buf: scratch}
+	if err := c.decode(payload, &b); err != nil {
+		return nil, b.buf, err
 	}
-	scratch = buf
+	for i := range b.lines {
+		b.lines[i].raw = b.raw(i)
+	}
+	return b.lines, b.buf, nil
+}
+
+// decodedBlock is a decompressed block whose raw lines are rebuilt only on
+// request, so a reader that needs a few lines of a block pays for those alone.
+// Its slices are reused by the next decode into it.
+type decodedBlock struct {
+	buf      []byte
+	lines    []sealedLine // raw is left empty; see raw
+	bodies   [][]byte     // into buf
+	verbatim []byte
+}
+
+func (c *blockCodec) decode(payload []byte, b *decodedBlock) error {
+	buf, err := c.dec.DecodeAll(payload, b.buf[:0])
+	if err != nil {
+		return fmt.Errorf("decompress log block: %w", err)
+	}
+	b.buf = buf
 
 	r := reader{buf: buf}
 	format := r.byteAt()
 	if format != blockFormatV1 {
-		return nil, scratch, fmt.Errorf("unknown log block format %d", format)
+		return fmt.Errorf("unknown log block format %d", format)
 	}
 	count := int(r.uvarint())
 	if count < 0 || count > blockLines*16 {
-		return nil, scratch, fmt.Errorf("log block claims %d lines", count)
+		return fmt.Errorf("log block claims %d lines", count)
 	}
 
-	lines := make([]sealedLine, count)
+	b.lines = slices.Grow(b.lines[:0], count)[:count]
+	b.bodies = slices.Grow(b.bodies[:0], count)[:count]
+	b.verbatim = slices.Grow(b.verbatim[:0], count)[:count]
+	lines := b.lines
 	prevTS, prevSeq := int64(0), int64(0)
 	for i := range lines {
 		prevTS += r.varint()
-		lines[i].tsNS = prevTS
+		lines[i] = sealedLine{tsNS: prevTS}
 	}
 	for i := range lines {
 		prevSeq += r.varint()
@@ -230,29 +255,39 @@ func (c *blockCodec) unpack(payload []byte, scratch []byte) ([]sealedLine, []byt
 	for i := range lines {
 		lines[i].level = int(r.byteAt())
 	}
-	verbatim := make([]byte, count)
-	for i := range verbatim {
-		verbatim[i] = r.byteAt()
+	for i := range b.verbatim {
+		b.verbatim[i] = r.byteAt()
 	}
 	lengths := make([]int, count)
 	for i := range lengths {
 		lengths[i] = int(r.uvarint())
 	}
 	if r.err != nil {
-		return nil, scratch, fmt.Errorf("decode log block: %w", r.err)
+		return fmt.Errorf("decode log block: %w", r.err)
 	}
-	for i := range lines {
-		body, err := r.stringOf(lengths[i])
+	for i := range b.bodies {
+		body, err := r.bytesOf(lengths[i])
 		if err != nil {
-			return nil, scratch, fmt.Errorf("decode log block: %w", err)
+			return fmt.Errorf("decode log block: %w", err)
 		}
-		if verbatim[i] == 1 {
-			lines[i].raw = body
-			continue
-		}
-		lines[i].raw = time.Unix(0, lines[i].tsNS).UTC().Format(fixedNanoLayout) + " " + body
+		b.bodies[i] = body
 	}
-	return lines, scratch, nil
+	return nil
+}
+
+// raw rebuilds line i exactly as the engine sent it, in one allocation.
+func (b *decodedBlock) raw(i int) string {
+	body := b.bodies[i]
+	if b.verbatim[i] == 1 {
+		return string(body)
+	}
+	var stamp [len(fixedNanoLayout)]byte
+	var raw strings.Builder
+	raw.Grow(len(stamp) + 1 + len(body))
+	raw.Write(time.Unix(0, b.lines[i].tsNS).UTC().AppendFormat(stamp[:0], fixedNanoLayout))
+	raw.WriteByte(' ')
+	raw.Write(body)
+	return raw.String()
 }
 
 // stripTimestamp removes the engine's timestamp prefix from raw when — and only
@@ -307,16 +342,16 @@ func (r *reader) varint() int64 {
 	return v
 }
 
-func (r *reader) stringOf(n int) (string, error) {
+func (r *reader) bytesOf(n int) ([]byte, error) {
 	if r.err != nil {
-		return "", r.err
+		return nil, r.err
 	}
 	if n < 0 || r.pos+n > len(r.buf) {
-		return "", errTruncatedBlock
+		return nil, errTruncatedBlock
 	}
-	s := string(r.buf[r.pos : r.pos+n])
+	b := r.buf[r.pos : r.pos+n]
 	r.pos += n
-	return s, nil
+	return b, nil
 }
 
 var errTruncatedBlock = fmt.Errorf("log block payload is truncated")

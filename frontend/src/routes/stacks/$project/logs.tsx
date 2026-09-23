@@ -7,6 +7,7 @@ import {
 	formatContainerName,
 	getComposeProject,
 	selectStackMembers,
+	stripProjectPrefix,
 	synthesizeRemovedContainers,
 } from "@/features/containers/components/container-utils";
 import { LogViewer } from "@/features/containers/components/log-viewer/log-viewer";
@@ -55,21 +56,18 @@ function StackLogsPage() {
 			(container) => getComposeProject(container.labels) === project,
 		);
 		if (stackContainers.length === 0) return undefined;
-		// Every member carries the project name; repeating it on every log line
-		// would just eat the column. "logdeck-api-1" reads as "api-1" here.
-		return stackContainers.map((container) => {
-			const name = formatContainerName(container.names);
-			return {
-				id: container.id,
-				host: container.host,
-				name: name.startsWith(`${project}-`)
-					? name.slice(project.length + 1)
-					: name,
-			};
-		});
+		return stackContainers.map((container) => ({
+			id: container.id,
+			host: container.host,
+			name: stripProjectPrefix(formatContainerName(container.names), project),
+		}));
 	}, [containers, project]);
 
 	const liveCount = targets?.length ?? 0;
+	// With nothing running, the stored logs of torn-down members are all there
+	// is to read. Wait for the container list so a live stack never flashes it.
+	const historyOnly =
+		isHistoryEnabled && containersData !== undefined && liveCount === 0;
 
 	// Same app-shell layout as the container detail page: chrome stays put on a
 	// wide screen and the log list takes the height that is left.
@@ -90,7 +88,9 @@ function StackLogsPage() {
 					</h1>
 					<p className="mt-1 truncate text-base/6 text-muted-foreground sm:text-sm/6">
 						{liveCount === 0
-							? "No running containers in this stack."
+							? historyOnly
+								? "No running containers in this stack. Showing stored logs."
+								: "No running containers in this stack."
 							: `Merged logs from ${liveCount} container${liveCount === 1 ? "" : "s"}.`}
 					</p>
 				</header>
@@ -108,6 +108,8 @@ function StackLogsPage() {
 						containerName={project}
 						viewState={logViewState}
 						targets={targets}
+						history={{ project }}
+						historyOnly={historyOnly}
 					/>
 				</section>
 			</main>

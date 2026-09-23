@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import type React from "react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,6 +19,7 @@ const server = {
 	historyStatus: vi.fn<() => HistoryStatus>(),
 	// An Error becomes the store's JSON error response.
 	historyLogs: vi.fn<(cursor: string | null) => HistoryLogsPage | Error>(),
+	historySearch: vi.fn<(params: URLSearchParams) => HistoryLogsPage>(),
 	logs: vi.fn<() => LogEntry[]>(),
 	stream:
 		vi.fn<(signal: AbortSignal | undefined) => ReadableStream<Uint8Array>>(),
@@ -32,6 +34,9 @@ function respond(input: RequestInfo | URL, init?: RequestInit): Response {
 		return Response.json(server.historyStatus());
 	}
 	if (url.pathname.endsWith("/history/logs")) {
+		if (!url.searchParams.has("container")) {
+			return Response.json(server.historySearch(url.searchParams));
+		}
 		const page = server.historyLogs(url.searchParams.get("cursor"));
 		return page instanceof Error
 			? Response.json({ error: page.message }, { status: 500 })
@@ -52,6 +57,7 @@ function respond(input: RequestInfo | URL, init?: RequestInit): Response {
 beforeEach(() => {
 	server.historyStatus.mockReset().mockReturnValue({ enabled: false });
 	server.historyLogs.mockReset().mockReturnValue({ logs: [], count: 0 });
+	server.historySearch.mockReset().mockReturnValue({ logs: [], count: 0 });
 	server.logs.mockReset().mockReturnValue([]);
 	server.stream.mockReset();
 	vi.stubGlobal(
@@ -103,7 +109,12 @@ async function drainMicrotasks(iterations = 100) {
 	}
 }
 
-function Harness() {
+function Harness(
+	props: Pick<
+		React.ComponentProps<typeof LogViewer>,
+		"history" | "historyOnly"
+	>,
+) {
 	const viewState = useLocalLogViewState();
 	const [queryClient] = useState(
 		() =>
@@ -118,6 +129,8 @@ function Harness() {
 				containerId="container-1"
 				host="host-1"
 				viewState={viewState}
+				history={{ container: "container-1" }}
+				{...props}
 			/>
 		</QueryClientProvider>
 	);
@@ -396,6 +409,72 @@ describe("LogViewer history mode", () => {
 
 		expect(screen.getByText("No stored logs match these filters")).toBeTruthy();
 		expect(toast.error).not.toHaveBeenCalled();
+	});
+
+	async function renderSearch(props: React.ComponentProps<typeof Harness>) {
+		await act(async () => {
+			render(<Harness {...props} />);
+			await drainMicrotasks();
+		});
+		await settleQueries();
+		await settleQueries();
+	}
+
+	it("searches every container with a badge per row", async () => {
+		server.historySearch.mockReturnValue({
+			logs: [
+				{ level: "ERROR", message: "connection refused", containerName: "api" },
+				{ level: "ERROR", message: "upstream down", containerName: "proxy" },
+			],
+			count: 2,
+		});
+
+		await renderSearch({ history: {}, historyOnly: true });
+
+		expect(server.historyLogs).not.toHaveBeenCalled();
+		expect(server.historySearch).toHaveBeenCalledTimes(1);
+		expect(server.historySearch.mock.calls[0][0].has("project")).toBe(false);
+		expect(screen.getByText("connection refused")).toBeTruthy();
+		expect(screen.getByText("api")).toBeTruthy();
+		expect(screen.getByText("proxy")).toBeTruthy();
+	});
+
+	it("scopes stack history to the project and strips its prefix", async () => {
+		server.historySearch.mockReturnValue({
+			logs: [{ level: "INFO", message: "ready", containerName: "shop-api-1" }],
+			count: 1,
+		});
+
+		await renderSearch({ history: { project: "shop" }, historyOnly: true });
+
+		expect(server.historySearch.mock.calls[0][0].get("project")).toBe("shop");
+		expect(screen.getByText("api-1")).toBeTruthy();
+	});
+
+	it("waits for a click after a partial scan comes back empty", async () => {
+		server.historySearch.mockReturnValue({
+			logs: [],
+			count: 0,
+			nextCursor: "cursor-1",
+			scannedTo: "2026-09-23T02:40:00Z",
+		});
+
+		await renderSearch({ history: {}, historyOnly: true });
+		await settleQueries();
+
+		expect(server.historySearch).toHaveBeenCalledTimes(1);
+		expect(screen.getByText(/^No matches yet, searched back to /)).toBeTruthy();
+		expect(screen.getByText(/^Searched back to /)).toBeTruthy();
+
+		await act(async () => {
+			fireEvent.click(screen.getByRole("button", { name: "Search older" }));
+		});
+		await settleQueries();
+
+		expect(server.historySearch).toHaveBeenCalledTimes(2);
+		expect(server.historySearch.mock.calls[1][0].get("cursor")).toBe(
+			"cursor-1",
+		);
 	});
 });
 

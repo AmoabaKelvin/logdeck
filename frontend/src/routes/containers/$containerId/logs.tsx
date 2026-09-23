@@ -76,6 +76,7 @@ function ContainerLogsPage() {
 			)
 		: undefined;
 	const isRemoved = storedContainer !== undefined;
+	const containerName = container?.names?.[0] ?? storedContainer?.name;
 
 	// Inspect is where the interesting facts live: restart counts, health probe
 	// output, mounts, networks. The container list carries none of it.
@@ -153,9 +154,15 @@ function ContainerLogsPage() {
 						variant="page"
 						containerId={actualContainerId}
 						host={container?.host ?? storedContainer?.host}
-						containerName={container?.names?.[0] ?? storedContainer?.name}
+						containerName={containerName}
 						viewState={logViewState}
 						historyOnly={isRemoved}
+						history={{
+							container: (containerName ?? actualContainerId).replace(
+								/^\//,
+								"",
+							),
+						}}
 					/>
 				</section>
 			</main>
