@@ -64,7 +64,6 @@ export function useDeleteRemovedHistory() {
 	});
 }
 
-/** Purges every container's stored logs. */
 export function useDeleteAllHistory() {
 	const queryClient = useQueryClient();
 

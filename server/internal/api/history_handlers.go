@@ -126,8 +126,6 @@ func (ar *APIRouter) DeleteHistoryRemoved(w http.ResponseWriter, r *http.Request
 	})
 }
 
-// DeleteHistoryAll purges the stored logs of every container. Guarded like
-// DeleteHistoryContainer.
 func (ar *APIRouter) DeleteHistoryAll(w http.ResponseWriter, r *http.Request) {
 	if ar.logStore == nil {
 		WriteJsonResponse(w, http.StatusServiceUnavailable, map[string]string{
@@ -150,14 +148,11 @@ func (ar *APIRouter) DeleteHistoryAll(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// maxHistoryContainersLimit caps one page of GET /history/containers.
 const maxHistoryContainersLimit = 500
 
 // GetHistoryContainers lists the logical containers the store knows about.
-// search, sort, limit, and offset are optional: with none of them every
-// container comes back, sorted by host then name. total counts the containers
-// matching search; storedCount and removedCount ignore it. With persistence
-// disabled the list is simply empty.
+// With no query parameters every container comes back. total counts the
+// containers matching search; storedCount and removedCount ignore it.
 func (ar *APIRouter) GetHistoryContainers(w http.ResponseWriter, r *http.Request) {
 	params := r.URL.Query()
 
@@ -220,8 +215,6 @@ func (ar *APIRouter) GetHistoryContainers(w http.ResponseWriter, r *http.Request
 	})
 }
 
-// filterStoredContainers keeps the containers whose name, host, or compose
-// project contains search, ignoring case. The result is never nil.
 func filterStoredContainers(all []logstore.StoredContainer, search string) []logstore.StoredContainer {
 	needle := strings.ToLower(strings.TrimSpace(search))
 	if needle == "" {
@@ -238,8 +231,6 @@ func filterStoredContainers(all []logstore.StoredContainer, search string) []log
 	return matched
 }
 
-// parseNonNegativeInt reads an optional integer query parameter, writing the
-// 400 itself when it is malformed or negative. Absent means 0.
 func parseNonNegativeInt(w http.ResponseWriter, params url.Values, name string) (int, bool) {
 	value := params.Get(name)
 	if value == "" {

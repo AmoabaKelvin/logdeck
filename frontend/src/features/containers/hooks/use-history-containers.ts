@@ -18,8 +18,6 @@ export function useHistoryContainers(enabled = true) {
 	});
 }
 
-// One page of stored containers, filtered and sorted by the server. The
-// previous page stays on screen while the next one loads.
 export function useStoredContainersPage(
 	params: StoredContainersPageParams,
 	enabled = true,

@@ -227,8 +227,6 @@ export async function deleteRemovedHistory(): Promise<DeleteRemovedResult> {
 	};
 }
 
-// Drops the stored logs of every container. Running containers start a fresh
-// history with their next line.
 export async function deleteAllHistory(): Promise<DeleteRemovedResult> {
 	const response = await authenticatedFetch(`${BASE_URL}/containers`, {
 		method: "DELETE",
