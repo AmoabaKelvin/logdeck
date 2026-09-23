@@ -1,6 +1,7 @@
 package models
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -470,5 +471,20 @@ Stack trace:
 				}
 			}
 		})
+	}
+}
+
+func TestIsIndentedRawMatchesTheRegex(t *testing.T) {
+	oracle := regexp.MustCompile(`^(?:\d{4}-\d{2}-\d{2}T\S+ )?[ \t]`)
+	for _, raw := range []string{
+		"", " ", "\t", "x", "2026-09-15T12:55:38.123Z", "2026-09-15T12:55:38.123Z ",
+		"2026-09-15T12:55:38.123Z  at frame", "2026-09-15T12:55:38.123Z \tat frame",
+		"2026-09-15T12:55:38.123Z at frame", "2026-09-15T \tx", "2026-09-15T  x",
+		"2026-09-15Tx\t x", "2026-09-15Tx\n  x", "2026-9-15T1  x", "    indented",
+		"\tindented", "2026-09-15X12  x", "20a6-09-15T1  x", "2026-09-15T1 \t",
+	} {
+		if got, want := isIndentedRaw(raw), oracle.MatchString(raw); got != want {
+			t.Errorf("isIndentedRaw(%q) = %v, regex says %v", raw, got, want)
+		}
 	}
 }
