@@ -41,7 +41,7 @@ These are always available and read-only.
 - `list_events`: Docker or Podman events collected over a short bounded window.
 - `container_stats` / `host_stats`: live CPU and memory per container, and per-host system stats.
 - `list_images` / `list_volumes` / `list_networks`: images, volumes, and networks across hosts.
-- `history_search` / `history_status` / `history_containers`: query the persisted log store. Indexed, cursor-paginated, and readable even for containers that no longer exist. `history_containers` takes `search`, `sort`, `limit`, and `offset`.
+- `history_search` / `history_status` / `history_containers`: query the persisted log store. `history_search` reads one container, a Compose project (`project`), or every container when `container` is omitted. Indexed, cursor-paginated, and readable even for containers that no longer exist. `history_containers` takes `search`, `sort`, `limit`, and `offset`.
 
 ## Action tools
 

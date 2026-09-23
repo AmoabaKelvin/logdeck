@@ -19,7 +19,7 @@ LogDeck stores logs locally, so the history outlives the container that wrote it
 - History survives restarts, and rebuilds that give a container a new ID, such as `docker compose up --build`
 - Containers that no longer exist appear under a Removed filter, with their stored logs still readable
 - Retention caps evict the oldest lines first, at 50 MB per container and 1024 MB in total by default
-- Aggregated stack logs stay live-only
+- Search every container's stored logs at once, merged by time, or one Compose stack's
 
 [Read the guide](/docs/log-history)
 

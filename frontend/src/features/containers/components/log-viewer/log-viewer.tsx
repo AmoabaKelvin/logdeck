@@ -1,4 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { format } from "date-fns";
 import type React from "react";
 import {
 	useCallback,
@@ -29,6 +30,7 @@ import {
 } from "@/features/containers/api/get-container-logs-parsed";
 import { useContainerLogStream } from "@/features/containers/hooks/use-container-log-stream";
 import { useDebouncedValue } from "@/features/containers/hooks/use-debounced-value";
+import type { HistoryScope } from "@/features/containers/api/get-history";
 import { useHistoryLogs } from "@/features/containers/hooks/use-history-logs";
 import { useHistoryStatus } from "@/features/containers/hooks/use-history-status";
 import { mapRawRangeToGroupedRange } from "./animated-range";
@@ -46,6 +48,23 @@ import { LOG_LEVELS, type LogViewState } from "./use-log-view-state";
 // Typing in the search box changes a server query key in history mode; wait
 // for the user to pause before spending a round-trip.
 const HISTORY_SEARCH_DEBOUNCE_MS = 300;
+
+function formatScannedTo(iso: string): string {
+	return format(new Date(iso), "MMM d, HH:mm:ss");
+}
+
+function historyEmptyMessage(
+	error: Error | null,
+	hasOlder: boolean,
+	scannedToLabel: string | null,
+): string {
+	if (error)
+		return "Could not load stored logs. Adjust the filters or try again.";
+	if (!hasOlder) return "No stored logs match these filters";
+	if (scannedToLabel)
+		return `No matches yet, searched back to ${scannedToLabel}.`;
+	return "No matches in this window yet. Load older to keep looking.";
+}
 
 export interface LogViewerHandle {
 	// Used after a container recreate: restart the stream (or refetch) so the
@@ -71,6 +90,8 @@ interface LogViewerProps {
 	// The container no longer exists: stored logs are the only source, so the
 	// viewer is locked to history and the source toggle is hidden.
 	historyOnly?: boolean;
+	// The stored logs History mode reads. Without it the viewer is live-only.
+	history?: HistoryScope;
 	ref?: React.Ref<LogViewerHandle>;
 }
 
@@ -82,6 +103,7 @@ export function LogViewer({
 	viewState,
 	targets,
 	historyOnly = false,
+	history,
 	ref,
 }: LogViewerProps) {
 	const {
@@ -198,19 +220,18 @@ export function LogViewer({
 		};
 	}, [showFullscreen]);
 
-	// History reads a single container's stored logs by name; aggregate views
-	// have no per-container store to read.
-	const supportsHistory = !targets;
+	const supportsHistory = history !== undefined;
 	const { data: historyStatus } = useHistoryStatus(supportsHistory);
 	const historyEnabled = supportsHistory && historyStatus?.enabled === true;
 	const isHistory =
 		supportsHistory &&
 		(historyOnly || (historyEnabled && source === "history"));
 
-	const historyContainer = (containerName ?? containerId ?? "").replace(
-		/^\//,
-		"",
-	);
+	const title = (containerName ?? containerId ?? "").replace(/^\//, "");
+	// Rows name their container whenever the view can hold more than one.
+	const showContainerName =
+		targets !== undefined ||
+		(history !== undefined && history.container === undefined);
 	// The store filters server-side, so search goes with the request. Two cases
 	// stay client-side instead: "exclude matches" needs the non-matching lines
 	// the server would drop, and an invalid regex has nothing to send.
@@ -223,6 +244,7 @@ export function LogViewer({
 
 	const {
 		logs: historyLogs,
+		scannedTo,
 		error: historyError,
 		isLoading: isLoadingHistory,
 		isFetchingOlder,
@@ -231,7 +253,7 @@ export function LogViewer({
 		refetch: refetchHistory,
 	} = useHistoryLogs({
 		enabled: isHistory,
-		container: historyContainer,
+		scope: history ?? {},
 		host,
 		since,
 		until,
@@ -854,9 +876,16 @@ export function LogViewer({
 	// A page can come back empty with a cursor still pointing further back, so
 	// the slot must render on "more to load" as well as on content — otherwise
 	// there is no way to continue.
+	const scannedToLabel =
+		hasOlder && scannedTo ? formatScannedTo(scannedTo) : null;
 	const historyTopSlot =
 		isHistory && (hasOlder || logs.length > 0) ? (
-			<div className="flex items-center justify-center border-b px-3 py-2">
+			<div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b px-3 py-2">
+				{scannedToLabel && (
+					<span className="text-xs text-muted-foreground">
+						Searched back to {scannedToLabel}
+					</span>
+				)}
 				{hasOlder ? (
 					<Button
 						variant="outline"
@@ -870,6 +899,8 @@ export function LogViewer({
 								<Spinner className="mr-2 size-3.5" />
 								Loading older…
 							</>
+						) : scannedToLabel ? (
+							"Search older"
 						) : (
 							"Load older"
 						)}
@@ -916,7 +947,7 @@ export function LogViewer({
 			filteredCount={filteredLogs.length}
 			isHistory={isHistory}
 			showSourceToggle={historyEnabled && !historyOnly}
-			title={historyContainer}
+			title={title}
 			canFullscreen={canFullscreen}
 		/>
 	);
@@ -931,9 +962,7 @@ export function LogViewer({
 			totalCount={logs.length}
 			emptyMessage={
 				isHistory
-					? historyError
-						? "Could not load stored logs. Adjust the filters or try again."
-						: "No stored logs match these filters"
+					? historyEmptyMessage(historyError, hasOlder, scannedToLabel)
 					: undefined
 			}
 			topSlot={historyTopSlot}
@@ -942,7 +971,7 @@ export function LogViewer({
 			wrapText={wrapText}
 			fontSize={fontSize}
 			showTimestamps={showTimestamps}
-			showContainerName={targets !== undefined}
+			showContainerName={showContainerName}
 			searchMatches={searchMatches}
 			searchMatchSet={searchMatchSet}
 			currentMatchIndex={currentMatchIndex}

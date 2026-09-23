@@ -351,8 +351,6 @@ func TestHistoryLogsValidation(t *testing.T) {
 		name string
 		path string
 	}{
-		{"missing container", "/api/v1/history/logs"},
-		{"blank container", "/api/v1/history/logs?container=%20"},
 		{"unknown level", "/api/v1/history/logs?container=web&levels=ERROR,BOGUS"},
 		{"invalid regex", "/api/v1/history/logs?container=web&search=%5B&regex=true"},
 		{"non-integer limit", "/api/v1/history/logs?container=web&limit=lots"},
@@ -465,6 +463,35 @@ func TestHistoryLogsQuery(t *testing.T) {
 			t.Fatalf("expected no cursor at end of history, got %q", second.NextCursor)
 		}
 	})
+}
+
+func TestHistoryLogsAcrossContainers(t *testing.T) {
+	store, seed, db := newHistoryStoreDB(t)
+	seed("local", "abc123", "web", historyBase, "ERROR connection refused")
+	seed("local", "xyz789", "db", historyBase.Add(time.Second), "ready")
+	seed("remote", "def456", "cache", historyBase.Add(2*time.Second), "ERROR connection refused")
+	if _, err := db.Exec("UPDATE containers SET compose_project = 'shop' WHERE name IN ('web', 'db')"); err != nil {
+		t.Fatal(err)
+	}
+	router := newHistoryTestRouter(t, store)
+
+	body := historyLogs(t, router, "/api/v1/history/logs?search=refused")
+	if len(body.Logs) != 2 || body.Logs[0].ContainerName != "web" || body.Logs[1].Host != "remote" {
+		t.Fatalf("expected both containers' matches, oldest first, got %+v", body.Logs)
+	}
+	body = historyLogs(t, router, "/api/v1/history/logs?project=shop")
+	if len(body.Logs) != 2 || body.Logs[1].ContainerName != "db" {
+		t.Fatalf("expected the shop stack's two lines, got %+v", body.Logs)
+	}
+
+	w := doHistoryRequest(t, router, "/api/v1/history/logs?search=%5B&regex=true")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for an invalid pattern, got %d", w.Code)
+	}
+	w = doHistoryRequest(t, newHistoryTestRouter(t, nil), "/api/v1/history/logs")
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 with persistence disabled, got %d", w.Code)
+	}
 }
 
 func TestHistoryRequiresAuth(t *testing.T) {

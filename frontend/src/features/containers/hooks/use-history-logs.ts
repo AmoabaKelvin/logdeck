@@ -2,7 +2,12 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import type { LogEntry, LogLevel } from "../api/get-container-logs-parsed";
-import { getHistoryLogs, type HistoryLogsPage } from "../api/get-history";
+import {
+	getHistoryLogs,
+	type HistoryLogsPage,
+	type HistoryScope,
+} from "../api/get-history";
+import { stripProjectPrefix } from "../components/container-utils";
 
 export const HISTORY_PAGE_SIZE = 500;
 
@@ -17,9 +22,28 @@ export function flattenHistoryPages(pages: HistoryLogsPage[]): LogEntry[] {
 	return ordered;
 }
 
+// Stack rows drop the "<project>-" prefix, as in the live stack view. Done
+// once per page as it arrives, not per render.
+export function stripPageProjectPrefix(
+	page: HistoryLogsPage,
+	project: string,
+): HistoryLogsPage {
+	return {
+		...page,
+		logs: page.logs.map((log) =>
+			log.containerName
+				? {
+						...log,
+						containerName: stripProjectPrefix(log.containerName, project),
+					}
+				: log,
+		),
+	};
+}
+
 interface UseHistoryLogsOptions {
 	enabled: boolean;
-	container: string;
+	scope: HistoryScope;
 	host?: string;
 	since?: string;
 	until?: string;
@@ -31,7 +55,7 @@ interface UseHistoryLogsOptions {
 
 export function useHistoryLogs({
 	enabled,
-	container,
+	scope,
 	host,
 	since,
 	until,
@@ -45,7 +69,8 @@ export function useHistoryLogs({
 		queryKey: [
 			"history",
 			"logs",
-			container,
+			scope.container ?? "",
+			scope.project ?? "",
 			host ?? "",
 			since ?? "",
 			until ?? "",
@@ -53,9 +78,9 @@ export function useHistoryLogs({
 			search,
 			regex,
 		],
-		queryFn: ({ pageParam }) =>
-			getHistoryLogs({
-				container,
+		queryFn: async ({ pageParam }) => {
+			const page = await getHistoryLogs({
+				...scope,
 				host,
 				since,
 				until,
@@ -64,10 +89,12 @@ export function useHistoryLogs({
 				regex,
 				limit: HISTORY_PAGE_SIZE,
 				cursor: pageParam || undefined,
-			}),
+			});
+			return scope.project ? stripPageProjectPrefix(page, scope.project) : page;
+		},
 		initialPageParam: "",
 		getNextPageParam: (lastPage) => lastPage.nextCursor || undefined,
-		enabled: enabled && container.length > 0,
+		enabled,
 		retry: false,
 		staleTime: 30_000,
 	});
@@ -79,6 +106,9 @@ export function useHistoryLogs({
 
 	return {
 		logs,
+		// How far back the oldest loaded page searched, when the server's scan
+		// budget stopped it early.
+		scannedTo: query.data?.pages.at(-1)?.scannedTo,
 		error: query.error,
 		isLoading: query.isLoading,
 		isFetchingOlder: query.isFetchingNextPage,

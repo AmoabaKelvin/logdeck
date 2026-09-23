@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import type { LogEntry } from "../api/get-container-logs-parsed";
 import type { HistoryLogsPage } from "../api/get-history";
-import { flattenHistoryPages } from "./use-history-logs";
+import {
+	flattenHistoryPages,
+	stripPageProjectPrefix,
+} from "./use-history-logs";
 
 const entry = (message: string): LogEntry => ({ level: "INFO", message });
 
@@ -49,5 +52,31 @@ describe("flattenHistoryPages", () => {
 		]);
 
 		expect(logs.map((log) => log.message)).toEqual(["a", "c"]);
+	});
+});
+
+describe("stripPageProjectPrefix", () => {
+	it("drops the project prefix from member names only", () => {
+		const stripped = stripPageProjectPrefix(
+			{
+				logs: [
+					{ level: "INFO", containerName: "shop-api-1" },
+					{ level: "INFO", containerName: "shopfront-1" },
+					{ level: "INFO" },
+				],
+				count: 3,
+				nextCursor: "cursor-1",
+				scannedTo: "2026-09-23T02:40:00Z",
+			},
+			"shop",
+		);
+
+		expect(stripped.logs.map((log) => log.containerName)).toEqual([
+			"api-1",
+			"shopfront-1",
+			undefined,
+		]);
+		expect(stripped.nextCursor).toBe("cursor-1");
+		expect(stripped.scannedTo).toBe("2026-09-23T02:40:00Z");
 	});
 });

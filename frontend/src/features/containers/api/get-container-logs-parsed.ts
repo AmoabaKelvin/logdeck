@@ -26,9 +26,10 @@ export interface LogEntry {
 	// Set on live streams, which arrive line by line: this line folds into
 	// the entry before it. The server decides; see models.IsContinuationLogEntry.
 	continuation?: boolean;
-	// Present only on aggregated multi-container streams.
+	// Present only on aggregated multi-container streams and stored logs.
 	containerId?: string;
 	containerName?: string;
+	host?: string;
 }
 
 export interface ContainerLogsParsedResponse {

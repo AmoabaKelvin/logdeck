@@ -33,10 +33,20 @@ export interface HistoryLogsPage {
 	// more history before this page.
 	nextCursor?: string;
 	count: number;
+	// Set when the server's scan budget cut the page short: how far
+	// back it searched. The page may then hold fewer entries than asked, even
+	// none, while nextCursor still points further back.
+	scannedTo?: string;
 }
 
-export interface HistoryLogsParams {
-	container: string;
+// Which containers to read: one by name, one Compose project's, or (neither
+// set) every container.
+export interface HistoryScope {
+	container?: string;
+	project?: string;
+}
+
+export interface HistoryLogsParams extends HistoryScope {
 	host?: string;
 	since?: string;
 	until?: string;
@@ -164,6 +174,7 @@ export async function deleteHistoryContainer(
 // page (no cursor) is the newest, and `nextCursor` fetches older entries.
 export async function getHistoryLogs({
 	container,
+	project,
 	host,
 	since,
 	until,
@@ -174,7 +185,8 @@ export async function getHistoryLogs({
 	cursor,
 }: HistoryLogsParams): Promise<HistoryLogsPage> {
 	const query = new URLSearchParams();
-	query.set("container", container);
+	if (container) query.set("container", container);
+	if (project) query.set("project", project);
 	if (host) query.set("host", host);
 	if (since) query.set("since", since);
 	if (until) query.set("until", until);
@@ -192,10 +204,7 @@ export async function getHistoryLogs({
 	);
 
 	if (!response.ok) {
-		throw await readError(
-			response,
-			`Failed to fetch stored logs for ${container}`,
-		);
+		throw await readError(response, "Failed to fetch stored logs");
 	}
 
 	const data = await readJson<HistoryLogsPage>(response);

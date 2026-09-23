@@ -244,8 +244,10 @@ func parseNonNegativeInt(w http.ResponseWriter, params url.Values, name string) 
 	return parsed, true
 }
 
-// GetHistoryLogs returns one page of stored logs for a logical container.
-// Pages walk backwards through history: follow nextCursor for older lines.
+// GetHistoryLogs returns one page of stored logs: of one logical container,
+// one Compose project, or every container. Pages walk backwards through
+// history: follow nextCursor for older lines. A page that hit the scan budget
+// may hold fewer lines than asked, even none, and carries scannedTo.
 func (ar *APIRouter) GetHistoryLogs(w http.ResponseWriter, r *http.Request) {
 	if ar.logStore == nil {
 		WriteJsonResponse(w, http.StatusServiceUnavailable, map[string]string{
@@ -258,7 +260,6 @@ func (ar *APIRouter) GetHistoryLogs(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-
 	page, err := ar.logStore.Query(r.Context(), query)
 	if err != nil {
 		// A bad cursor or an uncompilable pattern is the caller's to fix, so it is
@@ -285,6 +286,9 @@ func (ar *APIRouter) GetHistoryLogs(w http.ResponseWriter, r *http.Request) {
 	if page.NextCursor != "" {
 		response["nextCursor"] = page.NextCursor
 	}
+	if !page.ScannedTo.IsZero() {
+		response["scannedTo"] = page.ScannedTo
+	}
 	WriteJsonResponse(w, http.StatusOK, response)
 }
 
@@ -293,15 +297,10 @@ func (ar *APIRouter) GetHistoryLogs(w http.ResponseWriter, r *http.Request) {
 func parseHistoryQuery(w http.ResponseWriter, r *http.Request) (logstore.LogQuery, bool) {
 	params := r.URL.Query()
 
-	container := strings.TrimSpace(params.Get("container"))
-	if container == "" {
-		http.Error(w, "container is required", http.StatusBadRequest)
-		return logstore.LogQuery{}, false
-	}
-
 	query := logstore.LogQuery{
 		Host:      params.Get("host"),
-		Container: container,
+		Container: strings.TrimSpace(params.Get("container")),
+		Project:   strings.TrimSpace(params.Get("project")),
 		Search:    params.Get("search"),
 		Cursor:    params.Get("cursor"),
 	}

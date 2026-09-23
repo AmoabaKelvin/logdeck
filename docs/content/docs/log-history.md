@@ -50,7 +50,13 @@ In History mode:
 - Timestamps, wrapping, line selection, pinning, copying, and downloading (JSON or TXT) work the same as in Live mode.
 - Streaming controls (Stream, Pause, tail size, auto-scroll) are hidden, since there is nothing to stream.
 
-History is available for single containers on the container log page. **Aggregated Compose stack logs are live-only.** The stack view merges live streams and has no History toggle. The quick-look log sheet on the dashboard is live-only too, so open the container's full log page for history.
+A Compose stack's log page has the same toggle. Its History mode reads every member of the stack as one merged timeline, including members that have since been torn down. The quick-look log sheet on the dashboard is live-only, so open the container's full log page for history.
+
+## Searching every container
+
+The **Search** page runs the same search, level filter, and time range over every container's stored logs at once, merged by timestamp, with each line labeled by its container. It answers questions like "which service logged `connection refused` between 02:40 and 02:50?" without opening containers one by one.
+
+Each request searches a bounded slice of history, so a rare term never holds the server for long. When a request stops before it fills a page, the viewer shows how far back it searched and offers **Search older** to continue from there. Narrow the time range to search a known window in one go.
 
 ### Removed containers
 
@@ -98,7 +104,7 @@ The HTTP API exposes the store. These are read endpoints, so a `read`-scoped API
 
 - `GET /api/v1/history/status`: whether persistence is available (`{"enabled": true}`).
 - `GET /api/v1/history/containers`: the logical containers the store knows about, including removed ones, with their stored size.
-- `GET /api/v1/history/logs`: one page of stored logs. Returns `503` when persistence is disabled.
+- `GET /api/v1/history/logs`: one page of stored logs, from one container, one Compose project, or every container. Returns `503` when persistence is disabled.
 
 Deleting stored logs is destructive, so `read`-scoped tokens get `403` and read-only mode blocks it:
 
@@ -122,23 +128,29 @@ curl -H "Authorization: Bearer ldk_..." \
   "http://localhost:8123/api/v1/history/containers?search=api&sort=size&limit=20"
 ```
 
-`/history/logs` takes these query parameters:
+`/history/logs` takes these query parameters, all optional:
 
-| Parameter   | Meaning                                      |
-| ----------- | -------------------------------------------- |
-| `container` | Container name. Required.                    |
-| `host`      | Host name.                                   |
-| `search`    | Text to search for.                          |
-| `regex`     | Boolean. Treat `search` as a regex.          |
-| `levels`    | Comma-separated levels, including `UNKNOWN`. |
-| `since`     | Start time, RFC3339.                         |
-| `until`     | End time, RFC3339.                           |
-| `limit`     | Lines per page. Default `500`, max `1000`.   |
-| `cursor`    | Page cursor from a previous response.        |
+| Parameter   | Meaning                                       |
+| ----------- | --------------------------------------------- |
+| `container` | Container name. Omit to read every container. |
+| `project`   | Only this Compose project's containers.       |
+| `host`      | Only containers on this host.                 |
+| `search`    | Text to search for.                           |
+| `regex`     | Boolean. Treat `search` as a regex.           |
+| `levels`    | Comma-separated levels, including `UNKNOWN`.  |
+| `since`     | Start time, RFC3339.                          |
+| `until`     | End time, RFC3339.                            |
+| `limit`     | Lines per page. Default `500`, max `1000`.    |
+| `cursor`    | Page cursor from a previous response.         |
 
-Pages walk backwards through history. Follow the returned `nextCursor` for older lines.
+Pages walk backwards through history, merged by timestamp across the containers read. Follow the returned `nextCursor` for older lines. Every entry carries `containerName` and `host`.
+
+A request reads at most about 200,000 stored lines. When that cuts a page short, the response carries `scannedTo`, the time the search reached, and `nextCursor` continues from there. Such a page can hold fewer lines than `limit`, or none.
 
 ```bash
 curl -H "Authorization: Bearer ldk_..." \
   "http://localhost:8123/api/v1/history/logs?container=api&host=local&levels=ERROR,FATAL&limit=200"
+
+curl -H "Authorization: Bearer ldk_..." \
+  "http://localhost:8123/api/v1/history/logs?search=connection%20refused&since=2026-09-23T02:40:00Z&until=2026-09-23T02:50:00Z"
 ```
