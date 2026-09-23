@@ -2,6 +2,19 @@
 
 All notable changes to LogDeck are documented here.
 
+## [0.7.0](https://github.com/AmoabaKelvin/logdeck/compare/v0.6.0...v0.7.0) (2026-09-23)
+
+
+### Features
+
+* **history:** search stored logs across containers and stacks ([fad7415](https://github.com/AmoabaKelvin/logdeck/commit/fad7415d225268ce82a86e35d82dd6c4633de368))
+* **history:** search stored logs across containers and stacks ([2234c1f](https://github.com/AmoabaKelvin/logdeck/commit/2234c1f677543ac2aef4b5e4c14f05ed9bafc3a7))
+
+
+### Performance
+
+* **models:** skip level and grouping regexes that cannot match ([d91e7cc](https://github.com/AmoabaKelvin/logdeck/commit/d91e7cc32bb41ef0a455f1ec8f34b1844d000bc8))
+
 ## [0.6.0](https://github.com/AmoabaKelvin/logdeck/compare/v0.5.0...v0.6.0) (2026-09-23)
 
 
