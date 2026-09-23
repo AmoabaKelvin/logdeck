@@ -58,7 +58,7 @@ When LogDeck holds stored logs for a container that no longer exists on any host
 
 A removed container shows how much log data LogDeck stores for it instead of CPU and memory, and offers a single action: **View stored logs**. Its log page opens locked to History. There is no live stream, no terminal, and no environment or resources tab, because there is no container left to inspect.
 
-Removed containers' logs are dropped 30 days after the container left the engine. Change the window under Settings, Log storage, or with `LOG_STORE_REMOVED_DAYS`; `0` keeps them until a retention cap evicts them. **Delete removed** on the same page clears them all at once.
+Removed containers' logs are dropped 30 days after the container left the engine. Change the window under Settings, Log storage, or with `LOG_STORE_REMOVED_DAYS`; `0` keeps them until a retention cap evicts them. **Delete removed** on the same page clears them all at once, and **Delete all** clears every container's stored logs. Running containers start a fresh history with their next line.
 
 ## Retention and disk use
 
@@ -99,6 +99,12 @@ The HTTP API exposes the store. These are read endpoints, so a `read`-scoped API
 - `GET /api/v1/history/status`: whether persistence is available (`{"enabled": true}`).
 - `GET /api/v1/history/containers`: the logical containers the store knows about, including removed ones, with their stored size.
 - `GET /api/v1/history/logs`: one page of stored logs. Returns `503` when persistence is disabled.
+
+Deleting stored logs is destructive, so `read`-scoped tokens get `403` and read-only mode blocks it:
+
+- `DELETE /api/v1/history/containers/{name}?host=...`: one container's stored logs.
+- `DELETE /api/v1/history/removed`: every removed container's stored logs.
+- `DELETE /api/v1/history/containers`: every container's stored logs.
 
 `/history/containers` returns every container when called bare. These optional query parameters filter and page it:
 

@@ -126,6 +126,30 @@ func (ar *APIRouter) DeleteHistoryRemoved(w http.ResponseWriter, r *http.Request
 	})
 }
 
+// DeleteHistoryAll purges the stored logs of every container. Guarded like
+// DeleteHistoryContainer.
+func (ar *APIRouter) DeleteHistoryAll(w http.ResponseWriter, r *http.Request) {
+	if ar.logStore == nil {
+		WriteJsonResponse(w, http.StatusServiceUnavailable, map[string]string{
+			"error": "log persistence is disabled",
+		})
+		return
+	}
+
+	containers, lines, err := ar.logStore.DeleteAll(r.Context())
+	if err != nil {
+		log.Printf("history: deleting all stored logs failed: %v", err)
+		http.Error(w, "failed to delete stored logs", http.StatusInternalServerError)
+		return
+	}
+
+	WriteJsonResponse(w, http.StatusOK, map[string]any{
+		"message":           "stored logs deleted",
+		"containersDeleted": containers,
+		"linesDeleted":      lines,
+	})
+}
+
 // maxHistoryContainersLimit caps one page of GET /history/containers.
 const maxHistoryContainersLimit = 500
 

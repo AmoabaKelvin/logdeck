@@ -165,10 +165,22 @@ func (s *Store) DBSize() (int64, error) {
 // generation is left alone: its history is still being written. It returns how
 // many containers and lines were removed.
 func (s *Store) DeleteRemoved(ctx context.Context, cutoff time.Time) (int, int64, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	return s.deleteMatching(ctx, `
 		SELECT host, name FROM containers
 		GROUP BY host, name
 		HAVING SUM(removed_ms IS NULL) = 0 AND MAX(removed_ms) < ?`, cutoff.UnixMilli())
+}
+
+// DeleteAll purges every logical container in the store. Running containers
+// start a fresh history with their next line.
+func (s *Store) DeleteAll(ctx context.Context) (int, int64, error) {
+	return s.deleteMatching(ctx, "SELECT DISTINCT host, name FROM containers")
+}
+
+// deleteMatching purges each logical container (host, name) the query selects,
+// returning how many containers and lines were removed.
+func (s *Store) deleteMatching(ctx context.Context, query string, args ...any) (int, int64, error) {
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return 0, 0, err
 	}

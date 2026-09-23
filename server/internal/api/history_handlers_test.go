@@ -622,6 +622,37 @@ func TestDeleteHistoryRemoved(t *testing.T) {
 	}
 }
 
+func TestDeleteHistoryAll(t *testing.T) {
+	store, seed := newHistoryStore(t)
+	seed("local", "abc123", "web", historyBase, "one")
+	seed("local", "def456", "web", historyBase.Add(time.Second), "two")
+	seed("remote", "xyz789", "db", historyBase, "three")
+	router := newHistoryTestRouter(t, store)
+
+	w := doHistoryDelete(t, router, "/api/v1/history/containers", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var body struct {
+		ContainersDeleted int   `json:"containersDeleted"`
+		LinesDeleted      int64 `json:"linesDeleted"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("parse response: %v", err)
+	}
+	if body.ContainersDeleted != 2 || body.LinesDeleted != 3 {
+		t.Fatalf("deleted %d containers / %d lines, want 2 / 3", body.ContainersDeleted, body.LinesDeleted)
+	}
+	list := doHistoryRequest(t, router, "/api/v1/history/containers")
+	if !strings.Contains(list.Body.String(), `"containers":[]`) {
+		t.Fatalf("expected an empty store, got %s", list.Body.String())
+	}
+
+	if w := doHistoryDelete(t, newHistoryTestRouter(t, nil), "/api/v1/history/containers", ""); w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 with persistence off, got %d", w.Code)
+	}
+}
+
 func TestDeleteHistoryContainerRequiresAuth(t *testing.T) {
 	store, seed := newHistoryStore(t)
 	seed("local", "abc123", "web", historyBase, "hello")
@@ -672,6 +703,9 @@ func TestDeleteHistoryContainerDeniesReadScope(t *testing.T) {
 	w = doHistoryDelete(t, router, "/api/v1/history/containers/web?host=local", readToken.Token)
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 purging with a read token, got %d: %s", w.Code, w.Body.String())
+	}
+	if w := doHistoryDelete(t, router, "/api/v1/history/containers", readToken.Token); w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 purging everything with a read token, got %d: %s", w.Code, w.Body.String())
 	}
 
 	// A JWT session and an admin token are unaffected.

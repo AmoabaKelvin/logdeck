@@ -21,6 +21,7 @@ import { Meter } from "@/features/containers/components/meter";
 import type { PurgeHistoryTarget } from "@/features/containers/components/purge-history-dialog";
 import { PurgeHistoryDialog } from "@/features/containers/components/purge-history-dialog";
 import {
+	useDeleteAllHistory,
 	useDeleteHistoryContainer,
 	useDeleteRemovedHistory,
 } from "@/features/containers/hooks/use-delete-history-container";
@@ -227,10 +228,11 @@ export function LogStorageSection({ config }: LogStorageSectionProps) {
 	);
 	const purgeHistory = useDeleteHistoryContainer();
 	const purgeRemoved = useDeleteRemovedHistory();
+	const purgeAll = useDeleteAllHistory();
 	const [purgeTarget, setPurgeTarget] = useState<PurgeHistoryTarget | null>(
 		null,
 	);
-	const [isPurgeRemovedOpen, setIsPurgeRemovedOpen] = useState(false);
+	const [bulkPurge, setBulkPurge] = useState<"removed" | "all" | null>(null);
 
 	// Persistence is off: there is nothing to report or reclaim.
 	if (!isEnabled) {
@@ -245,6 +247,7 @@ export function LogStorageSection({ config }: LogStorageSectionProps) {
 	const pageItems = stored?.containers ?? [];
 	const total = stored?.total ?? 0;
 	const removedCount = stored?.removedCount ?? 0;
+	const storedCount = stored?.storedCount ?? 0;
 	const totalPages = Math.max(1, Math.ceil(total / pageSize));
 	const startIndex = (page - 1) * pageSize;
 	// Deleting the last row of the last page leaves the page past the end.
@@ -300,17 +303,31 @@ export function LogStorageSection({ config }: LogStorageSectionProps) {
 				<SettingsSubsection
 					title="Stored containers"
 					action={
-						removedCount > 0 && (
-							<Button
-								variant="ghost"
-								size="sm"
-								disabled={purgeRemoved.isPending}
-								onClick={() => setIsPurgeRemovedOpen(true)}
-								className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-							>
-								<Trash2Icon className="size-4" />
-								Delete removed ({removedCount})
-							</Button>
+						storedCount > 0 && (
+							<div className="flex items-center gap-1">
+								{removedCount > 0 && (
+									<Button
+										variant="ghost"
+										size="sm"
+										disabled={purgeRemoved.isPending}
+										onClick={() => setBulkPurge("removed")}
+										className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+									>
+										<Trash2Icon className="size-4" />
+										Delete removed ({removedCount})
+									</Button>
+								)}
+								<Button
+									variant="ghost"
+									size="sm"
+									disabled={purgeAll.isPending}
+									onClick={() => setBulkPurge("all")}
+									className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+								>
+									<Trash2Icon className="size-4" />
+									Delete all
+								</Button>
+							</div>
 						)
 					}
 				>
@@ -433,24 +450,43 @@ export function LogStorageSection({ config }: LogStorageSectionProps) {
 			</div>
 
 			<AlertDialog
-				open={isPurgeRemovedOpen}
-				onOpenChange={setIsPurgeRemovedOpen}
+				open={bulkPurge !== null}
+				onOpenChange={(open) => {
+					if (!open) setBulkPurge(null);
+				}}
 			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
 						<AlertDialogTitle>
-							Delete logs of removed containers?
+							{bulkPurge === "all"
+								? "Delete all stored logs?"
+								: "Delete logs of removed containers?"}
 						</AlertDialogTitle>
 						<AlertDialogDescription>
-							This permanently deletes the stored history of {removedCount}{" "}
-							{removedCount === 1 ? "container" : "containers"} that no longer
-							exist on any host. Those logs cannot be recovered afterwards.
+							{bulkPurge === "all" ? (
+								<>
+									This permanently deletes the stored history of all{" "}
+									{storedCount} {storedCount === 1 ? "container" : "containers"}
+									, including removed ones. Running containers start a fresh
+									history with their next line. The deleted logs cannot be
+									recovered.
+								</>
+							) : (
+								<>
+									This permanently deletes the stored history of {removedCount}{" "}
+									{removedCount === 1 ? "container" : "containers"} that no
+									longer exist on any host. Those logs cannot be recovered
+									afterwards.
+								</>
+							)}
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
 						<AlertDialogCancel>Cancel</AlertDialogCancel>
 						<AlertDialogAction
-							onClick={() => purgeRemoved.mutate()}
+							onClick={() =>
+								bulkPurge === "all" ? purgeAll.mutate() : purgeRemoved.mutate()
+							}
 							className="bg-destructive text-white hover:bg-destructive/90"
 						>
 							Delete logs

@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import {
+	deleteAllHistory,
 	deleteHistoryContainer,
 	deleteRemovedHistory,
 } from "../api/get-history";
@@ -57,6 +58,31 @@ export function useDeleteRemovedHistory() {
 			);
 			queryClient.invalidateQueries({ queryKey: ["history", "containers"] });
 			queryClient.invalidateQueries({ queryKey: ["history", "status"] });
+			queryClient.invalidateQueries({ queryKey: ["containers"] });
+		},
+		onError: (error: Error) => toast.error(error.message),
+	});
+}
+
+/** Purges every container's stored logs. */
+export function useDeleteAllHistory() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: deleteAllHistory,
+		onSuccess: (result) => {
+			toast.success(
+				`Deleted stored logs for ${result.containersDeleted} ${
+					result.containersDeleted === 1 ? "container" : "containers"
+				}`,
+				{
+					description:
+						result.linesDeleted > 0
+							? `${result.linesDeleted.toLocaleString()} log lines deleted.`
+							: undefined,
+				},
+			);
+			queryClient.invalidateQueries({ queryKey: ["history"] });
 			queryClient.invalidateQueries({ queryKey: ["containers"] });
 		},
 		onError: (error: Error) => toast.error(error.message),
