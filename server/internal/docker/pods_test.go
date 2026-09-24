@@ -25,7 +25,7 @@ func TestLabelPodStacks(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		w.Write([]byte(`[{"Id":"api","PodName":"shop"},{"Id":"worker","PodName":"shop"},{"Id":"db","PodName":""}]`))
+		_, _ = w.Write([]byte(`[{"Id":"api","PodName":"shop"},{"Id":"worker","PodName":"shop"},{"Id":"db","PodName":""}]`))
 	}))
 	defer srv.Close()
 
