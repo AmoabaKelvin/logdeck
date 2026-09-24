@@ -179,7 +179,8 @@ Quadlet gives every container its own systemd unit, so LogDeck groups Quadlet
 containers in two other ways:
 
 - **Pods.** Containers in a `.pod` are grouped under the pod name
-  automatically.
+  automatically. Before Podman 6.0, only pods whose containers come from
+  Quadlet are detected.
 - **The `io.logdeck.stack` label.** For containers started together by a
   target, add the same label to each `.container` file:
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/docker/docker/api/types/container"
@@ -237,5 +238,29 @@ func TestRecreateContainerWithEnvKeepsNanoCpusWhenUnambiguous(t *testing.T) {
 	}
 	if api.lastCreateHostConfig.NanoCPUs != 1000000000 {
 		t.Errorf("NanoCpus = %d, want 1000000000 preserved", api.lastCreateHostConfig.NanoCPUs)
+	}
+}
+
+func TestCheckNotSystemdManaged(t *testing.T) {
+	tests := []struct {
+		name    string
+		labels  map[string]string
+		wantErr bool
+	}{
+		{"quadlet unit", map[string]string{"PODMAN_SYSTEMD_UNIT": "web.service"}, true},
+		{"podman-compose stamp", map[string]string{"PODMAN_SYSTEMD_UNIT": "podman-compose@demo.service"}, false},
+		{"no unit", nil, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := checkNotSystemdManaged(tt.labels, "stop"); (err != nil) != tt.wantErr {
+				t.Errorf("checkNotSystemdManaged(%v) = %v, wantErr %v", tt.labels, err, tt.wantErr)
+			}
+		})
+	}
+
+	err := checkNotSystemdManaged(map[string]string{"PODMAN_SYSTEMD_UNIT": "web.service"}, "edit")
+	if err == nil || !strings.Contains(err.Error(), "Quadlet file") {
+		t.Errorf("edit refusal should point at the Quadlet file, got %v", err)
 	}
 }

@@ -34,6 +34,16 @@ func (c *MultiHostClient) StartContainer(ctx context.Context, hostName, id strin
 // restarting one through the API deletes it and leaves the unit failed.
 const systemdUnitLabel = "PODMAN_SYSTEMD_UNIT"
 
+// systemdUnit returns the unit that owns the container, or "". podman-compose
+// stamps its own unit name on every container, systemd or not.
+func systemdUnit(labels map[string]string) string {
+	unit := labels[systemdUnitLabel]
+	if strings.HasPrefix(unit, "podman-compose@") {
+		return ""
+	}
+	return unit
+}
+
 // SystemdManagedError refuses an action that has to go through systemctl.
 type SystemdManagedError struct {
 	Unit   string
@@ -41,11 +51,14 @@ type SystemdManagedError struct {
 }
 
 func (e *SystemdManagedError) Error() string {
+	if e.Action == "edit" {
+		return fmt.Sprintf("container is managed by systemd unit %s; change its environment in the Quadlet file, then run \"systemctl restart %s\" on the host (with --user for rootless Podman)", e.Unit, e.Unit)
+	}
 	return fmt.Sprintf("container is managed by systemd unit %s; run \"systemctl %s %s\" on the host instead (with --user for rootless Podman)", e.Unit, e.Action, e.Unit)
 }
 
 func checkNotSystemdManaged(labels map[string]string, action string) error {
-	if unit := labels[systemdUnitLabel]; unit != "" {
+	if unit := systemdUnit(labels); unit != "" {
 		return &SystemdManagedError{Unit: unit, Action: action}
 	}
 	return nil
@@ -152,7 +165,7 @@ func (c *MultiHostClient) SetEnvVariables(ctx context.Context, hostName, id stri
 	}
 
 	labels := inspect.Config.Labels
-	if err := checkNotSystemdManaged(labels, "restart"); err != nil {
+	if err := checkNotSystemdManaged(labels, "edit"); err != nil {
 		return "", nil, err
 	}
 	isCoolifyManaged := labels[coolify.LabelManaged] == "true"

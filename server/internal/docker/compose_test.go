@@ -32,6 +32,12 @@ func TestInComposeProject(t *testing.T) {
 			want:    true,
 		},
 		{
+			name:    "compose label wins over stack label",
+			labels:  map[string]string{"com.docker.compose.project": "demo", "io.logdeck.stack": "web"},
+			project: "web",
+			want:    false,
+		},
+		{
 			name:    "different project",
 			labels:  map[string]string{"com.docker.compose.project": "other"},
 			project: "web",

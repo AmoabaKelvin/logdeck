@@ -19,14 +19,9 @@ var composeProjectLabels = []string{
 	StackLabel,
 }
 
-// InComposeProject reports whether any project label names project.
+// InComposeProject reports whether the container belongs to project.
 func InComposeProject(labels map[string]string, project string) bool {
-	for _, label := range composeProjectLabels {
-		if labels[label] == project {
-			return true
-		}
-	}
-	return false
+	return ComposeProject(labels) == project
 }
 
 // ComposeProject returns the project a container belongs to, or "".

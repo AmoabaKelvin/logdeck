@@ -117,10 +117,10 @@ export function ContainersTable({
 				getComposeProject(container.labels) === group.project,
 		);
 
-	const isSystemdGroup = (group: GroupedContainers) =>
-		group.items.every(
+	const hasSystemdMember = (group: GroupedContainers) =>
+		group.items.some(
 			(container) =>
-				isRemovedContainer(container) || getSystemdUnit(container.labels),
+				!isRemovedContainer(container) && getSystemdUnit(container.labels),
 		);
 
 	const columnCount = Object.keys(COLUMN_WEIGHTS).length - hiddenColumns.size;
@@ -211,7 +211,7 @@ export function ContainersTable({
 		if (groupBy === "compose" && groupedItems) {
 			return groupedItems.map((group) => {
 				const busy = pendingComposeActions.has(group.project);
-				const systemdGroup = isSystemdGroup(group);
+				const systemdGroup = hasSystemdMember(group);
 				const collapsed = collapsedGroups.has(group.project);
 				const running = group.items.filter(
 					(container) => container.state.toLowerCase() === "running",

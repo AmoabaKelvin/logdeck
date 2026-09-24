@@ -67,8 +67,10 @@ export function getComposeProject(labels?: Record<string, string>) {
 
 // Quadlet runs containers under a systemd unit with --rm. Stopping or
 // restarting one through the engine deletes it, so the server refuses those.
+// podman-compose stamps its own unit name on every container, systemd or not.
 export function getSystemdUnit(labels?: Record<string, string>) {
-	return labels?.PODMAN_SYSTEMD_UNIT || undefined;
+	const unit = labels?.PODMAN_SYSTEMD_UNIT;
+	return unit && !unit.startsWith("podman-compose@") ? unit : undefined;
 }
 
 export function formatContainerName(names: string[]) {

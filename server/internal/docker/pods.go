@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"slices"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
@@ -16,20 +18,17 @@ import (
 const StackLabel = "io.logdeck.stack"
 
 // Podman's compat list marks pod members with this annotation but leaves out
-// the pod name, which only its libpod API reports.
+// the pod name, which only its libpod API reports. Podman before 6.0 omits
+// HostConfig from the list, so a systemd unit label also counts as a hint.
 const podSandboxAnnotation = "io.kubernetes.cri-o.SandboxID"
 
-// labelPodStacks sets StackLabel to the pod name on pod members. Hosts without
-// pods (every Docker host) never make the extra call.
+// labelPodStacks sets StackLabel to the pod name on pod members. Docker hosts
+// never make the extra call.
 func labelPodStacks(ctx context.Context, cl *client.Client, containers []container.Summary) {
-	hasPods := false
-	for _, ctr := range containers {
-		if ctr.HostConfig.Annotations[podSandboxAnnotation] != "" {
-			hasPods = true
-			break
-		}
-	}
-	if !hasPods {
+	mayHavePods := slices.ContainsFunc(containers, func(ctr container.Summary) bool {
+		return ctr.HostConfig.Annotations[podSandboxAnnotation] != "" || ctr.Labels[systemdUnitLabel] != ""
+	})
+	if !mayHavePods {
 		return
 	}
 
@@ -53,11 +52,12 @@ func labelPodStacks(ctx context.Context, cl *client.Client, containers []contain
 // podNames maps container IDs to pod names through Podman's libpod API.
 func podNames(ctx context.Context, cl *client.Client) (map[string]string, error) {
 	// The transport dials the socket or SSH tunnel itself, so the URL host
-	// only matters for tcp:// daemons.
+	// only matters for tcp:// daemons. client.FromEnv turns on TLS exactly
+	// when DOCKER_CERT_PATH is set.
 	scheme, host := "http", "podman"
 	if u, err := url.Parse(cl.DaemonHost()); err == nil && u.Scheme == "tcp" {
 		host = u.Host
-		if t, ok := cl.HTTPClient().Transport.(*http.Transport); ok && t.TLSClientConfig != nil {
+		if os.Getenv("DOCKER_CERT_PATH") != "" {
 			scheme = "https"
 		}
 	}

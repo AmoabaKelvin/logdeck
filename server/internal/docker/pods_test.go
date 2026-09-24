@@ -35,7 +35,8 @@ func TestLabelPodStacks(t *testing.T) {
 	}
 
 	containers := []container.Summary{
-		podMember("api", nil),
+		// Podman before 6.0 lists no HostConfig; the unit label still triggers the lookup.
+		{ID: "api", Labels: map[string]string{"PODMAN_SYSTEMD_UNIT": "api.service"}},
 		podMember("worker", map[string]string{StackLabel: "custom"}),
 		{ID: "db", Labels: map[string]string{"PODMAN_SYSTEMD_UNIT": "db.service"}},
 	}
