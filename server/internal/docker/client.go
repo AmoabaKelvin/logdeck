@@ -126,6 +126,9 @@ func (c *MultiHostClient) ListContainersAllHosts(ctx context.Context) (map[strin
 			defer wg.Done()
 
 			containers, err := cl.ContainerList(ctx, container.ListOptions{All: true})
+			if err == nil {
+				labelPodStacks(ctx, cl, containers)
+			}
 			mu.Lock()
 			defer mu.Unlock()
 

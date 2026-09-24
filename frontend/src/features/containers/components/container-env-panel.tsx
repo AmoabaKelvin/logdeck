@@ -34,6 +34,7 @@ interface ContainerEnvPanelProps {
 	containerHost: string;
 	isReadOnly?: boolean;
 	isCoolifyManaged?: boolean;
+	systemdUnit?: string;
 	onContainerIdChange?: (newContainerId: string) => void;
 }
 
@@ -52,10 +53,12 @@ const VALUE_INPUT =
 export function ContainerEnvPanel({
 	containerId,
 	containerHost,
-	isReadOnly = false,
+	isReadOnly: isReadOnlyMode = false,
 	isCoolifyManaged = false,
+	systemdUnit,
 	onContainerIdChange,
 }: ContainerEnvPanelProps) {
+	const isReadOnly = isReadOnlyMode || Boolean(systemdUnit);
 	const queryClient = useQueryClient();
 	const [filter, setFilter] = useState("");
 	const [revealed, setRevealed] = useState<ReadonlySet<string>>(new Set());
@@ -267,6 +270,13 @@ export function ContainerEnvPanel({
 				accept=".env"
 				className="hidden"
 			/>
+
+			{systemdUnit && !isReadOnlyMode && (
+				<p className="mb-3 text-base text-muted-foreground sm:text-sm">
+					Managed by {systemdUnit}. Change variables in its Quadlet file, then
+					restart the unit.
+				</p>
+			)}
 
 			<div className="flex flex-wrap items-center gap-2">
 				<div className="relative min-w-48 flex-1 sm:max-w-xs">

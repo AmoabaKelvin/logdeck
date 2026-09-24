@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/AmoabaKelvin/logdeck/internal/docker"
 	"github.com/AmoabaKelvin/logdeck/internal/models"
 )
 
@@ -209,7 +210,7 @@ func (s *Store) upsertMeta(ctx context.Context, key genKey, info models.Containe
 			first_seen_ms = min(containers.first_seen_ms, excluded.first_seen_ms),
 			last_seen_ms = excluded.last_seen_ms,
 			removed_ms = NULL`,
-		key.host, key.id, containerName(info), composeProject(info.Labels), info.Image, firstSeenMS, nowMS,
+		key.host, key.id, containerName(info), docker.ComposeProject(info.Labels), info.Image, firstSeenMS, nowMS,
 	); err != nil {
 		return false, err
 	}

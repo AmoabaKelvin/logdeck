@@ -30,7 +30,11 @@ import type {
 	SortDirection,
 	SortKey,
 } from "./container-utils";
-import { getComposeProject, isRemovedContainer } from "./container-utils";
+import {
+	getComposeProject,
+	getSystemdUnit,
+	isRemovedContainer,
+} from "./container-utils";
 import { headClass, SortButton } from "./containers-table-cells";
 import type { ContainerRowCallbacks } from "./containers-table-row";
 import { ContainerRow } from "./containers-table-row";
@@ -111,6 +115,12 @@ export function ContainersTable({
 			(container) =>
 				!isRemovedContainer(container) &&
 				getComposeProject(container.labels) === group.project,
+		);
+
+	const hasSystemdMember = (group: GroupedContainers) =>
+		group.items.some(
+			(container) =>
+				!isRemovedContainer(container) && getSystemdUnit(container.labels),
 		);
 
 	const columnCount = Object.keys(COLUMN_WEIGHTS).length - hiddenColumns.size;
@@ -201,6 +211,7 @@ export function ContainersTable({
 		if (groupBy === "compose" && groupedItems) {
 			return groupedItems.map((group) => {
 				const busy = pendingComposeActions.has(group.project);
+				const systemdGroup = hasSystemdMember(group);
 				const collapsed = collapsedGroups.has(group.project);
 				const running = group.items.filter(
 					(container) => container.state.toLowerCase() === "running",
@@ -258,10 +269,16 @@ export function ContainersTable({
 													</Button>
 												</DropdownMenuTrigger>
 												<DropdownMenuContent align="end" className="w-48">
-													{isReadOnly && (
+													{isReadOnly ? (
 														<DropdownMenuLabel className="text-muted-foreground">
 															Read-only mode
 														</DropdownMenuLabel>
+													) : (
+														systemdGroup && (
+															<DropdownMenuLabel className="font-normal text-muted-foreground">
+																Managed by systemd
+															</DropdownMenuLabel>
+														)
 													)}
 													<DropdownMenuItem
 														disabled={isReadOnly}
@@ -271,14 +288,14 @@ export function ContainersTable({
 														Start stack
 													</DropdownMenuItem>
 													<DropdownMenuItem
-														disabled={isReadOnly}
+														disabled={isReadOnly || systemdGroup}
 														onClick={() => onComposeAction("stop", group)}
 													>
 														<SquareIcon className="size-4" />
 														Stop stack
 													</DropdownMenuItem>
 													<DropdownMenuItem
-														disabled={isReadOnly}
+														disabled={isReadOnly || systemdGroup}
 														onClick={() => onComposeAction("restart", group)}
 													>
 														<RotateCwIcon className="size-4" />

@@ -47,10 +47,12 @@ export interface StateCounts {
 }
 
 // Docker Compose and recent podman-compose both set the com.docker label;
-// older podman-compose releases only set the io.podman one.
+// older podman-compose releases only set the io.podman one. The server fills
+// in io.logdeck.stack for Podman pods, and Quadlet users can set it by hand.
 const COMPOSE_PROJECT_LABELS = [
 	"com.docker.compose.project",
 	"io.podman.compose.project",
+	"io.logdeck.stack",
 ];
 
 export function getComposeProject(labels?: Record<string, string>) {
@@ -61,6 +63,14 @@ export function getComposeProject(labels?: Record<string, string>) {
 		}
 	}
 	return undefined;
+}
+
+// Quadlet runs containers under a systemd unit with --rm. Stopping or
+// restarting one through the engine deletes it, so the server refuses those.
+// podman-compose stamps its own unit name on every container, systemd or not.
+export function getSystemdUnit(labels?: Record<string, string>) {
+	const unit = labels?.PODMAN_SYSTEMD_UNIT;
+	return unit && !unit.startsWith("podman-compose@") ? unit : undefined;
 }
 
 export function formatContainerName(names: string[]) {

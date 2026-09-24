@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"maps"
 	"strings"
@@ -29,9 +30,50 @@ func (c *MultiHostClient) StartContainer(ctx context.Context, hostName, id strin
 	return apiClient.ContainerStart(ctx, id, container.StartOptions{})
 }
 
+// Quadlet runs containers with --rm under a systemd unit. Stopping or
+// restarting one through the API deletes it and leaves the unit failed.
+const systemdUnitLabel = "PODMAN_SYSTEMD_UNIT"
+
+// systemdUnit returns the unit that owns the container, or "". podman-compose
+// stamps its own unit name on every container, systemd or not.
+func systemdUnit(labels map[string]string) string {
+	unit := labels[systemdUnitLabel]
+	if strings.HasPrefix(unit, "podman-compose@") {
+		return ""
+	}
+	return unit
+}
+
+// SystemdManagedError refuses an action that has to go through systemctl.
+type SystemdManagedError struct {
+	Unit   string
+	Action string
+}
+
+func (e *SystemdManagedError) Error() string {
+	if e.Action == "edit" {
+		return fmt.Sprintf("container is managed by systemd unit %s; change its environment in the Quadlet file, then run \"systemctl restart %s\" on the host (with --user for rootless Podman)", e.Unit, e.Unit)
+	}
+	return fmt.Sprintf("container is managed by systemd unit %s; run \"systemctl %s %s\" on the host instead (with --user for rootless Podman)", e.Unit, e.Action, e.Unit)
+}
+
+func checkNotSystemdManaged(labels map[string]string, action string) error {
+	if unit := systemdUnit(labels); unit != "" {
+		return &SystemdManagedError{Unit: unit, Action: action}
+	}
+	return nil
+}
+
 func (c *MultiHostClient) StopContainer(ctx context.Context, hostName, id string) error {
 	apiClient, err := c.GetClient(hostName)
 	if err != nil {
+		return err
+	}
+	inspect, err := apiClient.ContainerInspect(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := checkNotSystemdManaged(inspect.Config.Labels, "stop"); err != nil {
 		return err
 	}
 	return apiClient.ContainerStop(ctx, id, container.StopOptions{})
@@ -40,6 +82,13 @@ func (c *MultiHostClient) StopContainer(ctx context.Context, hostName, id string
 func (c *MultiHostClient) RestartContainer(ctx context.Context, hostName, id string) error {
 	apiClient, err := c.GetClient(hostName)
 	if err != nil {
+		return err
+	}
+	inspect, err := apiClient.ContainerInspect(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := checkNotSystemdManaged(inspect.Config.Labels, "restart"); err != nil {
 		return err
 	}
 	return apiClient.ContainerRestart(ctx, id, container.StopOptions{})
@@ -116,6 +165,9 @@ func (c *MultiHostClient) SetEnvVariables(ctx context.Context, hostName, id stri
 	}
 
 	labels := inspect.Config.Labels
+	if err := checkNotSystemdManaged(labels, "edit"); err != nil {
+		return "", nil, err
+	}
 	isCoolifyManaged := labels[coolify.LabelManaged] == "true"
 
 	// Split existing env vars into user-defined and Coolify-injected defaults.

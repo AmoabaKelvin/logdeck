@@ -33,6 +33,7 @@ import {
 	formatImageName,
 	formatRelativeCreated,
 	getContainerUrlIdentifier,
+	getSystemdUnit,
 	isCoolifyManaged,
 	isRemovedContainer,
 	splitContainerStatus,
@@ -74,6 +75,7 @@ function RowActions({
 	isReadOnly: boolean;
 }) {
 	const state = container.state.toLowerCase();
+	const systemdUnit = getSystemdUnit(container.labels);
 
 	if (isRemovedContainer(container)) {
 		return (
@@ -150,14 +152,20 @@ function RowActions({
 					</Button>
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="end" className="w-48">
-					{isReadOnly && (
+					{isReadOnly ? (
 						<DropdownMenuLabel className="text-muted-foreground">
 							Read-only mode
 						</DropdownMenuLabel>
+					) : (
+						systemdUnit && (
+							<DropdownMenuLabel className="font-normal text-muted-foreground">
+								Managed by {systemdUnit}
+							</DropdownMenuLabel>
+						)
 					)}
 					{state === "running" ? (
 						<DropdownMenuItem
-							disabled={isReadOnly}
+							disabled={isReadOnly || Boolean(systemdUnit)}
 							onClick={() => onStop(container)}
 						>
 							<SquareIcon className="size-4" />
@@ -173,7 +181,7 @@ function RowActions({
 						</DropdownMenuItem>
 					)}
 					<DropdownMenuItem
-						disabled={isReadOnly}
+						disabled={isReadOnly || Boolean(systemdUnit)}
 						onClick={() => onRestart(container)}
 					>
 						<RotateCwIcon className="size-4" />

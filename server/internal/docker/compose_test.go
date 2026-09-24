@@ -26,6 +26,18 @@ func TestInComposeProject(t *testing.T) {
 			want:    true,
 		},
 		{
+			name:    "logdeck stack label",
+			labels:  map[string]string{"io.logdeck.stack": "web"},
+			project: "web",
+			want:    true,
+		},
+		{
+			name:    "compose label wins over stack label",
+			labels:  map[string]string{"com.docker.compose.project": "demo", "io.logdeck.stack": "web"},
+			project: "web",
+			want:    false,
+		},
+		{
 			name:    "different project",
 			labels:  map[string]string{"com.docker.compose.project": "other"},
 			project: "web",
@@ -41,8 +53,8 @@ func TestInComposeProject(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := inComposeProject(tt.labels, tt.project); got != tt.want {
-				t.Errorf("inComposeProject(%v, %q) = %v, want %v", tt.labels, tt.project, got, tt.want)
+			if got := InComposeProject(tt.labels, tt.project); got != tt.want {
+				t.Errorf("InComposeProject(%v, %q) = %v, want %v", tt.labels, tt.project, got, tt.want)
 			}
 		})
 	}

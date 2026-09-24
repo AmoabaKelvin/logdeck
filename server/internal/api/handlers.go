@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/coolify"
+	"github.com/AmoabaKelvin/logdeck/internal/docker"
 	"github.com/AmoabaKelvin/logdeck/internal/models"
 	"github.com/AmoabaKelvin/logdeck/internal/system"
 	"github.com/go-chi/chi/v5"
@@ -131,7 +133,7 @@ func (ar *APIRouter) StopContainer(w http.ResponseWriter, r *http.Request) {
 
 	err := ar.registry.Docker().StopContainer(r.Context(), host, id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), actionErrorStatus(err))
 		return
 	}
 	WriteJsonResponse(w, http.StatusOK, map[string]any{
@@ -147,7 +149,7 @@ func (ar *APIRouter) RestartContainer(w http.ResponseWriter, r *http.Request) {
 
 	err := ar.registry.Docker().RestartContainer(r.Context(), host, id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), actionErrorStatus(err))
 		return
 	}
 	WriteJsonResponse(w, http.StatusOK, map[string]any{
@@ -382,7 +384,7 @@ func (ar *APIRouter) UpdateEnvVariables(w http.ResponseWriter, r *http.Request) 
 
 	newContainerID, labels, err := ar.registry.Docker().SetEnvVariables(r.Context(), host, id, envVariables.Env)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), actionErrorStatus(err))
 		return
 	}
 
@@ -408,4 +410,14 @@ func (ar *APIRouter) UpdateEnvVariables(w http.ResponseWriter, r *http.Request) 
 	}
 
 	WriteJsonResponse(w, http.StatusOK, response)
+}
+
+// actionErrorStatus answers 409 for actions refused on systemd-managed
+// containers, so clients can tell them apart from engine failures.
+func actionErrorStatus(err error) int {
+	var managed *docker.SystemdManagedError
+	if errors.As(err, &managed) {
+		return http.StatusConflict
+	}
+	return http.StatusInternalServerError
 }

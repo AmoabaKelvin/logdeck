@@ -6,6 +6,7 @@ import {
 	countContainerStates,
 	findContainerByIdentifier,
 	getComposeProject,
+	getSystemdUnit,
 	resolvePublishedHost,
 	selectStackMembers,
 	parseDurationSeconds,
@@ -103,6 +104,35 @@ describe("synthesizeRemovedContainers", () => {
 			"io.podman.compose.project": "demostack",
 		});
 		expect(getComposeProject(row.labels)).toBe("demostack");
+	});
+});
+
+describe("getSystemdUnit", () => {
+	it("reads the Quadlet unit", () => {
+		expect(getSystemdUnit({ PODMAN_SYSTEMD_UNIT: "web.service" })).toBe(
+			"web.service",
+		);
+	});
+
+	it("ignores the unit podman-compose stamps on every container", () => {
+		expect(
+			getSystemdUnit({ PODMAN_SYSTEMD_UNIT: "podman-compose@demo.service" }),
+		).toBeUndefined();
+	});
+});
+
+describe("getComposeProject", () => {
+	it("reads the stack label set for Podman pods and Quadlet stacks", () => {
+		expect(getComposeProject({ "io.logdeck.stack": "shop" })).toBe("shop");
+	});
+
+	it("prefers the compose project over the stack label", () => {
+		expect(
+			getComposeProject({
+				"com.docker.compose.project": "demo",
+				"io.logdeck.stack": "shop",
+			}),
+		).toBe("demo");
 	});
 });
 
