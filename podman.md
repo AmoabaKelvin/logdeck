@@ -173,6 +173,31 @@ Grouping containers by compose project works with both label conventions:
   podman-compose releases
 - `io.podman.compose.project` — set by podman-compose
 
+## Quadlet Stacks and Pods
+
+Quadlet gives every container its own systemd unit, so LogDeck groups Quadlet
+containers in two other ways:
+
+- **Pods.** Containers in a `.pod` are grouped under the pod name
+  automatically.
+- **The `io.logdeck.stack` label.** For containers started together by a
+  target, add the same label to each `.container` file:
+
+  ```ini
+  [Container]
+  Label=io.logdeck.stack=media
+  ```
+
+  An explicit `io.logdeck.stack` label wins over the pod name.
+
+These groups work like compose projects: stack logs, stored history, alert
+rules, `logdeck stacks`, and `logdeck logs --stack`.
+
+LogDeck refuses to stop or restart systemd-managed containers, or to edit
+their environment. Quadlet runs them with `--rm`, so stopping one through the
+API deletes it and leaves the unit failed. Use `systemctl --user restart
+<unit>` on the host instead (without `--user` for rootful Podman).
+
 ## Limitations
 
 - The Coolify integration is Docker-specific and does not apply to Podman

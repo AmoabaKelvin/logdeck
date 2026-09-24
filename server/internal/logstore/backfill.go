@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/AmoabaKelvin/logdeck/internal/docker"
 	"github.com/AmoabaKelvin/logdeck/internal/models"
 )
 
@@ -69,7 +70,7 @@ func (s *Store) backfill(ctx context.Context, engine Engine, info models.Contain
 	}
 
 	name := containerName(info)
-	project := composeProject(info.Labels)
+	project := docker.ComposeProject(info.Labels)
 	opts := models.LogOptions{
 		Follow:     false,
 		Timestamps: true,

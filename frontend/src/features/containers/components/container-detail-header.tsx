@@ -20,6 +20,7 @@ import {
 	formatRelativeCreated,
 	getHealthBadgeClass,
 	getStateBadgeClass,
+	getSystemdUnit,
 	splitContainerStatus,
 	toTitleCase,
 } from "./container-utils";
@@ -184,6 +185,7 @@ export function ContainerDetailHeader({
 }: ContainerDetailHeaderProps) {
 	const state = container?.state.toLowerCase();
 	const isRunning = state === "running" || state === "paused";
+	const systemdUnit = getSystemdUnit(container?.labels);
 	const { label } = container ? splitContainerStatus(container) : { label: "" };
 
 	const meta = container
@@ -247,10 +249,16 @@ export function ContainerDetailHeader({
 
 				{container && (
 					<div className="flex flex-wrap items-center gap-2 sm:shrink-0">
-						{isReadOnly && (
+						{isReadOnly ? (
 							<p className="text-base text-muted-foreground sm:text-sm">
 								Read-only
 							</p>
+						) : (
+							systemdUnit && (
+								<p className="text-base text-muted-foreground sm:text-sm">
+									Managed by {systemdUnit}
+								</p>
+							)
 						)}
 						{state === "running" && (
 							<Button
@@ -264,7 +272,7 @@ export function ContainerDetailHeader({
 						)}
 						<Button
 							variant="outline"
-							disabled={isReadOnly || isActionPending}
+							disabled={isReadOnly || isActionPending || Boolean(systemdUnit)}
 							onClick={onRestart}
 						>
 							<RotateCwIcon className="size-4" />
@@ -272,7 +280,11 @@ export function ContainerDetailHeader({
 						</Button>
 						<Button
 							variant={isRunning ? "outline" : "default"}
-							disabled={isReadOnly || isActionPending}
+							disabled={
+								isReadOnly ||
+								isActionPending ||
+								(isRunning && Boolean(systemdUnit))
+							}
 							onClick={isRunning ? onStop : onStart}
 						>
 							{isActionPending ? (

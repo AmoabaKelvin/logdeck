@@ -212,6 +212,7 @@ func TestSpecMatches(t *testing.T) {
 		{"name miss", ContainerSpec{Containers: []string{"web"}}, "h1", "db", nil, false},
 		{"docker project label", ContainerSpec{Projects: []string{"demo"}}, "h1", "db", map[string]string{"com.docker.compose.project": "demo"}, true},
 		{"podman project label", ContainerSpec{Projects: []string{"demo"}}, "h1", "db", map[string]string{"io.podman.compose.project": "demo"}, true},
+		{"logdeck stack label", ContainerSpec{Projects: []string{"shop"}}, "h1", "api", map[string]string{"io.logdeck.stack": "shop"}, true},
 		{"project miss", ContainerSpec{Projects: []string{"demo"}}, "h1", "db", map[string]string{"com.docker.compose.project": "other"}, false},
 		{"name or project", ContainerSpec{Containers: []string{"web"}, Projects: []string{"demo"}}, "h1", "db", map[string]string{"com.docker.compose.project": "demo"}, true},
 		{"host and name both required", ContainerSpec{Hosts: []string{"h2"}, Containers: []string{"web"}}, "h1", "web", nil, false},

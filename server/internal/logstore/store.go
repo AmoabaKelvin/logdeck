@@ -343,7 +343,7 @@ func (s *Store) sink(rec logstream.Record) {
 		kind:    msgLine,
 		key:     genKey{host: rec.Host, id: rec.ContainerID},
 		name:    rec.ContainerName,
-		project: composeProject(rec.Labels),
+		project: docker.ComposeProject(rec.Labels),
 	}
 	msg.line = lineFromEntry(rec.Entry)
 
@@ -522,16 +522,4 @@ func (s *Store) Wait() {
 func (s *Store) Close() error {
 	s.codec.close()
 	return errors.Join(s.writerDB.Close(), s.db.Close())
-}
-
-// composeProject reads the compose project from container labels. Docker
-// Compose and recent podman-compose set the com.docker label; older
-// podman-compose releases only set the io.podman one.
-func composeProject(labels map[string]string) string {
-	for _, label := range []string{"com.docker.compose.project", "io.podman.compose.project"} {
-		if value := labels[label]; value != "" {
-			return value
-		}
-	}
-	return ""
 }

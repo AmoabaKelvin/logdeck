@@ -106,6 +106,21 @@ describe("synthesizeRemovedContainers", () => {
 	});
 });
 
+describe("getComposeProject", () => {
+	it("reads the stack label set for Podman pods and Quadlet stacks", () => {
+		expect(getComposeProject({ "io.logdeck.stack": "shop" })).toBe("shop");
+	});
+
+	it("prefers the compose project over the stack label", () => {
+		expect(
+			getComposeProject({
+				"com.docker.compose.project": "demo",
+				"io.logdeck.stack": "shop",
+			}),
+		).toBe("demo");
+	});
+});
+
 describe("selectVisibleContainers", () => {
 	const liveContainers = [live()];
 	const removedContainers = synthesizeRemovedContainers([stored()], []);

@@ -11,19 +11,32 @@ import (
 )
 
 // Docker Compose and recent podman-compose both set the com.docker label;
-// older podman-compose releases only set the io.podman one.
+// older podman-compose releases only set the io.podman one. StackLabel names
+// Quadlet stacks and pods.
 var composeProjectLabels = []string{
 	"com.docker.compose.project",
 	"io.podman.compose.project",
+	StackLabel,
 }
 
-func inComposeProject(labels map[string]string, project string) bool {
+// InComposeProject reports whether any project label names project.
+func InComposeProject(labels map[string]string, project string) bool {
 	for _, label := range composeProjectLabels {
 		if labels[label] == project {
 			return true
 		}
 	}
 	return false
+}
+
+// ComposeProject returns the project a container belongs to, or "".
+func ComposeProject(labels map[string]string) string {
+	for _, label := range composeProjectLabels {
+		if value := labels[label]; value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 // composeTarget identifies one container a compose action applies to.
@@ -92,10 +105,11 @@ func (c *MultiHostClient) ComposeProjectAction(ctx context.Context, hostName, pr
 	if err != nil {
 		return result, err
 	}
+	labelPodStacks(ctx, apiClient, containers)
 
 	var targets []composeTarget
 	for _, ctr := range containers {
-		if !inComposeProject(ctr.Labels, project) {
+		if !InComposeProject(ctr.Labels, project) {
 			continue
 		}
 		name := ""

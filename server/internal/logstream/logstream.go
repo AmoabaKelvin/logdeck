@@ -58,14 +58,6 @@ type ContainerSpec struct {
 	Projects   []string // compose projects
 }
 
-// Docker Compose and recent podman-compose both set the com.docker label;
-// older podman-compose releases only set the io.podman one. Mirrors the
-// unexported helper in internal/docker/compose.go.
-var composeProjectLabels = []string{
-	"com.docker.compose.project",
-	"io.podman.compose.project",
-}
-
 // Matches reports whether a container (identified by host, name without the
 // leading "/", and labels) is selected by the spec. Hosts are ANDed with the
 // container/project dimension, which is an OR between exact names and compose
@@ -81,10 +73,8 @@ func (s ContainerSpec) Matches(host, name string, labels map[string]string) bool
 		return true
 	}
 	for _, project := range s.Projects {
-		for _, label := range composeProjectLabels {
-			if labels[label] == project {
-				return true
-			}
+		if docker.InComposeProject(labels, project) {
+			return true
 		}
 	}
 	return false
@@ -362,6 +352,10 @@ func (h *Hub) handleEvent(ev docker.EngineEvent) {
 				delete(sub.tails, key)
 			}
 			if !sub.spec.Matches(ev.Host, name, ev.Labels) {
+				// Events lack the pod stack label that listing fills in.
+				if len(sub.spec.Projects) > 0 {
+					h.requestList()
+				}
 				continue
 			}
 			h.spawnTail(sub, key, name, ev.Labels)

@@ -14,6 +14,7 @@ import (
 var composeProjectLabels = []string{
 	"com.docker.compose.project",
 	"io.podman.compose.project",
+	"io.logdeck.stack", // Quadlet stacks and pods
 }
 
 // composeProject returns the compose project a container belongs to, or "".
