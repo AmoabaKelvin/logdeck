@@ -2,6 +2,19 @@
 
 All notable changes to LogDeck are documented here.
 
+## [0.8.0](https://github.com/AmoabaKelvin/logdeck/compare/v0.7.0...v0.8.0) (2026-09-24)
+
+
+### Features
+
+* **podman:** group Quadlet containers by pod or stack label ([0f5dc70](https://github.com/AmoabaKelvin/logdeck/commit/0f5dc705ed961d231fab9354e5756d350ccaf65a))
+* **podman:** group Quadlet containers by pod or stack label ([b39011d](https://github.com/AmoabaKelvin/logdeck/commit/b39011dba4399e2c02b47d699d352eb5d263dd70)), closes [#124](https://github.com/AmoabaKelvin/logdeck/issues/124)
+
+
+### Bug Fixes
+
+* **podman:** address review on Quadlet grouping ([0cb32a6](https://github.com/AmoabaKelvin/logdeck/commit/0cb32a6801eeb4256d906ac8d360683c81948f70))
+
 ## [0.7.0](https://github.com/AmoabaKelvin/logdeck/compare/v0.6.0...v0.7.0) (2026-09-23)
 
 
