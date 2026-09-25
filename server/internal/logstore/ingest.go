@@ -53,7 +53,10 @@ type ingestMsg struct {
 	// successfully. A transiently failed read must leave the generation's
 	// initial backfill pending so a retry still starts from creation.
 	complete bool
-	reason   string // non-empty when the generation is excluded from persistence
+	// through is the newest timestamp the read returned. A complete read saw
+	// both streams up to it, so it advances both watermarks.
+	through int64
+	reason  string // non-empty when the generation is excluded from persistence
 }
 
 // lineFromEntry converts a parsed hub/tail entry into a storable line. The
@@ -361,8 +364,13 @@ func (s *Store) commit(batch []ingestMsg, state *writerState) error {
 
 		if msg.kind == msgDone {
 			if msg.complete {
-				if _, err := tx.ExecContext(ctx,
-					"UPDATE containers SET initial_backfill_done = 1 WHERE id = ?", ref); err != nil {
+				if _, err := tx.ExecContext(ctx, `
+					UPDATE containers
+					SET initial_backfill_done = 1,
+					    stdout_wm_ns = max(stdout_wm_ns, ?),
+					    stderr_wm_ns = max(stderr_wm_ns, ?)
+					WHERE id = ?`,
+					msg.through, msg.through, ref); err != nil {
 					return err
 				}
 			}
