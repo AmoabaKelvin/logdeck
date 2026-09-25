@@ -2,6 +2,14 @@
 
 All notable changes to LogDeck are documented here.
 
+## [0.8.1](https://github.com/AmoabaKelvin/logdeck/compare/v0.8.0...v0.8.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* **logstore:** advance both watermarks after a full read ([56217ab](https://github.com/AmoabaKelvin/logdeck/commit/56217ab65cea1d108956fedabdb90b8ce3b18af9))
+* **logstore:** advance both watermarks after a full read ([6d27190](https://github.com/AmoabaKelvin/logdeck/commit/6d2719023de1aeb1ec9b069bba2fe7a12d8086b1)), closes [#155](https://github.com/AmoabaKelvin/logdeck/issues/155)
+
 ## [0.8.0](https://github.com/AmoabaKelvin/logdeck/compare/v0.7.0...v0.8.0) (2026-09-24)
 
 
