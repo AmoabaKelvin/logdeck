@@ -80,13 +80,16 @@ func (s *Store) backfill(ctx context.Context, engine Engine, info models.Contain
 		ShowStderr: true,
 	}
 
+	var throughNS int64
 	tailErr := engine.TailContainerLogs(ctx, key.host, key.id, opts, func(entry models.LogEntry) {
+		l := lineFromEntry(entry)
+		throughNS = max(throughNS, l.tsNS)
 		s.send(ctx, ingestMsg{
 			kind:    msgLine,
 			key:     key,
 			name:    name,
 			project: project,
-			line:    lineFromEntry(entry),
+			line:    l,
 		})
 	})
 
@@ -97,6 +100,7 @@ func (s *Store) backfill(ctx context.Context, engine Engine, info models.Contain
 		name:     name,
 		project:  project,
 		complete: tailErr == nil,
+		through:  throughNS,
 	}
 	if excluded {
 		done.reason = tailErr.Error()

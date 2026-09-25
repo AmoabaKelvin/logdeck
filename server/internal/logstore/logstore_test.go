@@ -1506,6 +1506,39 @@ func TestRepeatedGapTimestampDuringBackfillRemainsPending(t *testing.T) {
 	}
 }
 
+// A stream that went quiet must not pin the resume point: a complete read saw
+// both streams, so the next backfill resumes from it.
+func TestCompleteBackfillAdvancesAQuietStream(t *testing.T) {
+	store := newTestStore(t)
+	key := genKey{"local", "aaa"}
+	quietSince := baseTime.Add(-72 * time.Hour)
+
+	writeEntries(t, store, key, "web",
+		entryAt(quietSince, "stdout", "banner"),
+		entryAt(baseTime, "stderr", "tick 1"),
+	)
+	markInitialBackfillDone(t, store, key, "web")
+
+	newest := baseTime.Add(time.Second)
+	engine := newFakeEngine(containerInfo("local", "aaa", "web", quietSince))
+	engine.tail = func(_, _ string, _ models.LogOptions, emit func(models.LogEntry)) error {
+		emit(entryAt(baseTime, "stderr", "tick 1"))
+		emit(entryAt(newest, "stderr", "tick 2"))
+		return nil
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	store.start(ctx, &fakeHub{}, func() Engine { return engine })
+
+	want := newest.Add(-backfillOverlap).UTC().Format(time.RFC3339Nano)
+	waitFor(t, "resume point to pass the quiet stream", func() bool {
+		since, err := store.backfillSince(context.Background(), key, quietSince.Unix())
+		return err == nil && since == want
+	})
+	cancel()
+	store.Wait()
+}
+
 // TestSuccessfulBackfillIsNotRetried: the attempt budget counts failures, not
 // successes. Re-reading a healthy generation every sync would re-scan its whole
 // engine log, and would burn the budget that gap healing depends on.
