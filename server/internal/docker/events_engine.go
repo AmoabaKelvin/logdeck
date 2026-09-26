@@ -16,10 +16,12 @@ import (
 // engineEventActions are the container actions consumed by the alerting
 // engine and the shared log-tail hub. Distinct from watchedContainerActions
 // (the frontend stream, which also handles health separately): the engine
-// needs "oom" to fire rules; start/destroy/rename exist for the hub's tail
-// lifecycle.
+// needs "oom" to fire rules and kill/restart to tell stops from crashes;
+// start/destroy/rename exist for the hub's tail lifecycle.
 var engineEventActions = []string{
 	"start",
+	"kill",
+	"restart",
 	"die",
 	"oom",
 	"destroy",

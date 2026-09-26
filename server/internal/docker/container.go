@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"log"
 	"maps"
+	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/coolify"
 	"github.com/docker/docker/api/types/container"
@@ -76,7 +78,32 @@ func (c *MultiHostClient) StopContainer(ctx context.Context, hostName, id string
 	if err := checkNotSystemdManaged(inspect.Config.Labels, "stop"); err != nil {
 		return err
 	}
+	c.stops.Store(hostName+"|"+inspect.ID, time.Now())
 	return apiClient.ContainerStop(ctx, id, container.StopOptions{})
+}
+
+// StoppedByUser reports whether LogDeck just stopped the container, or Podman
+// recorded its last exit as a user stop. Podman's die event can arrive after
+// LogDeck has already removed the container, so its own stops are remembered
+// here, only until their die event is due. Docker hosts announce stops with a
+// kill event instead.
+func (c *MultiHostClient) StoppedByUser(ctx context.Context, hostName, id string) bool {
+	if at, ok := c.stops.LoadAndDelete(hostName + "|" + id); ok && time.Since(at.(time.Time)) < 15*time.Second {
+		return true
+	}
+	cl, err := c.GetClient(hostName)
+	if err != nil {
+		return false
+	}
+	var inspect struct {
+		State struct {
+			StoppedByUser bool `json:"StoppedByUser"`
+		} `json:"State"`
+	}
+	if err := libpodGet(ctx, cl, "/containers/"+url.PathEscape(id)+"/json", &inspect); err != nil {
+		return false
+	}
+	return inspect.State.StoppedByUser
 }
 
 func (c *MultiHostClient) RestartContainer(ctx context.Context, hostName, id string) error {
@@ -169,6 +196,7 @@ func (c *MultiHostClient) SetEnvVariables(ctx context.Context, hostName, id stri
 		return "", nil, err
 	}
 	isCoolifyManaged := labels[coolify.LabelManaged] == "true"
+	c.stops.Store(hostName+"|"+inspect.ID, time.Now())
 
 	// Split existing env vars into user-defined and Coolify-injected defaults.
 	// Coolify defaults are kept aside so the user cannot accidentally delete or

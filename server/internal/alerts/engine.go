@@ -50,6 +50,12 @@ const (
 	// container is treated as part of the same incident by rules watching
 	// both actions.
 	oomDieWindow = 10 * time.Second
+	// stopWindow is how long after a kill or restart event a die counts as
+	// a stop rather than a crash.
+	stopWindow = 60 * time.Second
+	// restartSettle separates a restart event that announces a stop from one
+	// that trails a die or start already seen.
+	restartSettle = 2 * time.Second
 	// windowIdleTTL is how long a (rule, host, container) key may go without
 	// a match before its window state is pruned.
 	windowIdleTTL = 24 * time.Hour
@@ -73,6 +79,7 @@ type eventClient interface {
 	streamEvents(ctx context.Context) <-chan docker.EngineEvent
 	inspectExit(ctx context.Context, host, containerID string) (exitCode string, oomKilled bool, err error)
 	inspectHealth(ctx context.Context, host, containerID string) (status string, err error)
+	stoppedByUser(ctx context.Context, host, containerID string) bool
 }
 
 // dockerEventAdapter adapts *docker.MultiHostClient to eventClient. It is a
@@ -95,6 +102,10 @@ func (a dockerEventAdapter) inspectExit(ctx context.Context, host, containerID s
 		return "", false, fmt.Errorf("inspect response has no state")
 	}
 	return strconv.Itoa(resp.State.ExitCode), resp.State.OOMKilled, nil
+}
+
+func (a dockerEventAdapter) stoppedByUser(ctx context.Context, host, containerID string) bool {
+	return a.c.StoppedByUser(ctx, host, containerID)
 }
 
 // inspectHealth resolves a container's current healthcheck state. Returns ""
@@ -292,6 +303,8 @@ type runState struct {
 	eventRules []*compiledRule
 	windows    map[string]*ruleWindow // by ruleID|host|containerName
 	lastOOM    map[string]time.Time   // last oom event by host|containerID
+	stopping   map[string]time.Time   // last kill or restart event by host|containerID
+	lifecycle  map[string]time.Time   // last die or start event by host|containerID
 
 	events       <-chan docker.EngineEvent
 	eventsCancel context.CancelFunc
@@ -302,10 +315,12 @@ type runState struct {
 // state.
 func (e *Engine) run(ctx context.Context) {
 	st := &runState{
-		ctx:     ctx,
-		subs:    make(map[string]*activeSub),
-		windows: make(map[string]*ruleWindow),
-		lastOOM: make(map[string]time.Time),
+		ctx:       ctx,
+		subs:      make(map[string]*activeSub),
+		windows:   make(map[string]*ruleWindow),
+		lastOOM:   make(map[string]time.Time),
+		stopping:  make(map[string]time.Time),
+		lifecycle: make(map[string]time.Time),
 	}
 	e.openEvents(st, e.source())
 	e.reconcile(st)
@@ -468,15 +483,43 @@ func (e *Engine) handleMatch(st *runState, m matchMsg) {
 // and are ignored here.
 func (e *Engine) handleEvent(st *runState, ev docker.EngineEvent) {
 	base, _, _ := strings.Cut(ev.Action, ": ")
+	key := ev.Host + "|" + ev.ContainerID
 	switch base {
+	case "kill":
+		// Docker sends kill before the die of every stop and restart. HUP,
+		// USR1 and USR2 are reloads, not stops.
+		switch ev.Labels["signal"] {
+		case "1", "10", "12":
+		default:
+			st.stopping[key] = e.now()
+		}
+	case "restart":
+		// Podman sends restart before a user restart's die, but after the die
+		// when a restart policy brings a crashed container back. Docker sends
+		// it after the start.
+		if e.now().Sub(st.lifecycle[key]) > restartSettle {
+			st.stopping[key] = e.now()
+		}
+	case "start":
+		st.lifecycle[key] = e.now()
+	case "destroy":
+		delete(st.stopping, key)
+		delete(st.lifecycle, key)
 	case "die":
+		st.lifecycle[key] = e.now()
+		if at, ok := st.stopping[key]; ok {
+			delete(st.stopping, key)
+			if e.now().Sub(at) < stopWindow {
+				return
+			}
+		}
 		switch ev.ExitCode {
 		case "":
 			e.spawnInspect(st, ev)
 		case "0":
 			// Clean exit: not an alert condition.
 		default:
-			e.recordEventMatch(st, ev, "die", ev.ExitCode)
+			e.spawnStopCheck(st, ev)
 		}
 	case "oom":
 		e.recordEventMatch(st, ev, "oom", "")
@@ -515,8 +558,28 @@ func (e *Engine) spawnInspect(st *runState, ev docker.EngineEvent) {
 			res.fire = true
 		} else {
 			res.exitCode = exitCode
-			res.fire = exitCode != "0" || oomKilled
+			res.fire = (exitCode != "0" || oomKilled) && !client.stoppedByUser(ictx, ev.Host, ev.ContainerID)
 		}
+		select {
+		case e.inspectCh <- res:
+		case <-runCtx.Done():
+		}
+	}()
+}
+
+// spawnStopCheck fires a die unless Podman recorded it as a user stop, which
+// it announces with no event beforehand. The event's exit code is kept:
+// inspect resets it once a restart policy brings the container back.
+func (e *Engine) spawnStopCheck(st *runState, ev docker.EngineEvent) {
+	client := st.eventsClient
+	runCtx := st.ctx
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		ictx, cancel := context.WithTimeout(runCtx, inspectTimeout)
+		defer cancel()
+		res := inspectResult{ev: ev, action: "die", exitCode: ev.ExitCode}
+		res.fire = !client.stoppedByUser(ictx, ev.Host, ev.ContainerID)
 		select {
 		case e.inspectCh <- res:
 		case <-runCtx.Done():

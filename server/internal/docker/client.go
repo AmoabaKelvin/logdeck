@@ -21,6 +21,8 @@ import (
 type MultiHostClient struct {
 	clients map[string]*client.Client
 	hosts   []config.DockerHost
+	// stops holds when LogDeck last stopped a container, by host|id.
+	stops sync.Map
 }
 
 func NewMultiHostClient(hosts []config.DockerHost) (*MultiHostClient, error) {

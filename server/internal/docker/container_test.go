@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
@@ -262,5 +263,21 @@ func TestCheckNotSystemdManaged(t *testing.T) {
 	err := checkNotSystemdManaged(map[string]string{"PODMAN_SYSTEMD_UNIT": "web.service"}, "edit")
 	if err == nil || !strings.Contains(err.Error(), "Quadlet file") {
 		t.Errorf("edit refusal should point at the Quadlet file, got %v", err)
+	}
+}
+
+func TestStoppedByUserRemembersLogDeckStops(t *testing.T) {
+	c := &MultiHostClient{}
+	c.stops.Store("h|c1", time.Now())
+	c.stops.Store("h|c2", time.Now().Add(-time.Minute))
+
+	if !c.StoppedByUser(context.Background(), "h", "c1") {
+		t.Error("a stop LogDeck just made should count as a user stop")
+	}
+	if c.StoppedByUser(context.Background(), "h", "c1") {
+		t.Error("the mark should be used once")
+	}
+	if c.StoppedByUser(context.Background(), "h", "c2") {
+		t.Error("an old mark should not hide a later crash")
 	}
 }
