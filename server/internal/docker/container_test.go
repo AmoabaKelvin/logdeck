@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
@@ -239,6 +240,41 @@ func TestRecreateContainerWithEnvKeepsNanoCpusWhenUnambiguous(t *testing.T) {
 	}
 	if api.lastCreateHostConfig.NanoCPUs != 1000000000 {
 		t.Errorf("NanoCpus = %d, want 1000000000 preserved", api.lastCreateHostConfig.NanoCPUs)
+	}
+}
+
+func TestRecreateContainerWithEnvKeepsAnonymousVolumes(t *testing.T) {
+	inspect := testInspectResponse(true)
+	inspect.HostConfig = &container.HostConfig{
+		Binds: []string{"data:/named"},
+		Mounts: []mount.Mount{
+			{Type: mount.TypeVolume, Source: "cache", Target: "/cache"},
+			{Type: mount.TypeVolume, Target: "/compose-anon"},
+		},
+	}
+	inspect.Mounts = []container.MountPoint{
+		{Type: mount.TypeVolume, Name: "data", Destination: "/named", RW: true},
+		{Type: mount.TypeVolume, Name: "cache", Destination: "/cache", RW: true},
+		{Type: mount.TypeVolume, Name: "3f9a1c", Destination: "/var/lib/postgresql/data", RW: true},
+		{Type: mount.TypeVolume, Name: "77b2e0", Destination: "/compose-anon", RW: true},
+		{Type: mount.TypeBind, Source: "/etc/hosts", Destination: "/etc/hosts"},
+	}
+
+	api := &fakeRecreateAPI{}
+	if _, err := recreateContainerWithEnv(context.Background(), api, inspect, []string{"A=2"}); err != nil {
+		t.Fatalf("recreateContainerWithEnv() error = %v", err)
+	}
+
+	want := []mount.Mount{
+		{Type: mount.TypeVolume, Source: "cache", Target: "/cache"},
+		{Type: mount.TypeVolume, Source: "77b2e0", Target: "/compose-anon"},
+		{Type: mount.TypeVolume, Source: "3f9a1c", Target: "/var/lib/postgresql/data"},
+	}
+	if got := api.lastCreateHostConfig.Mounts; !reflect.DeepEqual(got, want) {
+		t.Errorf("Mounts = %+v, want %+v", got, want)
+	}
+	if inspect.HostConfig.Mounts[1].Source != "" {
+		t.Error("recreate mutated the caller's HostConfig")
 	}
 }
 

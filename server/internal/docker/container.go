@@ -6,12 +6,14 @@ import (
 	"log"
 	"maps"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/coolify"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
@@ -298,6 +300,7 @@ func recreateContainerWithEnv(ctx context.Context, apiClient containerRecreateAP
 		if clone.NanoCPUs > 0 && clone.CPUQuota > 0 {
 			clone.NanoCPUs = 0
 		}
+		keepAnonymousVolumes(&clone, inspect.Mounts)
 		hostConfig = &clone
 	}
 
@@ -329,4 +332,44 @@ func recreateContainerWithEnv(ctx context.Context, apiClient containerRecreateAP
 	}
 
 	return resp.ID, nil
+}
+
+// keepAnonymousVolumes mounts the old container's anonymous volumes into the
+// replacement, which would otherwise start with new empty ones. Compose lists
+// them as volume mounts with no source; `-v /path` and image VOLUMEs are not
+// listed at all.
+func keepAnonymousVolumes(hostConfig *container.HostConfig, mounts []container.MountPoint) {
+	names := make(map[string]string)
+	for _, m := range mounts {
+		if m.Type == mount.TypeVolume && m.Name != "" {
+			names[m.Destination] = m.Name
+		}
+	}
+
+	used := make(map[string]bool)
+	for _, bind := range hostConfig.Binds {
+		if parts := strings.Split(bind, ":"); len(parts) >= 2 {
+			used[parts[1]] = true
+		}
+	}
+
+	hostConfig.Mounts = slices.Clone(hostConfig.Mounts)
+	for i, m := range hostConfig.Mounts {
+		if m.Type == mount.TypeVolume && m.Source == "" {
+			hostConfig.Mounts[i].Source = names[m.Target]
+		}
+		used[m.Target] = true
+	}
+
+	for _, m := range mounts {
+		if m.Type != mount.TypeVolume || m.Name == "" || used[m.Destination] {
+			continue
+		}
+		hostConfig.Mounts = append(hostConfig.Mounts, mount.Mount{
+			Type:     mount.TypeVolume,
+			Source:   m.Name,
+			Target:   m.Destination,
+			ReadOnly: !m.RW,
+		})
+	}
 }
