@@ -2,6 +2,33 @@
 
 All notable changes to LogDeck are documented here.
 
+## [0.8.2](https://github.com/AmoabaKelvin/logdeck/compare/v0.8.1...v0.8.2) (2026-09-26)
+
+
+### Bug Fixes
+
+* **alerts:** don't fire died alerts on stops and restarts ([9480a2e](https://github.com/AmoabaKelvin/logdeck/commit/9480a2e0ff963a63acab5b5b9dea8242f269e94b))
+* **api:** bound the login body and the hostname lookup ([8a3b91a](https://github.com/AmoabaKelvin/logdeck/commit/8a3b91a1d0e04d7566aa5ce31e44f270bb4a9db9))
+* **api:** hide container env from read tokens ([07c880f](https://github.com/AmoabaKelvin/logdeck/commit/07c880faf470e904a0c90744acfae72262904fb8))
+* **api:** reopen the events stream after a host change ([1a860a8](https://github.com/AmoabaKelvin/logdeck/commit/1a860a8caee226e6637cb6dba93f6dd1c25a95b7))
+* **auth:** sign out sessions when the password changes ([25e9294](https://github.com/AmoabaKelvin/logdeck/commit/25e9294eb75250818cc266a61b9e1e239f9368f6))
+* backend bugs from the review pass ([4723138](https://github.com/AmoabaKelvin/logdeck/commit/472313844b777f9d8d914e620fb63bcb91fbf320))
+* **dashboard:** keep the logs sheet in sync with the container ([e0dc5ea](https://github.com/AmoabaKelvin/logdeck/commit/e0dc5ea57d8571d5d2387bf3d8bcf2ca410f027f))
+* **docker:** forget the stop mark when a stop fails ([dc17d30](https://github.com/AmoabaKelvin/logdeck/commit/dc17d30ffc4df9adc4b62e3024c237a742271088))
+* **docker:** keep anonymous volumes when editing env ([fbabb25](https://github.com/AmoabaKelvin/logdeck/commit/fbabb25b3c28ea8df6a9ab3e73e4c5361914d4e8))
+* **env:** show remove on any touch screen ([f5a2e51](https://github.com/AmoabaKelvin/logdeck/commit/f5a2e51d682c61f07001e2abc04e4624ff8a1492))
+* **exec:** report truncated output and the real exit code ([77387dd](https://github.com/AmoabaKelvin/logdeck/commit/77387dd84ad80a960ee7284b5243e42892e8d944))
+* frontend bugs from the review pass ([79cd8c7](https://github.com/AmoabaKelvin/logdeck/commit/79cd8c7f8638340215bafbf55dc5d35d2f010200))
+* **frontend:** keep the session on server errors, show env errors ([6f8dc64](https://github.com/AmoabaKelvin/logdeck/commit/6f8dc64d154da9e7e704d4d4c36f5133e8580906))
+* **frontend:** label icon buttons, keep loaded data on refetch errors ([66963a3](https://github.com/AmoabaKelvin/logdeck/commit/66963a381e380f5f153af043adae139bbd2687e4))
+* **logs:** drop log fetches that resolve after a newer one ([7cbddb7](https://github.com/AmoabaKelvin/logdeck/commit/7cbddb7d3a1dbc90e3e5fff40d3b24e3970e02a3))
+* **logs:** read TTY containers' live logs ([a4bb082](https://github.com/AmoabaKelvin/logdeck/commit/a4bb08222a4081170a67cc9179ff9af52882886f))
+* **logstream:** stop tails for removed hosts ([1bf24dc](https://github.com/AmoabaKelvin/logdeck/commit/1bf24dcf728309aff6ddbb277a1896efe639f792))
+* **server:** end open streams on shutdown ([87ba1a0](https://github.com/AmoabaKelvin/logdeck/commit/87ba1a03c0e75813f9a4621ca4621571a5ecfb19))
+* **settings:** respect read-only mode and refresh containers ([33cfac6](https://github.com/AmoabaKelvin/logdeck/commit/33cfac6ec29c0636615b850dc985869541ee5b8e))
+* **stats:** fetch each host's stats as soon as it lists ([6aea8de](https://github.com/AmoabaKelvin/logdeck/commit/6aea8de60376ac074978a9b3caa9cfd180f931d2))
+* **stats:** list hosts in parallel ([6d1d4cb](https://github.com/AmoabaKelvin/logdeck/commit/6d1d4cbb17bff0a251ea66db84d9a21732e7b274))
+
 ## [0.8.1](https://github.com/AmoabaKelvin/logdeck/compare/v0.8.0...v0.8.1) (2026-09-25)
 
 
