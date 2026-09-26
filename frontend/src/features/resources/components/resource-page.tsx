@@ -63,6 +63,7 @@ export function ResourcePage<T>({
 					size="sm"
 					onClick={onRefresh}
 					className="h-9 shrink-0"
+					aria-label={`Refresh ${title.toLowerCase()}`}
 				>
 					<RefreshCcwIcon
 						className={`size-4 ${isFetching ? "animate-spin" : ""}`}
@@ -80,6 +81,7 @@ export function ResourcePage<T>({
 				placeholder={`Filter ${title.toLowerCase()}...`}
 				value={filter}
 				onChange={(event) => setFilter(event.target.value)}
+				aria-label={`Filter ${title.toLowerCase()}`}
 				className="max-w-sm"
 			/>
 
@@ -87,7 +89,7 @@ export function ResourcePage<T>({
 				<div className="flex items-center justify-center py-20">
 					<Spinner className="size-6" />
 				</div>
-			) : error ? (
+			) : error && items.length === 0 ? (
 				<p className="text-sm text-destructive">
 					Failed to load {title.toLowerCase()}: {error.message}
 				</p>

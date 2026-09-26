@@ -247,7 +247,7 @@ export function ContainerEnvPanel({
 	if (isLoading && !original) {
 		return <PanelLoading label="Reading environment…" />;
 	}
-	if (error) {
+	if (error && !original) {
 		return (
 			<PanelError>Could not read this container's environment.</PanelError>
 		);
@@ -427,7 +427,7 @@ export function ContainerEnvPanel({
 												size="icon-sm"
 												onClick={() => draft.remove(key)}
 												aria-label={`Remove ${key}`}
-												className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-destructive"
+												className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 hover:text-destructive"
 											>
 												<XIcon className="size-4 text-muted-foreground" />
 											</Button>
