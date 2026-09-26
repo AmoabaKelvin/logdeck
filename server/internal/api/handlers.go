@@ -278,13 +278,23 @@ func (ar *APIRouter) GetContainerEvents(w http.ResponseWriter, r *http.Request) 
 	flusher.Flush()
 
 	ctx := r.Context()
-	events := ar.registry.Docker().StreamContainerEvents(ctx)
+	dc := ar.registry.Docker()
+	events := dc.StreamContainerEvents(ctx)
+
+	// Changing hosts swaps the Docker client. End the stream then, so the
+	// browser reconnects on the new host list.
+	swapCheck := time.NewTicker(5 * time.Second)
+	defer swapCheck.Stop()
 
 	encoder := json.NewEncoder(w)
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-swapCheck.C:
+			if ar.registry.Docker() != dc {
+				return
+			}
 		case event, ok := <-events:
 			if !ok {
 				return
