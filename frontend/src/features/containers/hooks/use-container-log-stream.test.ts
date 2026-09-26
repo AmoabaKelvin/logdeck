@@ -63,7 +63,10 @@ async function drainMicrotasks(iterations = 500) {
 	}
 }
 
-function setup(options?: { maxLogLines?: number }) {
+function setup(options?: {
+	maxLogLines?: number;
+	getLogs?: () => Promise<TestEntry[]>;
+}) {
 	const controlled = createControlledStream();
 	const scrollToBottom = vi.fn<(behavior?: ScrollBehavior) => void>();
 	const renderCount = { current: 0 };
@@ -83,7 +86,9 @@ function setup(options?: { maxLogLines?: number }) {
 			host: "host-1",
 			tail: 100,
 			maxLogLines: options?.maxLogLines,
-			getLogs: vi.fn<() => Promise<TestEntry[]>>().mockResolvedValue([]),
+			getLogs:
+				options?.getLogs ??
+				vi.fn<() => Promise<TestEntry[]>>().mockResolvedValue([]),
 			streamLogs,
 			scrollToBottom,
 		});
@@ -139,6 +144,32 @@ describe("useContainerLogStream", () => {
 		});
 		expect(result.current.logs.map((e) => e.id)).toEqual([1, 2, 3, 4, 5]);
 		expect(scrollToBottom).toHaveBeenCalledTimes(2);
+	});
+
+	it("ignores a fetch that resolves after streaming started", async () => {
+		let resolveFetch: (entries: TestEntry[]) => void = () => {};
+		const { result, controlled } = setup({
+			getLogs: () =>
+				new Promise((resolve) => {
+					resolveFetch = resolve;
+				}),
+		});
+
+		await act(async () => {
+			void result.current.fetchLogs();
+			void result.current.startStreaming();
+			controlled.push(entry(2));
+			await drainMicrotasks();
+			vi.advanceTimersByTime(100);
+		});
+
+		await act(async () => {
+			resolveFetch([entry(1)]);
+			await drainMicrotasks();
+		});
+
+		expect(result.current.logs.map((e) => e.id)).toEqual([2]);
+		expect(result.current.isLoadingLogs).toBe(false);
 	});
 
 	it("caps the log buffer, dropping the oldest entries and reporting the count", async () => {
