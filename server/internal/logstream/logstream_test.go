@@ -479,6 +479,29 @@ func TestFailedHostListingPreservesTails(t *testing.T) {
 	}
 }
 
+func TestRemovedHostCancelsTails(t *testing.T) {
+	f := newFakeClient()
+	f.set(map[string][]models.ContainerInfo{
+		"h1": {ctr("c1", "web", "running", nil)},
+		"h2": {ctr("c2", "db", "running", nil)},
+	}, nil)
+	h := startHub(t, func() engineClient { return f })
+
+	rec := &recorder{}
+	h.Subscribe(ContainerSpec{}, models.LogOptions{}, rec.sink)
+	k1, k2 := containerKey{"h1", "c1"}, containerKey{"h2", "c2"}
+	waitFor(t, "both tails to start", func() bool { return f.activeTails(k1) == 1 && f.activeTails(k2) == 1 })
+
+	// h1 is removed from the config: it neither lists nor fails.
+	f.set(map[string][]models.ContainerInfo{"h2": {ctr("c2", "db", "running", nil)}}, nil)
+	h.Reconcile()
+
+	waitFor(t, "removed host's tail to stop", func() bool { return f.activeTails(k1) == 0 })
+	if f.activeTails(k2) != 1 {
+		t.Error("tail on a remaining host was cancelled")
+	}
+}
+
 func TestSlowSinkDropsOldestAndTailKeepsReading(t *testing.T) {
 	total := ringSize + 100
 	emitted := make(chan struct{})
