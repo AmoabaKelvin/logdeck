@@ -209,15 +209,16 @@ func (ar *APIRouter) RunCommand(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 
-	stdout, stderr, exitCode, err := ar.registry.Docker().RunExec(ctx, host, id, []string{"/bin/sh", "-c", req.Command})
+	stdout, stderr, exitCode, truncated, err := ar.registry.Docker().RunExec(ctx, host, id, []string{"/bin/sh", "-c", req.Command})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	WriteJsonResponse(w, http.StatusOK, map[string]any{
-		"stdout":   stdout,
-		"stderr":   stderr,
-		"exitCode": exitCode,
+		"stdout":    stdout,
+		"stderr":    stderr,
+		"exitCode":  exitCode,
+		"truncated": truncated,
 	})
 }
 
