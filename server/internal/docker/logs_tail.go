@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/AmoabaKelvin/logdeck/internal/models"
-	"github.com/docker/docker/pkg/stdcopy"
 )
 
 // callbackLogWriter parses raw log bytes into lines and hands each parsed
@@ -66,13 +65,10 @@ func (c *MultiHostClient) TailContainerLogs(ctx context.Context, host, container
 		return err
 	}
 
-	// stdcopy demux garbles raw TTY streams: a TTY container exposes a single
-	// unframed stream, so detect TTY up front and read it directly.
-	inspect, err := apiClient.ContainerInspect(ctx, containerID)
+	tty, err := isTTY(ctx, apiClient, containerID)
 	if err != nil {
 		return err
 	}
-	tty := inspect.Config != nil && inspect.Config.Tty
 
 	logs, err := apiClient.ContainerLogs(ctx, containerID, buildLogsOptions(opts, opts.Follow, opts.Timestamps))
 	if err != nil {
@@ -88,19 +84,11 @@ func (c *MultiHostClient) TailContainerLogs(ctx context.Context, host, container
 func tailLogStream(ctx context.Context, logs io.ReadCloser, tty bool, emit func(models.LogEntry)) error {
 	done := make(chan error, 1)
 	go func() {
-		var err error
-		if tty {
-			// TTY streams carry no stdcopy framing; everything is stdout.
-			w := &callbackLogWriter{stream: "stdout", emit: emit}
-			_, err = io.Copy(w, logs)
-			w.Flush()
-		} else {
-			stdout := &callbackLogWriter{stream: "stdout", emit: emit}
-			stderr := &callbackLogWriter{stream: "stderr", emit: emit}
-			_, err = stdcopy.StdCopy(stdout, stderr, logs)
-			stdout.Flush()
-			stderr.Flush()
-		}
+		stdout := &callbackLogWriter{stream: "stdout", emit: emit}
+		stderr := &callbackLogWriter{stream: "stderr", emit: emit}
+		err := copyLogStream(stdout, stderr, logs, tty)
+		stdout.Flush()
+		stderr.Flush()
 		done <- err
 	}()
 
