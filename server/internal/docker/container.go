@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"log"
 	"maps"
+	"net/url"
+	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/coolify"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
@@ -76,7 +80,37 @@ func (c *MultiHostClient) StopContainer(ctx context.Context, hostName, id string
 	if err := checkNotSystemdManaged(inspect.Config.Labels, "stop"); err != nil {
 		return err
 	}
-	return apiClient.ContainerStop(ctx, id, container.StopOptions{})
+	key := hostName + "|" + inspect.ID
+	c.stops.Store(key, time.Now())
+	if err := apiClient.ContainerStop(ctx, id, container.StopOptions{}); err != nil {
+		c.stops.Delete(key)
+		return err
+	}
+	return nil
+}
+
+// StoppedByUser reports whether LogDeck just stopped the container, or Podman
+// recorded its last exit as a user stop. Podman's die event can arrive after
+// LogDeck has already removed the container, so its own stops are remembered
+// here, only until their die event is due. Docker hosts announce stops with a
+// kill event instead.
+func (c *MultiHostClient) StoppedByUser(ctx context.Context, hostName, id string) bool {
+	if at, ok := c.stops.LoadAndDelete(hostName + "|" + id); ok && time.Since(at.(time.Time)) < 15*time.Second {
+		return true
+	}
+	cl, err := c.GetClient(hostName)
+	if err != nil {
+		return false
+	}
+	var inspect struct {
+		State struct {
+			StoppedByUser bool `json:"StoppedByUser"`
+		} `json:"State"`
+	}
+	if err := libpodGet(ctx, cl, "/containers/"+url.PathEscape(id)+"/json", &inspect); err != nil {
+		return false
+	}
+	return inspect.State.StoppedByUser
 }
 
 func (c *MultiHostClient) RestartContainer(ctx context.Context, hostName, id string) error {
@@ -169,6 +203,7 @@ func (c *MultiHostClient) SetEnvVariables(ctx context.Context, hostName, id stri
 		return "", nil, err
 	}
 	isCoolifyManaged := labels[coolify.LabelManaged] == "true"
+	c.stops.Store(hostName+"|"+inspect.ID, time.Now())
 
 	// Split existing env vars into user-defined and Coolify-injected defaults.
 	// Coolify defaults are kept aside so the user cannot accidentally delete or
@@ -270,6 +305,7 @@ func recreateContainerWithEnv(ctx context.Context, apiClient containerRecreateAP
 		if clone.NanoCPUs > 0 && clone.CPUQuota > 0 {
 			clone.NanoCPUs = 0
 		}
+		keepAnonymousVolumes(&clone, inspect.Mounts)
 		hostConfig = &clone
 	}
 
@@ -301,4 +337,44 @@ func recreateContainerWithEnv(ctx context.Context, apiClient containerRecreateAP
 	}
 
 	return resp.ID, nil
+}
+
+// keepAnonymousVolumes mounts the old container's anonymous volumes into the
+// replacement, which would otherwise start with new empty ones. Compose lists
+// them as volume mounts with no source; `-v /path` and image VOLUMEs are not
+// listed at all.
+func keepAnonymousVolumes(hostConfig *container.HostConfig, mounts []container.MountPoint) {
+	names := make(map[string]string)
+	for _, m := range mounts {
+		if m.Type == mount.TypeVolume && m.Name != "" {
+			names[m.Destination] = m.Name
+		}
+	}
+
+	used := make(map[string]bool)
+	for _, bind := range hostConfig.Binds {
+		if parts := strings.Split(bind, ":"); len(parts) >= 2 {
+			used[parts[1]] = true
+		}
+	}
+
+	hostConfig.Mounts = slices.Clone(hostConfig.Mounts)
+	for i, m := range hostConfig.Mounts {
+		if m.Type == mount.TypeVolume && m.Source == "" {
+			hostConfig.Mounts[i].Source = names[m.Target]
+		}
+		used[m.Target] = true
+	}
+
+	for _, m := range mounts {
+		if m.Type != mount.TypeVolume || m.Name == "" || used[m.Destination] {
+			continue
+		}
+		hostConfig.Mounts = append(hostConfig.Mounts, mount.Mount{
+			Type:     mount.TypeVolume,
+			Source:   m.Name,
+			Target:   m.Destination,
+			ReadOnly: !m.RW,
+		})
+	}
 }

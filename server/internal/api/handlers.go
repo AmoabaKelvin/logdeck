@@ -12,10 +12,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/AmoabaKelvin/logdeck/internal/auth"
 	"github.com/AmoabaKelvin/logdeck/internal/coolify"
 	"github.com/AmoabaKelvin/logdeck/internal/docker"
 	"github.com/AmoabaKelvin/logdeck/internal/models"
 	"github.com/AmoabaKelvin/logdeck/internal/system"
+	"github.com/docker/docker/api/types/container"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -44,7 +46,10 @@ func (ar *APIRouter) GetSystemStats(w http.ResponseWriter, r *http.Request) {
 	if system.InContainer() {
 		ar.machineHostnameMu.Lock()
 		if ar.machineHostname == "" {
-			ar.machineHostname = ar.registry.Docker().LocalEngineHostname(ctx)
+			// Callers queue on the lock, so a hung engine must not hold it.
+			hctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			ar.machineHostname = ar.registry.Docker().LocalEngineHostname(hctx)
+			cancel()
 		}
 		if ar.machineHostname != "" {
 			stats.HostInfo.Hostname = ar.machineHostname
@@ -105,8 +110,19 @@ func (ar *APIRouter) GetContainer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJsonResponse(w, http.StatusOK, map[string]any{
-		"container": container,
+		"container": redactEnv(r, container),
 	})
+}
+
+// redactEnv drops the env from inspect for read tokens: it holds secrets,
+// which they can't read through /env either.
+func redactEnv(r *http.Request, inspect container.InspectResponse) container.InspectResponse {
+	if auth.IsReadScoped(r) && inspect.Config != nil {
+		cfg := *inspect.Config
+		cfg.Env = nil
+		inspect.Config = &cfg
+	}
+	return inspect
 }
 
 func (ar *APIRouter) StartContainer(w http.ResponseWriter, r *http.Request) {
@@ -196,15 +212,16 @@ func (ar *APIRouter) RunCommand(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 
-	stdout, stderr, exitCode, err := ar.registry.Docker().RunExec(ctx, host, id, []string{"/bin/sh", "-c", req.Command})
+	stdout, stderr, exitCode, truncated, err := ar.registry.Docker().RunExec(ctx, host, id, []string{"/bin/sh", "-c", req.Command})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	WriteJsonResponse(w, http.StatusOK, map[string]any{
-		"stdout":   stdout,
-		"stderr":   stderr,
-		"exitCode": exitCode,
+		"stdout":    stdout,
+		"stderr":    stderr,
+		"exitCode":  exitCode,
+		"truncated": truncated,
 	})
 }
 
@@ -265,13 +282,23 @@ func (ar *APIRouter) GetContainerEvents(w http.ResponseWriter, r *http.Request) 
 	flusher.Flush()
 
 	ctx := r.Context()
-	events := ar.registry.Docker().StreamContainerEvents(ctx)
+	dc := ar.registry.Docker()
+	events := dc.StreamContainerEvents(ctx)
+
+	// Changing hosts swaps the Docker client. End the stream then, so the
+	// browser reconnects on the new host list.
+	swapCheck := time.NewTicker(5 * time.Second)
+	defer swapCheck.Stop()
 
 	encoder := json.NewEncoder(w)
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-swapCheck.C:
+			if ar.registry.Docker() != dc {
+				return
+			}
 		case event, ok := <-events:
 			if !ok {
 				return

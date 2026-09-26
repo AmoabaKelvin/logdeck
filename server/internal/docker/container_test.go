@@ -7,8 +7,10 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
@@ -241,6 +243,41 @@ func TestRecreateContainerWithEnvKeepsNanoCpusWhenUnambiguous(t *testing.T) {
 	}
 }
 
+func TestRecreateContainerWithEnvKeepsAnonymousVolumes(t *testing.T) {
+	inspect := testInspectResponse(true)
+	inspect.HostConfig = &container.HostConfig{
+		Binds: []string{"data:/named"},
+		Mounts: []mount.Mount{
+			{Type: mount.TypeVolume, Source: "cache", Target: "/cache"},
+			{Type: mount.TypeVolume, Target: "/compose-anon"},
+		},
+	}
+	inspect.Mounts = []container.MountPoint{
+		{Type: mount.TypeVolume, Name: "data", Destination: "/named", RW: true},
+		{Type: mount.TypeVolume, Name: "cache", Destination: "/cache", RW: true},
+		{Type: mount.TypeVolume, Name: "3f9a1c", Destination: "/var/lib/postgresql/data", RW: true},
+		{Type: mount.TypeVolume, Name: "77b2e0", Destination: "/compose-anon", RW: true},
+		{Type: mount.TypeBind, Source: "/etc/hosts", Destination: "/etc/hosts"},
+	}
+
+	api := &fakeRecreateAPI{}
+	if _, err := recreateContainerWithEnv(context.Background(), api, inspect, []string{"A=2"}); err != nil {
+		t.Fatalf("recreateContainerWithEnv() error = %v", err)
+	}
+
+	want := []mount.Mount{
+		{Type: mount.TypeVolume, Source: "cache", Target: "/cache"},
+		{Type: mount.TypeVolume, Source: "77b2e0", Target: "/compose-anon"},
+		{Type: mount.TypeVolume, Source: "3f9a1c", Target: "/var/lib/postgresql/data"},
+	}
+	if got := api.lastCreateHostConfig.Mounts; !reflect.DeepEqual(got, want) {
+		t.Errorf("Mounts = %+v, want %+v", got, want)
+	}
+	if inspect.HostConfig.Mounts[1].Source != "" {
+		t.Error("recreate mutated the caller's HostConfig")
+	}
+}
+
 func TestCheckNotSystemdManaged(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -262,5 +299,21 @@ func TestCheckNotSystemdManaged(t *testing.T) {
 	err := checkNotSystemdManaged(map[string]string{"PODMAN_SYSTEMD_UNIT": "web.service"}, "edit")
 	if err == nil || !strings.Contains(err.Error(), "Quadlet file") {
 		t.Errorf("edit refusal should point at the Quadlet file, got %v", err)
+	}
+}
+
+func TestStoppedByUserRemembersLogDeckStops(t *testing.T) {
+	c := &MultiHostClient{}
+	c.stops.Store("h|c1", time.Now())
+	c.stops.Store("h|c2", time.Now().Add(-time.Minute))
+
+	if !c.StoppedByUser(context.Background(), "h", "c1") {
+		t.Error("a stop LogDeck just made should count as a user stop")
+	}
+	if c.StoppedByUser(context.Background(), "h", "c1") {
+		t.Error("the mark should be used once")
+	}
+	if c.StoppedByUser(context.Background(), "h", "c2") {
+		t.Error("an old mark should not hide a later crash")
 	}
 }

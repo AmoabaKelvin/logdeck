@@ -14,6 +14,7 @@ import (
 
 	"github.com/AmoabaKelvin/logdeck/internal/models"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 )
 
@@ -30,13 +31,13 @@ const (
 
 // parseDockerLogs parses the Docker log stream into structured entries,
 // optionally filtering by level and/or search regex.
-func parseDockerLogs(reader io.Reader, levelFilter string, searchRegex *regexp.Regexp) ([]models.LogEntry, error) {
+func parseDockerLogs(reader io.Reader, tty bool, levelFilter string, searchRegex *regexp.Regexp) ([]models.LogEntry, error) {
 	var entries []models.LogEntry
 
 	stdout := &logWriter{stream: "stdout", entries: &entries}
 	stderr := &logWriter{stream: "stderr", entries: &entries}
 
-	_, err := stdcopy.StdCopy(stdout, stderr, reader)
+	err := copyLogStream(stdout, stderr, reader, tty)
 	if err != nil && err != io.EOF {
 		return nil, err
 	}
@@ -60,6 +61,26 @@ func parseDockerLogs(reader io.Reader, levelFilter string, searchRegex *regexp.R
 		filtered = append(filtered, e)
 	}
 	return filtered, nil
+}
+
+// copyLogStream splits a raw log stream into stdout and stderr. A TTY
+// container sends one unframed stream, which stdcopy cannot read.
+func copyLogStream(stdout, stderr io.Writer, logs io.Reader, tty bool) error {
+	if tty {
+		_, err := io.Copy(stdout, logs)
+		return err
+	}
+	_, err := stdcopy.StdCopy(stdout, stderr, logs)
+	return err
+}
+
+// isTTY reports whether the container was created with a TTY.
+func isTTY(ctx context.Context, apiClient *client.Client, id string) (bool, error) {
+	inspect, err := apiClient.ContainerInspect(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	return inspect.Config != nil && inspect.Config.Tty, nil
 }
 
 // maxLineBufferSize caps the pending (newline-less) line buffer in the log
@@ -234,6 +255,11 @@ func (c *MultiHostClient) GetContainerLogsParsed(ctx context.Context, hostName, 
 		return nil, err
 	}
 
+	tty, err := isTTY(ctx, apiClient, id)
+	if err != nil {
+		return nil, err
+	}
+
 	logs, err := apiClient.ContainerLogs(ctx, id, buildLogsOptions(options, false, true))
 	if err != nil {
 		return nil, err
@@ -245,13 +271,18 @@ func (c *MultiHostClient) GetContainerLogsParsed(ctx context.Context, hostName, 
 		searchRegex, _ = regexp.Compile(options.Search) // already validated by handler
 	}
 
-	return parseDockerLogs(logs, options.Level, searchRegex)
+	return parseDockerLogs(logs, tty, options.Level, searchRegex)
 }
 
 // StreamContainerLogsParsed streams parsed logs. The Docker log stream is tied
 // to ctx, so a disconnected client cancels the follow-mode stream.
 func (c *MultiHostClient) StreamContainerLogsParsed(ctx context.Context, hostName, id string, options models.LogOptions) (io.ReadCloser, error) {
 	apiClient, err := c.GetClient(hostName)
+	if err != nil {
+		return nil, err
+	}
+
+	tty, err := isTTY(ctx, apiClient, id)
 	if err != nil {
 		return nil, err
 	}
@@ -265,7 +296,7 @@ func (c *MultiHostClient) StreamContainerLogsParsed(ctx context.Context, hostNam
 		_, err := apiClient.Ping(ctx)
 		return err
 	}
-	return newParsedLogStream(ctx, logs, options, ping, nil), nil
+	return newParsedLogStream(ctx, logs, tty, options, ping, nil), nil
 }
 
 // newParsedLogStream parses the raw Docker log stream into NDJSON on a pipe.
@@ -273,7 +304,7 @@ func (c *MultiHostClient) StreamContainerLogsParsed(ctx context.Context, hostNam
 // quiet intervals and teardown when the daemon stops answering pings. tick
 // overrides the monitor cadence in tests; nil means a real time.Ticker at
 // monitorInterval.
-func newParsedLogStream(ctx context.Context, logs io.ReadCloser, options models.LogOptions, ping func(context.Context) error, tick <-chan time.Time) io.ReadCloser {
+func newParsedLogStream(ctx context.Context, logs io.ReadCloser, tty bool, options models.LogOptions, ping func(context.Context) error, tick <-chan time.Time) io.ReadCloser {
 	pipeReader, pipeWriter := io.Pipe()
 
 	var searchRegex *regexp.Regexp
@@ -358,7 +389,7 @@ func newParsedLogStream(ctx context.Context, logs io.ReadCloser, options models.
 		defer logs.Close()
 		defer pipeWriter.Close()
 
-		_, err := stdcopy.StdCopy(stdout, stderr, logs)
+		err := copyLogStream(stdout, stderr, logs, tty)
 		stdout.Flush()
 		stderr.Flush()
 

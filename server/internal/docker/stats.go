@@ -9,6 +9,7 @@ import (
 
 	"github.com/AmoabaKelvin/logdeck/internal/models"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/client"
 )
 
 const statsCacheTTL = 3 * time.Second
@@ -196,23 +197,35 @@ func (c *MultiHostClient) GetBulkContainerStats(ctx context.Context, containers 
 }
 
 func (c *MultiHostClient) GetAllRunningContainerStats(ctx context.Context) ([]models.ContainerStats, error) {
-	var runningContainers []ContainerIdentifier
+	var results []models.ContainerStats
+	var mu sync.Mutex
+	var wg sync.WaitGroup
 
+	// Each host fetches its stats as soon as it has listed, so a slow host
+	// can't use up the shared deadline for the rest.
 	for hostName, apiClient := range c.clients {
-		containers, err := apiClient.ContainerList(ctx, container.ListOptions{All: false})
-		if err != nil {
-			continue // an unreachable host must not fail the whole call
-		}
+		wg.Add(1)
+		go func(hostName string, apiClient *client.Client) {
+			defer wg.Done()
+			containers, err := apiClient.ContainerList(ctx, container.ListOptions{All: false})
+			if err != nil {
+				return // an unreachable host must not fail the whole call
+			}
 
-		for _, ctr := range containers {
-			runningContainers = append(runningContainers, ContainerIdentifier{
-				ID:   ctr.ID,
-				Host: hostName,
-			})
-		}
+			ids := make([]ContainerIdentifier, 0, len(containers))
+			for _, ctr := range containers {
+				ids = append(ids, ContainerIdentifier{ID: ctr.ID, Host: hostName})
+			}
+			stats := c.GetBulkContainerStats(ctx, ids)
+
+			mu.Lock()
+			results = append(results, stats...)
+			mu.Unlock()
+		}(hostName, apiClient)
 	}
+	wg.Wait()
 
-	return c.GetBulkContainerStats(ctx, runningContainers), nil
+	return results, nil
 }
 
 func calculateCPUPercent(stats *container.StatsResponse) float64 {

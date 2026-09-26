@@ -30,7 +30,7 @@ func TestParseDockerLogsGroupsStructuredContinuationLines(t *testing.T) {
 		t.Fatalf("failed to write docker log stream: %v", err)
 	}
 
-	entries, err := parseDockerLogs(&stream, "", nil)
+	entries, err := parseDockerLogs(&stream, false, "", nil)
 	if err != nil {
 		t.Fatalf("failed to parse docker logs: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestFollowMonitorTearsDownStreamWhenDaemonDies(t *testing.T) {
 	rawReader, _ := io.Pipe()
 	tick := make(chan time.Time)
 
-	stream := newParsedLogStream(context.Background(), rawReader, models.LogOptions{Follow: true},
+	stream := newParsedLogStream(context.Background(), rawReader, false, models.LogOptions{Follow: true},
 		func(context.Context) error { return errors.New("daemon down") }, tick)
 
 	type result struct {
@@ -191,7 +191,7 @@ func TestFollowMonitorHeartbeatsOnlyWhenIdleAndStopsAfterClose(t *testing.T) {
 	rawReader, rawWriter := io.Pipe()
 	tick := make(chan time.Time)
 
-	stream := newParsedLogStream(context.Background(), rawReader, models.LogOptions{Follow: true},
+	stream := newParsedLogStream(context.Background(), rawReader, false, models.LogOptions{Follow: true},
 		func(context.Context) error { return nil }, tick)
 	reader := bufio.NewReader(stream)
 
@@ -243,7 +243,7 @@ func TestParsedLogStreamFlagsContinuationsAndKeepsFilteredTraceBodies(t *testing
 	_, _ = stderr.Write([]byte("2026-09-14T13:51:09.817Z ERROR Request failed\n2026-09-14T13:51:09.817Z \tat com.example.Main.run(Main.java:42)\n"))
 	_, _ = stdout.Write([]byte("2026-09-14T13:51:09.818Z INFO next request\n2026-09-14T13:51:09.818Z \tindented under a dropped head\n"))
 
-	stream := newParsedLogStream(context.Background(), io.NopCloser(&raw), models.LogOptions{Level: "ERROR"}, nil, nil)
+	stream := newParsedLogStream(context.Background(), io.NopCloser(&raw), false, models.LogOptions{Level: "ERROR"}, nil, nil)
 	var entries []models.LogEntry
 	decoder := json.NewDecoder(stream)
 	for {
@@ -262,5 +262,17 @@ func TestParsedLogStreamFlagsContinuationsAndKeepsFilteredTraceBodies(t *testing
 	}
 	if !entries[1].Continuation || entries[1].Message != "at com.example.Main.run(Main.java:42)" {
 		t.Fatalf("expected the frame flagged as a continuation of the kept head, got %#v", entries[1])
+	}
+}
+
+func TestParseDockerLogsReadsUnframedTTYStream(t *testing.T) {
+	raw := strings.NewReader("2026-05-28T05:00:38.367Z ERROR: boom\n2026-05-28T05:00:39.000Z INFO: ok\n")
+
+	entries, err := parseDockerLogs(raw, true, "", nil)
+	if err != nil {
+		t.Fatalf("parse TTY stream: %v", err)
+	}
+	if len(entries) != 2 || entries[0].Stream != "stdout" {
+		t.Fatalf("expected 2 stdout entries, got %+v", entries)
 	}
 }

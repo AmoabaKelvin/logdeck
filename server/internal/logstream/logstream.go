@@ -388,7 +388,9 @@ func (h *Hub) cancelTails(key containerKey) {
 
 // handleList converges tails against a fresh container snapshot. Hosts that
 // failed to list keep their existing tails untouched: a genuinely dead host's
-// tails exit on their own and are retried by the next resync.
+// tails exit on their own and are retried by the next resync. Hosts missing
+// from both the snapshot and the errors were removed from the config, so
+// their tails stop.
 func (h *Hub) handleList(res listResult) {
 	h.listInFlight = false
 	defer func() {
@@ -409,8 +411,10 @@ func (h *Hub) handleList(res listResult) {
 		log.Printf("logstream: container listing failed: %v", res.err)
 		return
 	}
+	failedHosts := make(map[string]bool, len(res.hostErrs))
 	for _, hostErr := range res.hostErrs {
 		log.Printf("logstream: listing containers on host %s failed: %v", hostErr.HostName, hostErr.Err)
+		failedHosts[hostErr.HostName] = true
 	}
 
 	type containerMeta struct {
@@ -434,18 +438,20 @@ func (h *Hub) handleList(res listResult) {
 	}
 
 	for sub := range h.subs {
-		// Cancel tails whose host listed successfully but whose container is
-		// no longer running (or no longer matches, e.g. after a rename).
+		// Cancel tails whose container is no longer running (or no longer
+		// matches, e.g. after a rename), or whose host is gone.
 		for key, t := range sub.tails {
-			if !listedHosts[key.host] {
+			if failedHosts[key.host] {
 				continue
 			}
 			if meta, ok := running[key]; ok && sub.spec.Matches(key.host, meta.name, meta.labels) {
 				continue
 			}
-			sub.requestRecovery(RecoveryHint{
-				Host: key.host, ContainerID: key.id,
-			})
+			if listedHosts[key.host] {
+				sub.requestRecovery(RecoveryHint{
+					Host: key.host, ContainerID: key.id,
+				})
+			}
 			t.cancel()
 			delete(sub.tails, key)
 		}

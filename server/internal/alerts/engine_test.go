@@ -87,11 +87,12 @@ func (f *fakeHub) firstLive() *fakeHubSub {
 // fakeEvents is a comparable eventClient backed by a test-fed channel. The
 // inspect fields are set before events are fed, never mutated concurrently.
 type fakeEvents struct {
-	ch                  chan docker.EngineEvent
-	inspectExitCode     string
-	inspectOOM          bool
-	inspectHealthStatus string
-	inspectErr          error
+	ch                   chan docker.EngineEvent
+	inspectExitCode      string
+	inspectOOM           bool
+	inspectHealthStatus  string
+	inspectStoppedByUser bool
+	inspectErr           error
 }
 
 func newFakeEvents() *fakeEvents {
@@ -104,6 +105,10 @@ func (f *fakeEvents) streamEvents(ctx context.Context) <-chan docker.EngineEvent
 
 func (f *fakeEvents) inspectExit(ctx context.Context, host, containerID string) (string, bool, error) {
 	return f.inspectExitCode, f.inspectOOM, f.inspectErr
+}
+
+func (f *fakeEvents) stoppedByUser(ctx context.Context, host, containerID string) bool {
+	return f.inspectStoppedByUser
 }
 
 func (f *fakeEvents) inspectHealth(ctx context.Context, host, containerID string) (string, error) {
@@ -636,5 +641,77 @@ func TestClearHistoryThroughEngine(t *testing.T) {
 	te.e.ClearHistory()
 	if h := te.e.History(0); h == nil || len(h) != 0 {
 		t.Fatalf("after ClearHistory History = %#v, want non-nil empty", h)
+	}
+}
+
+func TestDieAfterKillDoesNotFire(t *testing.T) {
+	te := startTestEngine(t, config.AlertRule{
+		ID: "e1", Name: "Container died", Enabled: true, Type: "event", Events: []string{"die"}, Threshold: 1,
+	})
+
+	// docker stop: kill then die. The crash on c2 has no kill before it.
+	te.events.ch <- docker.EngineEvent{Host: "local", ContainerID: "c1", ContainerName: "stopped", Action: "kill"}
+	te.events.ch <- docker.EngineEvent{Host: "local", ContainerID: "c1", ContainerName: "stopped", Action: "die", ExitCode: "143"}
+	te.events.ch <- docker.EngineEvent{Host: "local", ContainerID: "c2", ContainerName: "crashed", Action: "die", ExitCode: "1"}
+
+	waitFor(t, "crash alert", func() bool { return len(te.e.History(0)) >= 1 })
+	time.Sleep(50 * time.Millisecond) // give a wrong stop alert time to appear
+	alerts := te.e.History(0)
+	if len(alerts) != 1 || alerts[0].ContainerName != "crashed" {
+		t.Fatalf("alerts = %+v, want only the crashed container", alerts)
+	}
+}
+
+func TestDieAfterReloadSignalFires(t *testing.T) {
+	te := startTestEngine(t, config.AlertRule{
+		ID: "e1", Name: "Container died", Enabled: true, Type: "event", Events: []string{"die"}, Threshold: 1,
+	})
+
+	te.events.ch <- docker.EngineEvent{Host: "local", ContainerID: "c1", ContainerName: "nginx", Action: "kill", Labels: map[string]string{"signal": "1"}}
+	te.events.ch <- docker.EngineEvent{Host: "local", ContainerID: "c1", ContainerName: "nginx", Action: "die", ExitCode: "1"}
+
+	waitFor(t, "crash after reload alert", func() bool { return len(te.e.History(0)) == 1 })
+}
+
+func TestDieStoppedByUserOnPodmanDoesNotFire(t *testing.T) {
+	te := startTestEngine(t, config.AlertRule{
+		ID: "e1", Name: "Container died", Enabled: true, Type: "event", Events: []string{"die"}, Threshold: 1,
+	})
+	te.events.inspectStoppedByUser = true
+
+	te.events.ch <- docker.EngineEvent{Host: "local", ContainerID: "c1", ContainerName: "web", Action: "die", ExitCode: "137"}
+
+	time.Sleep(50 * time.Millisecond)
+	if alerts := te.e.History(0); len(alerts) != 0 {
+		t.Fatalf("alerts = %+v, want none for a user stop", alerts)
+	}
+}
+
+func TestPodmanRestartEvents(t *testing.T) {
+	te := startTestEngine(t, config.AlertRule{
+		ID: "e1", Name: "Container died", Enabled: true, Type: "event", Events: []string{"die"}, Threshold: 1, CooldownSeconds: 1,
+	})
+	ev := func(id, action, exit string) {
+		te.events.ch <- docker.EngineEvent{Host: "local", ContainerID: id, ContainerName: id, Action: action, ExitCode: exit}
+	}
+
+	// podman restart: restart comes before the die.
+	ev("user", "restart", "")
+	ev("user", "die", "137")
+	ev("user", "start", "")
+
+	// Restart policy: restart comes after each crash's die.
+	ev("loop", "die", "5")
+	ev("loop", "restart", "")
+	ev("loop", "start", "")
+	waitFor(t, "first crash alert", func() bool { return len(te.e.History(0)) == 1 })
+	te.clock.advance(2 * time.Second) // past the cooldown
+	ev("loop", "die", "5")
+
+	waitFor(t, "second crash alert", func() bool { return len(te.e.History(0)) == 2 })
+	for _, a := range te.e.History(0) {
+		if a.ContainerName != "loop" {
+			t.Fatalf("alert for %q, want only the crash loop", a.ContainerName)
+		}
 	}
 }

@@ -355,7 +355,9 @@ func (ar *APIRouter) UpdateAuth(w http.ResponseWriter, r *http.Request) {
 		if req.Enabled {
 			authCfg.AdminUsername = req.AdminUsername
 
-			if authCfg.JWTSecret == "" {
+			// A new secret also signs out every session issued under the old
+			// password.
+			if authCfg.JWTSecret == "" || req.NewPassword != "" {
 				secret, err := auth.GenerateRandomHex(32)
 				if err != nil {
 					return nil, fmt.Errorf("failed to generate JWT secret")

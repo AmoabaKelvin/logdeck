@@ -127,6 +127,9 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	// Request contexts end with ctx, so open log and event streams close on
+	// shutdown instead of holding it until Docker kills the process.
+	server.BaseContext = func(net.Listener) context.Context { return ctx }
 	// Once the first signal starts the graceful shutdown, restore default
 	// signal handling so a second Ctrl-C terminates the process immediately.
 	go func() {

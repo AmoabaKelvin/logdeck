@@ -58,8 +58,12 @@ func (c *client) newRequest(ctx context.Context, method, path string, query url.
 // do performs a one-shot request and decodes the JSON response into out
 // (which may be nil to discard the body).
 func (c *client) do(ctx context.Context, method, path string, query url.Values, body, out any) error {
-	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
-	defer cancel()
+	// A deadline the caller set wins, so a slow call can ask for more time.
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, requestTimeout)
+		defer cancel()
+	}
 
 	req, err := c.newRequest(ctx, method, path, query, body)
 	if err != nil {

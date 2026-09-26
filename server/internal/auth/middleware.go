@@ -107,10 +107,17 @@ func isMutatingRequest(r *http.Request) bool {
 // always carry the admin role, so they pass through unaffected.
 func DenyReadScope(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if user, ok := r.Context().Value(UserContextKey).(models.User); ok && user.Role == APITokenScopeRead {
+		if IsReadScoped(r) {
 			http.Error(w, "This API token is read-only and cannot perform this operation", http.StatusForbidden)
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// IsReadScoped reports whether the request was authenticated by a read-scoped
+// API token.
+func IsReadScoped(r *http.Request) bool {
+	user, ok := r.Context().Value(UserContextKey).(models.User)
+	return ok && user.Role == APITokenScopeRead
 }

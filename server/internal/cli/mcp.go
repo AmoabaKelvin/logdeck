@@ -651,10 +651,11 @@ func registerListTool(s *mcp.Server, a *app, register func(*mcp.Tool), name, des
 
 // execResult is the structured result of a run_command call.
 type execResult struct {
-	Command  string `json:"command"`
-	ExitCode int    `json:"exitCode"`
-	Stdout   string `json:"stdout"`
-	Stderr   string `json:"stderr"`
+	Command   string `json:"command"`
+	ExitCode  int    `json:"exitCode"`
+	Stdout    string `json:"stdout"`
+	Stderr    string `json:"stderr"`
+	Truncated bool   `json:"truncated,omitempty"`
 }
 
 func registerRunCommand(s *mcp.Server, a *app, register func(*mcp.Tool)) {
@@ -673,15 +674,19 @@ func registerRunCommand(s *mcp.Server, a *app, register func(*mcp.Tool)) {
 			return nil, nil, err
 		}
 		var resp struct {
-			Stdout   string `json:"stdout"`
-			Stderr   string `json:"stderr"`
-			ExitCode int    `json:"exitCode"`
+			Stdout    string `json:"stdout"`
+			Stderr    string `json:"stderr"`
+			ExitCode  int    `json:"exitCode"`
+			Truncated bool   `json:"truncated"`
 		}
 		body := map[string]string{"command": in.Command}
+		// Outlasts the server's 60s limit on the command.
+		ctx, cancel := context.WithTimeout(ctx, 75*time.Second)
+		defer cancel()
 		if err := a.client.post(ctx, "/containers/"+container.ID+"/exec/run", url.Values{"host": {container.Host}}, body, &resp); err != nil {
 			return nil, nil, err
 		}
-		return mcpJSON(execResult{Command: in.Command, ExitCode: resp.ExitCode, Stdout: resp.Stdout, Stderr: resp.Stderr})
+		return mcpJSON(execResult{Command: in.Command, ExitCode: resp.ExitCode, Stdout: resp.Stdout, Stderr: resp.Stderr, Truncated: resp.Truncated})
 	})
 	register(tool)
 }

@@ -1,10 +1,15 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/AmoabaKelvin/logdeck/internal/auth"
+	"github.com/AmoabaKelvin/logdeck/internal/models"
+	"github.com/docker/docker/api/types/container"
 )
 
 func TestClampTail(t *testing.T) {
@@ -124,5 +129,27 @@ func TestGetContainerLogsParsedInvalidSearch(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "invalid search pattern") {
 		t.Fatalf("expected an invalid-search message, got %q", w.Body.String())
+	}
+}
+
+func TestRedactEnvHidesEnvFromReadTokens(t *testing.T) {
+	inspect := container.InspectResponse{Config: &container.Config{Env: []string{"SECRET=1"}}}
+
+	for _, tt := range []struct {
+		role    string
+		wantEnv bool
+	}{
+		{auth.APITokenScopeRead, false},
+		{auth.APITokenScopeAdmin, true},
+	} {
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r = r.WithContext(context.WithValue(r.Context(), auth.UserContextKey, models.User{Role: tt.role}))
+		got := redactEnv(r, inspect)
+		if (len(got.Config.Env) > 0) != tt.wantEnv {
+			t.Errorf("role %s: env = %v, want present=%v", tt.role, got.Config.Env, tt.wantEnv)
+		}
+	}
+	if len(inspect.Config.Env) != 1 {
+		t.Error("redactEnv changed the caller's config")
 	}
 }

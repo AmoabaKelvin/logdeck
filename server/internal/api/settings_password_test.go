@@ -71,3 +71,33 @@ func TestExistingSHA256ConfigStillValidates(t *testing.T) {
 		t.Errorf("existing SHA256 config should keep validating: %v", err)
 	}
 }
+
+func TestUpdateAuthRotatesSecretOnPasswordChange(t *testing.T) {
+	for _, key := range []string{
+		"JWT_SECRET", "ADMIN_USERNAME", "ADMIN_PASSWORD", "ADMIN_PASSWORD_SALT",
+	} {
+		t.Setenv(key, "")
+	}
+	t.Setenv("CONFIG_PATH", filepath.Join(t.TempDir(), "config.json"))
+
+	manager := config.NewManager()
+	registry := services.NewRegistry(nil, nil, nil, manager.Config())
+	ar := &APIRouter{registry: registry, manager: manager}
+
+	save := func(body string) string {
+		w := httptest.NewRecorder()
+		ar.UpdateAuth(w, httptest.NewRequest(http.MethodPut, "/api/v1/settings/auth", strings.NewReader(body)))
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+		}
+		return manager.FileConfigSnapshot().Auth.JWTSecret
+	}
+
+	first := save(`{"enabled":true,"adminUsername":"admin","newPassword":"one"}`)
+	if kept := save(`{"enabled":true,"adminUsername":"admin"}`); kept != first {
+		t.Error("saving without a new password should keep the JWT secret")
+	}
+	if rotated := save(`{"enabled":true,"adminUsername":"admin","newPassword":"two"}`); rotated == first {
+		t.Error("a new password should rotate the JWT secret")
+	}
+}

@@ -49,8 +49,9 @@ func labelPodStacks(ctx context.Context, cl *client.Client, containers []contain
 	}
 }
 
-// podNames maps container IDs to pod names through Podman's libpod API.
-func podNames(ctx context.Context, cl *client.Client) (map[string]string, error) {
+// libpodGet decodes a GET from Podman's libpod API into out. Docker answers
+// these paths with 404.
+func libpodGet(ctx context.Context, cl *client.Client, path string, out any) error {
 	// The transport dials the socket or SSH tunnel itself, so the URL host
 	// only matters for tcp:// daemons. client.FromEnv turns on TLS exactly
 	// when DOCKER_CERT_PATH is set.
@@ -62,24 +63,28 @@ func podNames(ctx context.Context, cl *client.Client) (map[string]string, error)
 		}
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, scheme+"://"+host+"/v4.0.0/libpod/containers/json?all=true", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, scheme+"://"+host+"/v4.0.0/libpod"+path, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	resp, err := cl.HTTPClient().Do(req)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("libpod container list: %s", resp.Status)
+		return fmt.Errorf("libpod %s: %s", path, resp.Status)
 	}
+	return json.NewDecoder(resp.Body).Decode(out)
+}
 
+// podNames maps container IDs to pod names through Podman's libpod API.
+func podNames(ctx context.Context, cl *client.Client) (map[string]string, error) {
 	var list []struct {
 		ID      string `json:"Id"`
 		PodName string `json:"PodName"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+	if err := libpodGet(ctx, cl, "/containers/json?all=true", &list); err != nil {
 		return nil, err
 	}
 	pods := make(map[string]string, len(list))
