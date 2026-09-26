@@ -9,6 +9,7 @@ import (
 
 	"github.com/AmoabaKelvin/logdeck/internal/models"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/client"
 )
 
 const statsCacheTTL = 3 * time.Second
@@ -197,20 +198,31 @@ func (c *MultiHostClient) GetBulkContainerStats(ctx context.Context, containers 
 
 func (c *MultiHostClient) GetAllRunningContainerStats(ctx context.Context) ([]models.ContainerStats, error) {
 	var runningContainers []ContainerIdentifier
+	var mu sync.Mutex
+	var wg sync.WaitGroup
 
+	// Hosts are listed in parallel so a slow one can't use up the shared
+	// deadline for the rest.
 	for hostName, apiClient := range c.clients {
-		containers, err := apiClient.ContainerList(ctx, container.ListOptions{All: false})
-		if err != nil {
-			continue // an unreachable host must not fail the whole call
-		}
+		wg.Add(1)
+		go func(hostName string, apiClient *client.Client) {
+			defer wg.Done()
+			containers, err := apiClient.ContainerList(ctx, container.ListOptions{All: false})
+			if err != nil {
+				return // an unreachable host must not fail the whole call
+			}
 
-		for _, ctr := range containers {
-			runningContainers = append(runningContainers, ContainerIdentifier{
-				ID:   ctr.ID,
-				Host: hostName,
-			})
-		}
+			mu.Lock()
+			defer mu.Unlock()
+			for _, ctr := range containers {
+				runningContainers = append(runningContainers, ContainerIdentifier{
+					ID:   ctr.ID,
+					Host: hostName,
+				})
+			}
+		}(hostName, apiClient)
 	}
+	wg.Wait()
 
 	return c.GetBulkContainerStats(ctx, runningContainers), nil
 }
