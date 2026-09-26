@@ -80,8 +80,13 @@ func (c *MultiHostClient) StopContainer(ctx context.Context, hostName, id string
 	if err := checkNotSystemdManaged(inspect.Config.Labels, "stop"); err != nil {
 		return err
 	}
-	c.stops.Store(hostName+"|"+inspect.ID, time.Now())
-	return apiClient.ContainerStop(ctx, id, container.StopOptions{})
+	key := hostName + "|" + inspect.ID
+	c.stops.Store(key, time.Now())
+	if err := apiClient.ContainerStop(ctx, id, container.StopOptions{}); err != nil {
+		c.stops.Delete(key)
+		return err
+	}
+	return nil
 }
 
 // StoppedByUser reports whether LogDeck just stopped the container, or Podman
