@@ -30,8 +30,7 @@ export function useDeleteHistoryContainer() {
 						? `${result.linesDeleted.toLocaleString()} log lines deleted.`
 						: undefined,
 			});
-			queryClient.invalidateQueries({ queryKey: ["history", "containers"] });
-			queryClient.invalidateQueries({ queryKey: ["history", "status"] });
+			queryClient.invalidateQueries({ queryKey: ["history"] });
 			queryClient.invalidateQueries({ queryKey: ["containers"] });
 		},
 		onError: (error: Error) => toast.error(error.message),
@@ -56,8 +55,7 @@ export function useDeleteRemovedHistory() {
 							: undefined,
 				},
 			);
-			queryClient.invalidateQueries({ queryKey: ["history", "containers"] });
-			queryClient.invalidateQueries({ queryKey: ["history", "status"] });
+			queryClient.invalidateQueries({ queryKey: ["history"] });
 			queryClient.invalidateQueries({ queryKey: ["containers"] });
 		},
 		onError: (error: Error) => toast.error(error.message),

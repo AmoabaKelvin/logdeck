@@ -31,7 +31,10 @@ export async function updateContainerEnvVariables(
 	);
 
 	if (!response.ok) {
-		throw new Error("Failed to update container environment variables");
+		const message = await response.text();
+		throw new Error(
+			message.trim() || "Failed to update container environment variables",
+		);
 	}
 
 	const data = await readJson<UpdateEnvResponse>(response);
