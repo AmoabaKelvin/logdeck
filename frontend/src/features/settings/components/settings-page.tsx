@@ -105,7 +105,10 @@ export function SettingsPage() {
 							)}
 							{tab === "alerts" && <AlertsSection />}
 							{tab === "storage" && (
-								<LogStorageSection config={data.logStore} />
+								<LogStorageSection
+									config={data.logStore}
+									readOnly={data.readOnly.value}
+								/>
 							)}
 						</div>
 					)}

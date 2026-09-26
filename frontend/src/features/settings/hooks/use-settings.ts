@@ -19,6 +19,8 @@ import type { APITokenScope } from "../types";
 const SETTINGS_KEY = ["settings"] as const;
 const API_TOKENS_KEY = ["settings", "api-tokens"] as const;
 const HISTORY_STATUS_KEY = ["history", "status"] as const;
+// The container list carries the host set and the read-only flag.
+const CONTAINERS_KEY = ["containers"] as const;
 
 export function useSettings() {
 	return useQuery({
@@ -39,6 +41,7 @@ export function useUpdateDockerHosts() {
 		// refetching remounts the section with the current hosts and revision.
 		onSettled: () => {
 			queryClient.invalidateQueries({ queryKey: SETTINGS_KEY });
+			queryClient.invalidateQueries({ queryKey: CONTAINERS_KEY });
 		},
 	});
 }
@@ -54,6 +57,7 @@ export function useUpdateCoolifyHosts() {
 		// refetching remounts the section with the current hosts and revision.
 		onSettled: () => {
 			queryClient.invalidateQueries({ queryKey: SETTINGS_KEY });
+			queryClient.invalidateQueries({ queryKey: CONTAINERS_KEY });
 		},
 	});
 }
@@ -64,6 +68,7 @@ export function useUpdateReadOnly() {
 		mutationFn: (value: boolean) => updateReadOnly(value),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: SETTINGS_KEY });
+			queryClient.invalidateQueries({ queryKey: CONTAINERS_KEY });
 		},
 	});
 }
