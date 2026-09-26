@@ -12,10 +12,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/AmoabaKelvin/logdeck/internal/auth"
 	"github.com/AmoabaKelvin/logdeck/internal/coolify"
 	"github.com/AmoabaKelvin/logdeck/internal/docker"
 	"github.com/AmoabaKelvin/logdeck/internal/models"
 	"github.com/AmoabaKelvin/logdeck/internal/system"
+	"github.com/docker/docker/api/types/container"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -105,8 +107,19 @@ func (ar *APIRouter) GetContainer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJsonResponse(w, http.StatusOK, map[string]any{
-		"container": container,
+		"container": redactEnv(r, container),
 	})
+}
+
+// redactEnv drops the env from inspect for read tokens: it holds secrets,
+// which they can't read through /env either.
+func redactEnv(r *http.Request, inspect container.InspectResponse) container.InspectResponse {
+	if auth.IsReadScoped(r) && inspect.Config != nil {
+		cfg := *inspect.Config
+		cfg.Env = nil
+		inspect.Config = &cfg
+	}
+	return inspect
 }
 
 func (ar *APIRouter) StartContainer(w http.ResponseWriter, r *http.Request) {
