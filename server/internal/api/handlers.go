@@ -46,7 +46,10 @@ func (ar *APIRouter) GetSystemStats(w http.ResponseWriter, r *http.Request) {
 	if system.InContainer() {
 		ar.machineHostnameMu.Lock()
 		if ar.machineHostname == "" {
-			ar.machineHostname = ar.registry.Docker().LocalEngineHostname(ctx)
+			// Callers queue on the lock, so a hung engine must not hold it.
+			hctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			ar.machineHostname = ar.registry.Docker().LocalEngineHostname(hctx)
+			cancel()
 		}
 		if ar.machineHostname != "" {
 			stats.HostInfo.Hostname = ar.machineHostname
