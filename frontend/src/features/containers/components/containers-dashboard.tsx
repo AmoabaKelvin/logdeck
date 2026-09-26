@@ -222,6 +222,16 @@ export function ContainersDashboard() {
 		clearDateRange();
 	}, [setSearchTerm, setStateFilter, setHostFilter, clearDateRange]);
 
+	// Read the open container from the live list so a crash or restart shows
+	// in the sheet. A removed one keeps its last known state.
+	const sheetContainer =
+		(selectedContainer &&
+			containers.find(
+				(c) =>
+					c.id === selectedContainer.id && c.host === selectedContainer.host,
+			)) ??
+		selectedContainer;
+
 	const handleViewLogs = (container: ContainerInfo) => {
 		setSelectedContainer(container);
 		setIsLogsSheetOpen(true);
@@ -401,13 +411,11 @@ export function ContainersDashboard() {
 			/>
 
 			<ContainersLogsSheet
-				container={selectedContainer}
-				stats={selectedContainer ? statsMap[selectedContainer.id] : undefined}
-				history={
-					selectedContainer ? (statsHistory[selectedContainer.id] ?? []) : []
-				}
+				container={sheetContainer}
+				stats={sheetContainer ? statsMap[sheetContainer.id] : undefined}
+				history={sheetContainer ? (statsHistory[sheetContainer.id] ?? []) : []}
 				hostAddress={
-					hosts.find((host) => host.name === selectedContainer?.host)?.host
+					hosts.find((host) => host.name === sheetContainer?.host)?.host
 				}
 				isOpen={isLogsSheetOpen}
 				isReadOnly={isReadOnly}
