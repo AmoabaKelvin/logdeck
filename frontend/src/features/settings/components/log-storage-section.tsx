@@ -92,7 +92,13 @@ function Stat({
 
 // The caps live in the settings payload, where each one carries its own source:
 // a cap pinned by an environment variable is shown but cannot be edited here.
-function RetentionCapsForm({ config }: { config: LogStoreConfig }) {
+function RetentionCapsForm({
+	config,
+	readOnly,
+}: {
+	config: LogStoreConfig;
+	readOnly: boolean;
+}) {
 	const [perContainerMB, setPerContainerMB] = useState(
 		String(config.perContainerMB),
 	);
@@ -100,13 +106,14 @@ function RetentionCapsForm({ config }: { config: LogStoreConfig }) {
 	const [removedDays, setRemovedDays] = useState(String(config.removedDays));
 	const updateMutation = useUpdateLogStorage();
 
-	const perContainerIsEnv = config.perContainerMBSource === "env";
-	const totalIsEnv = config.totalMBSource === "env";
-	const removedIsEnv = config.removedDaysSource === "env";
+	// Lowering a cap evicts logs, so read-only mode locks the caps too.
+	const perContainerLocked = config.perContainerMBSource === "env" || readOnly;
+	const totalLocked = config.totalMBSource === "env" || readOnly;
+	const removedLocked = config.removedDaysSource === "env" || readOnly;
 	const hasChanges =
-		(!perContainerIsEnv && perContainerMB !== String(config.perContainerMB)) ||
-		(!totalIsEnv && totalMB !== String(config.totalMB)) ||
-		(!removedIsEnv && removedDays !== String(config.removedDays));
+		(!perContainerLocked && perContainerMB !== String(config.perContainerMB)) ||
+		(!totalLocked && totalMB !== String(config.totalMB)) ||
+		(!removedLocked && removedDays !== String(config.removedDays));
 
 	function handleSave() {
 		const error =
@@ -117,9 +124,9 @@ function RetentionCapsForm({ config }: { config: LogStoreConfig }) {
 			return;
 		}
 		const payload: UpdateLogStoragePayload = {};
-		if (!perContainerIsEnv) payload.perContainerMB = Number(perContainerMB);
-		if (!totalIsEnv) payload.totalMB = Number(totalMB);
-		if (!removedIsEnv) payload.removedDays = Number(removedDays);
+		if (!perContainerLocked) payload.perContainerMB = Number(perContainerMB);
+		if (!totalLocked) payload.totalMB = Number(totalMB);
+		if (!removedLocked) payload.removedDays = Number(removedDays);
 		updateMutation.mutate(payload, showResultToast);
 	}
 
@@ -132,7 +139,7 @@ function RetentionCapsForm({ config }: { config: LogStoreConfig }) {
 						label={
 							<span className="inline-flex flex-wrap items-center gap-2">
 								Per container (MB)
-								{perContainerIsEnv && <EnvBadge />}
+								{config.perContainerMBSource === "env" && <EnvBadge />}
 							</span>
 						}
 					>
@@ -142,7 +149,7 @@ function RetentionCapsForm({ config }: { config: LogStoreConfig }) {
 							type="number"
 							min={1}
 							value={perContainerMB}
-							disabled={perContainerIsEnv}
+							disabled={perContainerLocked}
 							onChange={(e) => setPerContainerMB(e.target.value)}
 						/>
 					</Field>
@@ -151,7 +158,7 @@ function RetentionCapsForm({ config }: { config: LogStoreConfig }) {
 						label={
 							<span className="inline-flex flex-wrap items-center gap-2">
 								Total (MB)
-								{totalIsEnv && <EnvBadge />}
+								{config.totalMBSource === "env" && <EnvBadge />}
 							</span>
 						}
 					>
@@ -161,7 +168,7 @@ function RetentionCapsForm({ config }: { config: LogStoreConfig }) {
 							type="number"
 							min={1}
 							value={totalMB}
-							disabled={totalIsEnv}
+							disabled={totalLocked}
 							onChange={(e) => setTotalMB(e.target.value)}
 						/>
 					</Field>
@@ -170,7 +177,7 @@ function RetentionCapsForm({ config }: { config: LogStoreConfig }) {
 						label={
 							<span className="inline-flex flex-wrap items-center gap-2">
 								Keep removed for (days)
-								{removedIsEnv && <EnvBadge />}
+								{config.removedDaysSource === "env" && <EnvBadge />}
 							</span>
 						}
 					>
@@ -180,7 +187,7 @@ function RetentionCapsForm({ config }: { config: LogStoreConfig }) {
 							type="number"
 							min={0}
 							value={removedDays}
-							disabled={removedIsEnv}
+							disabled={removedLocked}
 							onChange={(e) => setRemovedDays(e.target.value)}
 						/>
 					</Field>
@@ -189,6 +196,7 @@ function RetentionCapsForm({ config }: { config: LogStoreConfig }) {
 					Lowering a cap evicts the oldest stored logs on the next retention
 					pass. A removed container's logs are dropped once it has been gone
 					that many days; 0 keeps them until a cap evicts them.
+					{readOnly && " Read-only mode is on, so the caps can't be changed."}
 				</Note>
 				{hasChanges && (
 					<SaveButton
@@ -204,9 +212,13 @@ function RetentionCapsForm({ config }: { config: LogStoreConfig }) {
 interface LogStorageSectionProps {
 	/** Absent on servers that do not report the log store settings. */
 	config?: LogStoreConfig;
+	readOnly: boolean;
 }
 
-export function LogStorageSection({ config }: LogStorageSectionProps) {
+export function LogStorageSection({
+	config,
+	readOnly,
+}: LogStorageSectionProps) {
 	const { data: status } = useHistoryStatus();
 	const isEnabled = status?.enabled === true;
 	const [search, setSearch] = useState("");
@@ -297,12 +309,14 @@ export function LogStorageSection({ config }: LogStorageSectionProps) {
 					<RetentionCapsForm
 						key={`${config.perContainerMB}-${config.totalMB}-${config.removedDays}`}
 						config={config}
+						readOnly={readOnly}
 					/>
 				)}
 
 				<SettingsSubsection
 					title="Stored containers"
 					action={
+						!readOnly &&
 						storedCount > 0 && (
 							<div className="flex items-center gap-1">
 								{removedCount > 0 && (
@@ -407,22 +421,24 @@ export function LogStorageSection({ config }: LogStorageSectionProps) {
 												)}
 											</Td>
 											<Td className="text-right">
-												<Button
-													variant="ghost"
-													size="icon-sm"
-													disabled={purgeHistory.isPending}
-													onClick={() =>
-														setPurgeTarget({
-															name: container.name,
-															host: container.host,
-															removed: container.removed,
-														})
-													}
-													className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-													aria-label={`Delete stored logs for ${container.name}`}
-												>
-													<Trash2Icon className="size-4" />
-												</Button>
+												{!readOnly && (
+													<Button
+														variant="ghost"
+														size="icon-sm"
+														disabled={purgeHistory.isPending}
+														onClick={() =>
+															setPurgeTarget({
+																name: container.name,
+																host: container.host,
+																removed: container.removed,
+															})
+														}
+														className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+														aria-label={`Delete stored logs for ${container.name}`}
+													>
+														<Trash2Icon className="size-4" />
+													</Button>
+												)}
 											</Td>
 										</tr>
 									))}

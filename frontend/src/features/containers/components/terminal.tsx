@@ -331,6 +331,7 @@ export function Terminal({ containerId, host }: TerminalProps) {
 								variant="ghost"
 								size="sm"
 								onClick={handleReconnect}
+								aria-label="Reconnect"
 								disabled={isReconnecting || isConnected}
 								className="h-7 px-2"
 							>
@@ -353,6 +354,7 @@ export function Terminal({ containerId, host }: TerminalProps) {
 								variant="ghost"
 								size="sm"
 								onClick={handleScrollToBottom}
+								aria-label="Scroll to bottom"
 								className="h-7 px-2"
 							>
 								<ArrowDownIcon className="size-3.5" />
@@ -366,6 +368,7 @@ export function Terminal({ containerId, host }: TerminalProps) {
 								variant="ghost"
 								size="sm"
 								onClick={handleCopyTerminal}
+								aria-label="Copy terminal content"
 								className="h-7 px-2"
 							>
 								<CopyIcon className="size-3.5" />

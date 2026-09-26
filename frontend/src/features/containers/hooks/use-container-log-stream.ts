@@ -84,6 +84,9 @@ export function useContainerLogStream<TLogEntry>({
 	} | null>(null);
 
 	const abortControllerRef = useRef<AbortController | null>(null);
+	// Bumped by every fetch and stream start, so a slow fetch that resolves
+	// after a newer one can't overwrite its lines.
+	const loadIdRef = useRef(0);
 	const stopRequestedRef = useRef(false);
 	const lastActivityRef = useRef(0);
 	const isStreamPausedRef = useRef(false);
@@ -286,6 +289,7 @@ export function useContainerLogStream<TLogEntry>({
 	const fetchLogs = useCallback(async () => {
 		if (!containerId || !host) return;
 
+		const loadId = ++loadIdRef.current;
 		setIsLoadingLogs(true);
 		resetPauseAndBuffer();
 		resetDroppedCount();
@@ -297,6 +301,7 @@ export function useContainerLogStream<TLogEntry>({
 				since,
 				until,
 			});
+			if (loadId !== loadIdRef.current) return;
 			const max = maxLogLinesRef.current;
 			const capped =
 				logEntries.length > max
@@ -307,13 +312,16 @@ export function useContainerLogStream<TLogEntry>({
 			recordDroppedLines(logEntries.length - capped.length);
 			scheduleScrollToBottom(100);
 		} catch (error) {
+			if (loadId !== loadIdRef.current) return;
 			if (error instanceof Error) {
 				onFetchErrorRef.current?.(error);
 			}
 			setLogs([]);
 			logsLengthRef.current = 0;
 		} finally {
-			setIsLoadingLogs(false);
+			if (loadId === loadIdRef.current) {
+				setIsLoadingLogs(false);
+			}
 		}
 	}, [
 		containerId,
@@ -342,6 +350,7 @@ export function useContainerLogStream<TLogEntry>({
 	const startStreaming = useCallback(async () => {
 		if (!containerId || !host) return;
 
+		loadIdRef.current++;
 		setIsStreaming(true);
 		setIsLoadingLogs(true);
 		resetPauseAndBuffer();

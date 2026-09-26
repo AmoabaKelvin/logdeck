@@ -59,16 +59,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 					removeAuthToken();
 					setToken(null);
 					setUser(null);
-				} else {
+				} else if (response.status === 401) {
+					// Only a 401 rejects the token. A restart or a proxy error keeps
+					// it for the next request to decide.
 					removeAuthToken();
 					setToken(null);
 					setUser(null);
 				}
 			} catch (error) {
 				console.error("Failed to verify token:", error);
-				removeAuthToken();
-				setToken(null);
-				setUser(null);
 			} finally {
 				setIsLoading(false);
 			}
