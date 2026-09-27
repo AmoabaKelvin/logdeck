@@ -1,6 +1,6 @@
 import { redirect } from "@tanstack/react-router";
 
-import { getAuthToken } from "@/lib/api-client";
+import { getAuthToken, loginUrl } from "@/lib/api-client";
 import { isAuthEnabled } from "@/lib/auth-config";
 
 /**
@@ -20,6 +20,6 @@ export async function requireAuthIfEnabled(): Promise<void> {
 	}
 
 	if (await isAuthEnabled()) {
-		throw redirect({ to: "/login" });
+		throw redirect({ href: loginUrl() });
 	}
 }

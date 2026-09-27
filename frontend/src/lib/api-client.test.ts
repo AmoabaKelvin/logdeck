@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { authenticatedFetch } from "./api-client";
+import { authenticatedFetch, safeRedirect } from "./api-client";
 
 const TOKEN_KEY = "logdeck_auth_token";
 
@@ -8,9 +8,9 @@ const fetchMock =
 	vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>();
 const originalLocation = window.location;
 
-function stubLocation(pathname: string) {
+function stubLocation(pathname: string, search = "") {
 	Object.defineProperty(window, "location", {
-		value: { pathname, href: `http://localhost${pathname}` },
+		value: { pathname, search, href: `http://localhost${pathname}${search}` },
 		writable: true,
 		configurable: true,
 	});
@@ -53,6 +53,17 @@ describe("authenticatedFetch", () => {
 		expect(window.location.href).toBe("/login");
 	});
 
+	it("sends the user back to the page they were on after login", async () => {
+		stubLocation("/containers/web/logs", "?host=prod");
+		fetchMock.mockResolvedValue(new Response("unauthorized", { status: 401 }));
+
+		await authenticatedFetch("/api/v1/containers");
+
+		expect(window.location.href).toBe(
+			`/login?redirect=${encodeURIComponent("/containers/web/logs?host=prod")}`,
+		);
+	});
+
 	it("does not redirect when already on /login", async () => {
 		stubLocation("/login");
 		fetchMock.mockResolvedValue(new Response("unauthorized", { status: 401 }));
@@ -82,5 +93,24 @@ describe("authenticatedFetch", () => {
 		expect(response.status).toBe(500);
 		expect(localStorage.getItem(TOKEN_KEY)).toBe("my-token");
 		expect(window.location.href).toBe("http://localhost/");
+	});
+});
+
+describe("safeRedirect", () => {
+	it("keeps same-site paths", () => {
+		expect(safeRedirect("/containers/web/logs?host=prod")).toBe(
+			"/containers/web/logs?host=prod",
+		);
+	});
+
+	it("falls back to the dashboard for anything else", () => {
+		for (const value of [
+			"//evil.example",
+			"https://evil.example",
+			"",
+			undefined,
+		]) {
+			expect(safeRedirect(value)).toBe("/");
+		}
 	});
 });
