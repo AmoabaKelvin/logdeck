@@ -1,9 +1,13 @@
 package docker
 
 import (
+	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/config"
+	"github.com/docker/docker/client"
 )
 
 func TestHealthFromStatus(t *testing.T) {
@@ -56,5 +60,31 @@ func TestConfiguredHostWinsOverDockerHostEnv(t *testing.T) {
 			t.Errorf("host %s: DOCKER_HOST overrode the configured host: got %s, want %s",
 				host.Name, got, host.Host)
 		}
+	}
+}
+
+func TestEachHostStopsWaitingForASilentHost(t *testing.T) {
+	defer func(d time.Duration) { hostWait = d }(hostWait)
+	hostWait = 50 * time.Millisecond
+
+	c := &MultiHostClient{clients: map[string]*client.Client{"up": nil, "down": nil, "broken": nil}}
+	release := make(chan struct{})
+	defer close(release)
+
+	results, hostErrors := eachHost(context.Background(), c, func(ctx context.Context, name string, _ *client.Client) (string, error) {
+		switch name {
+		case "down":
+			<-release // like a request stuck behind the client's negotiation lock
+		case "broken":
+			return "", errors.New("refused")
+		}
+		return name + "-ok", nil
+	})
+
+	if len(results) != 1 || results["up"] != "up-ok" {
+		t.Fatalf("results = %v, want only the host that answered", results)
+	}
+	if len(hostErrors) != 2 {
+		t.Fatalf("hostErrors = %v, want the failed and the silent host", hostErrors)
 	}
 }
