@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import type React from "react";
 import { createContext, useContext, useEffect, useState } from "react";
 
@@ -23,6 +24,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+	const queryClient = useQueryClient();
 	const [user, setUser] = useState<User | null>(null);
 	const [token, setToken] = useState<string | null>(getAuthToken);
 	const [isLoading, setIsLoading] = useState(true);
@@ -111,6 +113,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 		removeAuthToken();
 		setToken(null);
 		setUser(null);
+		// Nothing fetched under the old session should outlive it.
+		queryClient.clear();
 	};
 
 	const value: AuthContextType = {
