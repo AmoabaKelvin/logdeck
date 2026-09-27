@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { AppHeader } from "@/components/app-header";
 import { ArrowLeftIcon } from "@/components/ui/icons";
 import type { AggregateLogTarget } from "@/features/containers/api/get-aggregated-logs";
@@ -10,7 +10,10 @@ import {
 	stripProjectPrefix,
 	synthesizeRemovedContainers,
 } from "@/features/containers/components/container-utils";
-import { LogViewer } from "@/features/containers/components/log-viewer/log-viewer";
+import {
+	LogViewer,
+	type LogViewerHandle,
+} from "@/features/containers/components/log-viewer/log-viewer";
 import { useUrlLogViewState } from "@/features/containers/components/log-viewer/use-log-view-state";
 import { StackMembersPanel } from "@/features/containers/components/stack-members-panel";
 import { useHistoryContainers } from "@/features/containers/hooks/use-history-containers";
@@ -63,6 +66,31 @@ function StackLogsPage() {
 		}));
 	}, [containers, project]);
 
+	// The merged stream follows a fixed set of containers, so restart it when
+	// a member is recreated or starts again. A member stopping needs nothing.
+	const logViewerRef = useRef<LogViewerHandle>(null);
+	const runningIds = useMemo(
+		() =>
+			containersData
+				? containers
+						.filter(
+							(c) =>
+								c.state === "running" &&
+								getComposeProject(c.labels) === project,
+						)
+						.map((c) => c.id)
+				: undefined,
+		[containersData, containers, project],
+	);
+	const lastRunningIds = useRef(runningIds);
+	useEffect(() => {
+		const previous = lastRunningIds.current;
+		lastRunningIds.current = runningIds;
+		if (previous && runningIds?.some((id) => !previous.includes(id))) {
+			void logViewerRef.current?.refreshAfterRecreate();
+		}
+	}, [runningIds]);
+
 	const liveCount = targets?.length ?? 0;
 	// With nothing running, the stored logs of torn-down members are all there
 	// is to read. Wait for the container list so a live stack never flashes it.
@@ -104,6 +132,7 @@ function StackLogsPage() {
 
 				<section className="mt-6 flex flex-col lg:min-h-0 lg:flex-1">
 					<LogViewer
+						ref={logViewerRef}
 						variant="page"
 						containerName={project}
 						viewState={logViewState}
