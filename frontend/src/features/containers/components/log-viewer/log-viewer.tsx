@@ -766,7 +766,11 @@ export function LogViewer({
 				return;
 			}
 
-			if (lowerKey === "j" || event.key === "ArrowDown") {
+			// Arrows scroll the page unless the log list has focus.
+			const arrowsMoveLines =
+				showFullscreen || !!parentRef.current?.contains(document.activeElement);
+
+			if (lowerKey === "j" || (event.key === "ArrowDown" && arrowsMoveLines)) {
 				event.preventDefault();
 				if (event.shiftKey) {
 					extendSelectionByLine(1);
@@ -776,7 +780,7 @@ export function LogViewer({
 				return;
 			}
 
-			if (lowerKey === "k" || event.key === "ArrowUp") {
+			if (lowerKey === "k" || (event.key === "ArrowUp" && arrowsMoveLines)) {
 				event.preventDefault();
 				if (event.shiftKey) {
 					extendSelectionByLine(-1);
