@@ -53,8 +53,13 @@ export function loginUrl(): string {
 }
 
 // Only same-site paths, so the parameter can't send a user elsewhere.
+// Browsers read a backslash as a slash, so "/\host" counts as "//host".
 export function safeRedirect(value: string | undefined): string {
-	return value?.startsWith("/") && !value.startsWith("//") ? value : "/";
+	return value?.startsWith("/") &&
+		!value.startsWith("//") &&
+		!value.includes("\\")
+		? value
+		: "/";
 }
 
 export function getAuthToken(): string | null {

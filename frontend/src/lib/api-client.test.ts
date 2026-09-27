@@ -106,6 +106,7 @@ describe("safeRedirect", () => {
 	it("falls back to the dashboard for anything else", () => {
 		for (const value of [
 			"//evil.example",
+			"/\\evil.example",
 			"https://evil.example",
 			"",
 			undefined,
