@@ -1,8 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { AppHeader } from "@/components/app-header";
 import { ArrowLeftIcon } from "@/components/ui/icons";
 import type { AggregateLogTarget } from "@/features/containers/api/get-aggregated-logs";
+import type { ContainerEvent } from "@/features/containers/api/get-container-events";
 import {
 	formatContainerName,
 	getComposeProject,
@@ -38,7 +39,19 @@ function StackLogsPage() {
 	const project = decodeURIComponent(encodedProject);
 	const logViewState = useUrlLogViewState();
 
-	const { data: containersData } = useLiveContainersQuery();
+	const logViewerRef = useRef<LogViewerHandle>(null);
+	const stackIdsRef = useRef<Set<string>>(new Set());
+	// A quick restart keeps the container ID, so the list can miss it; the
+	// start event does not.
+	const handleContainerEvent = useCallback((event: ContainerEvent) => {
+		if (
+			event.action === "start" &&
+			stackIdsRef.current.has(event.containerId)
+		) {
+			void logViewerRef.current?.refreshAfterRecreate();
+		}
+	}, []);
+	const { data: containersData } = useLiveContainersQuery(handleContainerEvent);
 	const containers = containersData?.containers ?? EMPTY_CONTAINERS;
 
 	// Members that were torn down keep their stored logs, so the stack still
@@ -66,9 +79,12 @@ function StackLogsPage() {
 		}));
 	}, [containers, project]);
 
+	useEffect(() => {
+		stackIdsRef.current = new Set(targets?.map((t) => t.id));
+	}, [targets]);
+
 	// The merged stream follows a fixed set of containers, so restart it when
 	// a member is recreated or starts again. A member stopping needs nothing.
-	const logViewerRef = useRef<LogViewerHandle>(null);
 	const runningIds = useMemo(
 		() =>
 			containersData
