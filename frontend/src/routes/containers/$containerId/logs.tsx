@@ -67,7 +67,7 @@ function ContainerLogsPage() {
 	// logs live on in the store. Once the live list has loaded without a match,
 	// look the name up there before treating it as gone.
 	const isUnresolved = containersData !== undefined && !container;
-	const { data: storedContainers, isFetched: isStoreChecked } =
+	const { data: storedContainers, isSuccess: isStoreChecked } =
 		useHistoryContainers(isUnresolved);
 	const storedContainer = isUnresolved
 		? storedContainers?.find(
