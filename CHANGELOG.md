@@ -2,6 +2,23 @@
 
 All notable changes to LogDeck are documented here.
 
+## [0.8.3](https://github.com/AmoabaKelvin/logdeck/compare/v0.8.2...v0.8.3) (2026-09-28)
+
+
+### Bug Fixes
+
+* **auth:** clear cached data on logout ([b4a47ad](https://github.com/AmoabaKelvin/logdeck/commit/b4a47ad34ba4b61202b3220fb710cc4656cd4ece))
+* **auth:** reject backslashes in the login redirect ([02e3a14](https://github.com/AmoabaKelvin/logdeck/commit/02e3a145bf54bc7d9dbc0a9119ddbb43e29cf3ac))
+* **auth:** return to the same page after signing in ([7220fdd](https://github.com/AmoabaKelvin/logdeck/commit/7220fdd3ad326a01bbcb1ed0fc35ae3e8f99a277))
+* **containers:** only say not found after the store answers ([7ab4b2f](https://github.com/AmoabaKelvin/logdeck/commit/7ab4b2f3e12b80cdb65ab8e8a1ed41e90347ba81))
+* **containers:** say when a container can't be found ([55b12aa](https://github.com/AmoabaKelvin/logdeck/commit/55b12aac6509b3ed4dad6c5e661bf1a8123520ce))
+* **docker:** stop waiting on hosts that don't answer ([4662b05](https://github.com/AmoabaKelvin/logdeck/commit/4662b055bcf46192ddc987b937ad425637150be8))
+* **logs:** arrow keys scroll the page unless the log list has focus ([8f54f46](https://github.com/AmoabaKelvin/logdeck/commit/8f54f4614c9035532d6c14f9f8a09ac2d00d4fc5))
+* **logs:** refresh moves relative time ranges to now ([4304733](https://github.com/AmoabaKelvin/logdeck/commit/43047333da51e2c21bd9da0f821a8d76432052c1))
+* slow hosts, stack streams and smaller UI bugs ([c55c176](https://github.com/AmoabaKelvin/logdeck/commit/c55c176370c8244d975f20e50e77b61518b9252a))
+* **stacks:** restart the merged stream when a member starts ([f0d9854](https://github.com/AmoabaKelvin/logdeck/commit/f0d9854436a582a907b0d8a233a514db6c2b7e48))
+* **stacks:** restart the stream on a quick member restart ([218aa28](https://github.com/AmoabaKelvin/logdeck/commit/218aa28ed535fa001e0fb65038df8f67812c3b76))
+
 ## [0.8.2](https://github.com/AmoabaKelvin/logdeck/compare/v0.8.1...v0.8.2) (2026-09-26)
 
 
