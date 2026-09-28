@@ -1,13 +1,21 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { z } from "zod";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/auth-context";
+import { safeRedirect } from "@/lib/api-client";
+
+// Where to go after signing in; set when a page sent the user here.
+const loginSearchSchema = z
+	.object({ redirect: z.string().optional() })
+	.catch({});
 
 export const Route = createFileRoute("/login")({
+	validateSearch: loginSearchSchema.parse,
 	component: LoginPage,
 });
 
@@ -18,6 +26,7 @@ function LoginPage() {
 	const [isLoading, setIsLoading] = useState(false);
 
 	const { login } = useAuth();
+	const { redirect } = Route.useSearch();
 	const navigate = useNavigate();
 
 	const handleSubmit = async (e: React.FormEvent) => {
@@ -27,7 +36,7 @@ function LoginPage() {
 
 		try {
 			await login(username, password);
-			navigate({ to: "/" });
+			navigate({ href: safeRedirect(redirect) });
 		} catch (err) {
 			setError(
 				err instanceof Error

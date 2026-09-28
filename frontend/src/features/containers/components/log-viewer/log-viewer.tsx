@@ -159,10 +159,19 @@ export function LogViewer({
 	}, []);
 
 	// Anchor relative presets once per time-range change (not per render) so
-	// the fetch callback identity stays stable between changes.
+	// the fetch callback identity stays stable between changes. Refresh moves
+	// the anchor so "Last 15 min" means the last 15 minutes again.
+	const [anchor, setAnchor] = useState(() => ({ timeRange, now: Date.now() }));
+	if (
+		anchor.timeRange.preset !== timeRange.preset ||
+		anchor.timeRange.since !== timeRange.since ||
+		anchor.timeRange.until !== timeRange.until
+	) {
+		setAnchor({ timeRange, now: Date.now() });
+	}
 	const { since, until } = useMemo(
-		() => resolveTimeRange(timeRange),
-		[timeRange],
+		() => resolveTimeRange(timeRange, anchor.now),
+		[timeRange, anchor.now],
 	);
 
 	// Aggregate mode reuses the single-stream hook untouched: the targets are
@@ -386,6 +395,11 @@ export function LogViewer({
 	} = useSearchMatches({ filteredLogs, searchText, useRegex, searchParsed });
 
 	const handleRefresh = () => {
+		// A new since changes the fetch inputs, which refetches on its own.
+		if (timeRange.preset !== "all" && timeRange.preset !== "custom") {
+			setAnchor({ timeRange, now: Date.now() });
+			return;
+		}
 		if (isHistory) {
 			void refetchHistory();
 			return;
@@ -766,7 +780,11 @@ export function LogViewer({
 				return;
 			}
 
-			if (lowerKey === "j" || event.key === "ArrowDown") {
+			// Arrows scroll the page unless the log list has focus.
+			const arrowsMoveLines =
+				showFullscreen || !!parentRef.current?.contains(document.activeElement);
+
+			if (lowerKey === "j" || (event.key === "ArrowDown" && arrowsMoveLines)) {
 				event.preventDefault();
 				if (event.shiftKey) {
 					extendSelectionByLine(1);
@@ -776,7 +794,7 @@ export function LogViewer({
 				return;
 			}
 
-			if (lowerKey === "k" || event.key === "ArrowUp") {
+			if (lowerKey === "k" || (event.key === "ArrowUp" && arrowsMoveLines)) {
 				event.preventDefault();
 				if (event.shiftKey) {
 					extendSelectionByLine(-1);

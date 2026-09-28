@@ -67,7 +67,8 @@ function ContainerLogsPage() {
 	// logs live on in the store. Once the live list has loaded without a match,
 	// look the name up there before treating it as gone.
 	const isUnresolved = containersData !== undefined && !container;
-	const { data: storedContainers } = useHistoryContainers(isUnresolved);
+	const { data: storedContainers, isSuccess: isStoreChecked } =
+		useHistoryContainers(isUnresolved);
 	const storedContainer = isUnresolved
 		? storedContainers?.find(
 				(stored) =>
@@ -76,6 +77,7 @@ function ContainerLogsPage() {
 			)
 		: undefined;
 	const isRemoved = storedContainer !== undefined;
+	const isNotFound = isUnresolved && isStoreChecked && !isRemoved;
 	const containerName = container?.names?.[0] ?? storedContainer?.name;
 
 	// Inspect is where the interesting facts live: restart counts, health probe
@@ -148,23 +150,31 @@ function ContainerLogsPage() {
 					</section>
 				)}
 
-				<section className="mt-6 flex flex-col lg:min-h-0 lg:flex-1">
-					<LogViewer
-						ref={logViewerRef}
-						variant="page"
-						containerId={actualContainerId}
-						host={container?.host ?? storedContainer?.host}
-						containerName={containerName}
-						viewState={logViewState}
-						historyOnly={isRemoved}
-						history={{
-							container: (containerName ?? actualContainerId).replace(
-								/^\//,
-								"",
-							),
-						}}
-					/>
-				</section>
+				{isNotFound ? (
+					<p className="mt-6 text-base/6 text-muted-foreground sm:text-sm/6">
+						LogDeck can't find {containerIdentifier}
+						{hostParam ? ` on ${hostParam}` : ""}, and it has no stored logs. It
+						may have been removed.
+					</p>
+				) : (
+					<section className="mt-6 flex flex-col lg:min-h-0 lg:flex-1">
+						<LogViewer
+							ref={logViewerRef}
+							variant="page"
+							containerId={actualContainerId}
+							host={container?.host ?? storedContainer?.host}
+							containerName={containerName}
+							viewState={logViewState}
+							historyOnly={isRemoved}
+							history={{
+								container: (containerName ?? actualContainerId).replace(
+									/^\//,
+									"",
+								),
+							}}
+						/>
+					</section>
+				)}
 			</main>
 
 			{container && (

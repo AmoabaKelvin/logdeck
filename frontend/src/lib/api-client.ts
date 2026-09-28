@@ -31,7 +31,7 @@ export async function authenticatedFetch(
 		localStorage.removeItem(TOKEN_KEY);
 
 		if (window.location.pathname !== "/login") {
-			window.location.href = "/login";
+			window.location.href = loginUrl();
 		}
 	}
 
@@ -42,6 +42,24 @@ export async function readJson<T>(response: Response): Promise<T> {
 	// SAFETY: server/Dockerfile bundles this frontend with the API, so a response
 	// body always matches the Go handler struct the caller names as T.
 	return (await response.json()) as T;
+}
+
+// The login page sends the user back to the page they were on.
+export function loginUrl(): string {
+	const back = window.location.pathname + window.location.search;
+	return back === "/"
+		? "/login"
+		: `/login?redirect=${encodeURIComponent(back)}`;
+}
+
+// Only same-site paths, so the parameter can't send a user elsewhere.
+// Browsers read a backslash as a slash, so "/\host" counts as "//host".
+export function safeRedirect(value: string | undefined): string {
+	return value?.startsWith("/") &&
+		!value.startsWith("//") &&
+		!value.includes("\\")
+		? value
+		: "/";
 }
 
 export function getAuthToken(): string | null {

@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -63,11 +64,19 @@ func NewMultiHostClient(hosts []config.DockerHost) (*MultiHostClient, error) {
 			// the order reversed, a single DOCKER_HOST would silently collapse
 			// every configured host onto one socket. The TLS and API-version
 			// parts of FromEnv still apply.
-			apiClient, err = client.NewClientWithOpts(
+			opts := []client.Opt{
 				client.FromEnv,
 				client.WithHost(host.Host),
 				client.WithAPIVersionNegotiation(),
-			)
+			}
+			// The client negotiates its API version under a lock that ignores
+			// request contexts, so an unreachable tcp host would hold every
+			// request to it for the OS connect timeout (~75s on macOS).
+			if strings.HasPrefix(host.Host, "tcp://") {
+				dialer := &net.Dialer{Timeout: 2 * time.Second}
+				opts = append(opts, client.WithDialContext(dialer.DialContext))
+			}
+			apiClient, err = client.NewClientWithOpts(opts...)
 		}
 
 		if err != nil {
@@ -116,51 +125,82 @@ func healthFromStatus(status string) string {
 	}
 }
 
-func (c *MultiHostClient) ListContainersAllHosts(ctx context.Context) (map[string][]models.ContainerInfo, []HostError, error) {
-	result := make(map[string][]models.ContainerInfo)
-	var hostErrors []HostError
-	var mu sync.Mutex
-	var wg sync.WaitGroup
+// hostWait bounds how long a call across all hosts waits for any one of them.
+// The Docker client negotiates its API version under a lock that ignores
+// contexts, so a request to an unreachable host can outlive its own deadline.
+var hostWait = 5 * time.Second
 
-	for hostName, apiClient := range c.clients {
-		wg.Add(1)
-		go func(name string, cl *client.Client) {
-			defer wg.Done()
+type hostResult[T any] struct {
+	host string
+	val  T
+	err  error
+}
 
-			containers, err := cl.ContainerList(ctx, container.ListOptions{All: true})
-			if err == nil {
-				labelPodStacks(ctx, cl, containers)
-			}
-			mu.Lock()
-			defer mu.Unlock()
+// eachHost calls fn for every host in parallel and returns the results by host,
+// with an error for each host that failed or did not answer within hostWait.
+// A late answer is dropped.
+func eachHost[T any](ctx context.Context, c *MultiHostClient, fn func(ctx context.Context, name string, cl *client.Client) (T, error)) (map[string]T, []HostError) {
+	ctx, cancel := context.WithTimeout(ctx, hostWait)
+	defer cancel()
 
-			if err != nil {
-				hostErrors = append(hostErrors, HostError{HostName: name, Err: err})
-				return
-			}
-
-			hostContainers := make([]models.ContainerInfo, 0, len(containers))
-			for _, ctr := range containers {
-				hostContainers = append(hostContainers, models.ContainerInfo{
-					ID:      ctr.ID,
-					Names:   ctr.Names,
-					Image:   ctr.Image,
-					ImageID: ctr.ImageID,
-					Command: ctr.Command,
-					Created: ctr.Created,
-					State:   ctr.State,
-					Status:  ctr.Status,
-					Health:  healthFromStatus(ctr.Status),
-					Labels:  ctr.Labels,
-					Host:    name,
-					Ports:   publishedPorts(ctr.Ports),
-				})
-			}
-			result[name] = hostContainers
-		}(hostName, apiClient)
+	ch := make(chan hostResult[T], len(c.clients))
+	pending := make(map[string]bool, len(c.clients))
+	for name, cl := range c.clients {
+		pending[name] = true
+		go func() {
+			val, err := fn(ctx, name, cl)
+			ch <- hostResult[T]{host: name, val: val, err: err}
+		}()
 	}
 
-	wg.Wait()
+	results := make(map[string]T, len(c.clients))
+	var hostErrors []HostError
+	for len(pending) > 0 {
+		select {
+		case r := <-ch:
+			delete(pending, r.host)
+			if r.err != nil {
+				hostErrors = append(hostErrors, HostError{HostName: r.host, Err: r.err})
+				continue
+			}
+			results[r.host] = r.val
+		case <-ctx.Done():
+			for name := range pending {
+				hostErrors = append(hostErrors, HostError{HostName: name, Err: fmt.Errorf("no answer within %s", hostWait)})
+			}
+			return results, hostErrors
+		}
+	}
+	return results, hostErrors
+}
+
+func (c *MultiHostClient) ListContainersAllHosts(ctx context.Context) (map[string][]models.ContainerInfo, []HostError, error) {
+	result, hostErrors := eachHost(ctx, c, func(ctx context.Context, name string, cl *client.Client) ([]models.ContainerInfo, error) {
+		containers, err := cl.ContainerList(ctx, container.ListOptions{All: true})
+		if err != nil {
+			return nil, err
+		}
+		labelPodStacks(ctx, cl, containers)
+
+		hostContainers := make([]models.ContainerInfo, 0, len(containers))
+		for _, ctr := range containers {
+			hostContainers = append(hostContainers, models.ContainerInfo{
+				ID:      ctr.ID,
+				Names:   ctr.Names,
+				Image:   ctr.Image,
+				ImageID: ctr.ImageID,
+				Command: ctr.Command,
+				Created: ctr.Created,
+				State:   ctr.State,
+				Status:  ctr.Status,
+				Health:  healthFromStatus(ctr.Status),
+				Labels:  ctr.Labels,
+				Host:    name,
+				Ports:   publishedPorts(ctr.Ports),
+			})
+		}
+		return hostContainers, nil
+	})
 	return result, hostErrors, nil
 }
 

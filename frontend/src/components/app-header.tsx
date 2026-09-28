@@ -26,9 +26,10 @@ export function AppHeader() {
 	const { logout, user, isAuthEnabled } = useAuth();
 	const navigate = useNavigate();
 
-	const handleLogout = () => {
+	// Leave the page first, so its queries don't refetch without a token.
+	const handleLogout = async () => {
+		await navigate({ to: "/login" });
 		logout();
-		navigate({ to: "/login" });
 	};
 
 	return (

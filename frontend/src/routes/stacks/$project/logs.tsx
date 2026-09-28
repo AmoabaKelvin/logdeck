@@ -1,8 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { AppHeader } from "@/components/app-header";
 import { ArrowLeftIcon } from "@/components/ui/icons";
 import type { AggregateLogTarget } from "@/features/containers/api/get-aggregated-logs";
+import type { ContainerEvent } from "@/features/containers/api/get-container-events";
 import {
 	formatContainerName,
 	getComposeProject,
@@ -10,7 +11,10 @@ import {
 	stripProjectPrefix,
 	synthesizeRemovedContainers,
 } from "@/features/containers/components/container-utils";
-import { LogViewer } from "@/features/containers/components/log-viewer/log-viewer";
+import {
+	LogViewer,
+	type LogViewerHandle,
+} from "@/features/containers/components/log-viewer/log-viewer";
 import { useUrlLogViewState } from "@/features/containers/components/log-viewer/use-log-view-state";
 import { StackMembersPanel } from "@/features/containers/components/stack-members-panel";
 import { useHistoryContainers } from "@/features/containers/hooks/use-history-containers";
@@ -35,7 +39,19 @@ function StackLogsPage() {
 	const project = decodeURIComponent(encodedProject);
 	const logViewState = useUrlLogViewState();
 
-	const { data: containersData } = useLiveContainersQuery();
+	const logViewerRef = useRef<LogViewerHandle>(null);
+	const stackIdsRef = useRef<Set<string>>(new Set());
+	// A quick restart keeps the container ID, so the list can miss it; the
+	// start event does not.
+	const handleContainerEvent = useCallback((event: ContainerEvent) => {
+		if (
+			event.action === "start" &&
+			stackIdsRef.current.has(event.containerId)
+		) {
+			void logViewerRef.current?.refreshAfterRecreate();
+		}
+	}, []);
+	const { data: containersData } = useLiveContainersQuery(handleContainerEvent);
 	const containers = containersData?.containers ?? EMPTY_CONTAINERS;
 
 	// Members that were torn down keep their stored logs, so the stack still
@@ -62,6 +78,34 @@ function StackLogsPage() {
 			name: stripProjectPrefix(formatContainerName(container.names), project),
 		}));
 	}, [containers, project]);
+
+	useEffect(() => {
+		stackIdsRef.current = new Set(targets?.map((t) => t.id));
+	}, [targets]);
+
+	// The merged stream follows a fixed set of containers, so restart it when
+	// a member is recreated or starts again. A member stopping needs nothing.
+	const runningIds = useMemo(
+		() =>
+			containersData
+				? containers
+						.filter(
+							(c) =>
+								c.state === "running" &&
+								getComposeProject(c.labels) === project,
+						)
+						.map((c) => c.id)
+				: undefined,
+		[containersData, containers, project],
+	);
+	const lastRunningIds = useRef(runningIds);
+	useEffect(() => {
+		const previous = lastRunningIds.current;
+		lastRunningIds.current = runningIds;
+		if (previous && runningIds?.some((id) => !previous.includes(id))) {
+			void logViewerRef.current?.refreshAfterRecreate();
+		}
+	}, [runningIds]);
 
 	const liveCount = targets?.length ?? 0;
 	// With nothing running, the stored logs of torn-down members are all there
@@ -104,6 +148,7 @@ function StackLogsPage() {
 
 				<section className="mt-6 flex flex-col lg:min-h-0 lg:flex-1">
 					<LogViewer
+						ref={logViewerRef}
 						variant="page"
 						containerName={project}
 						viewState={logViewState}

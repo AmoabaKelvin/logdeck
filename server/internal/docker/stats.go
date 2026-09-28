@@ -197,34 +197,24 @@ func (c *MultiHostClient) GetBulkContainerStats(ctx context.Context, containers 
 }
 
 func (c *MultiHostClient) GetAllRunningContainerStats(ctx context.Context) ([]models.ContainerStats, error) {
+	// An unreachable host must not fail the whole call, so host errors are
+	// dropped.
+	byHost, _ := eachHost(ctx, c, func(ctx context.Context, name string, cl *client.Client) ([]models.ContainerStats, error) {
+		containers, err := cl.ContainerList(ctx, container.ListOptions{All: false})
+		if err != nil {
+			return nil, err
+		}
+		ids := make([]ContainerIdentifier, 0, len(containers))
+		for _, ctr := range containers {
+			ids = append(ids, ContainerIdentifier{ID: ctr.ID, Host: name})
+		}
+		return c.GetBulkContainerStats(ctx, ids), nil
+	})
+
 	var results []models.ContainerStats
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-
-	// Each host fetches its stats as soon as it has listed, so a slow host
-	// can't use up the shared deadline for the rest.
-	for hostName, apiClient := range c.clients {
-		wg.Add(1)
-		go func(hostName string, apiClient *client.Client) {
-			defer wg.Done()
-			containers, err := apiClient.ContainerList(ctx, container.ListOptions{All: false})
-			if err != nil {
-				return // an unreachable host must not fail the whole call
-			}
-
-			ids := make([]ContainerIdentifier, 0, len(containers))
-			for _, ctr := range containers {
-				ids = append(ids, ContainerIdentifier{ID: ctr.ID, Host: hostName})
-			}
-			stats := c.GetBulkContainerStats(ctx, ids)
-
-			mu.Lock()
-			results = append(results, stats...)
-			mu.Unlock()
-		}(hostName, apiClient)
+	for _, stats := range byHost {
+		results = append(results, stats...)
 	}
-	wg.Wait()
-
 	return results, nil
 }
 

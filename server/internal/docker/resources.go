@@ -3,7 +3,6 @@ package docker
 import (
 	"context"
 	"strings"
-	"sync"
 
 	"github.com/AmoabaKelvin/logdeck/internal/models"
 	"github.com/docker/docker/api/types/image"
@@ -22,120 +21,90 @@ func shortID(id string) string {
 }
 
 func (c *MultiHostClient) ListImagesAllHosts(ctx context.Context) ([]models.ImageInfo, []HostError) {
+	byHost, hostErrors := eachHost(ctx, c, func(ctx context.Context, name string, cl *client.Client) ([]models.ImageInfo, error) {
+		images, err := cl.ImageList(ctx, image.ListOptions{})
+		if err != nil {
+			return nil, err
+		}
+		infos := make([]models.ImageInfo, 0, len(images))
+		for _, img := range images {
+			infos = append(infos, models.ImageInfo{
+				ID:       shortID(img.ID),
+				RepoTags: img.RepoTags,
+				Size:     img.Size,
+				Created:  img.Created,
+				Host:     name,
+			})
+		}
+		return infos, nil
+	})
+
 	result := []models.ImageInfo{}
-	var hostErrors []HostError
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-
-	for hostName, apiClient := range c.clients {
-		wg.Add(1)
-		go func(name string, cl *client.Client) {
-			defer wg.Done()
-
-			images, err := cl.ImageList(ctx, image.ListOptions{})
-			mu.Lock()
-			defer mu.Unlock()
-
-			if err != nil {
-				hostErrors = append(hostErrors, HostError{HostName: name, Err: err})
-				return
-			}
-
-			for _, img := range images {
-				result = append(result, models.ImageInfo{
-					ID:       shortID(img.ID),
-					RepoTags: img.RepoTags,
-					Size:     img.Size,
-					Created:  img.Created,
-					Host:     name,
-				})
-			}
-		}(hostName, apiClient)
+	for _, infos := range byHost {
+		result = append(result, infos...)
 	}
-
-	wg.Wait()
 	return result, hostErrors
 }
 
 func (c *MultiHostClient) ListVolumesAllHosts(ctx context.Context) ([]models.VolumeInfo, []HostError) {
+	byHost, hostErrors := eachHost(ctx, c, func(ctx context.Context, name string, cl *client.Client) ([]models.VolumeInfo, error) {
+		volumes, err := cl.VolumeList(ctx, volume.ListOptions{})
+		if err != nil {
+			return nil, err
+		}
+		infos := make([]models.VolumeInfo, 0, len(volumes.Volumes))
+		for _, vol := range volumes.Volumes {
+			if vol == nil {
+				continue
+			}
+			infos = append(infos, models.VolumeInfo{
+				Name:       vol.Name,
+				Driver:     vol.Driver,
+				Mountpoint: vol.Mountpoint,
+				Created:    vol.CreatedAt,
+				Labels:     vol.Labels,
+				Host:       name,
+			})
+		}
+		return infos, nil
+	})
+
 	result := []models.VolumeInfo{}
-	var hostErrors []HostError
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-
-	for hostName, apiClient := range c.clients {
-		wg.Add(1)
-		go func(name string, cl *client.Client) {
-			defer wg.Done()
-
-			volumes, err := cl.VolumeList(ctx, volume.ListOptions{})
-			mu.Lock()
-			defer mu.Unlock()
-
-			if err != nil {
-				hostErrors = append(hostErrors, HostError{HostName: name, Err: err})
-				return
-			}
-
-			for _, vol := range volumes.Volumes {
-				if vol == nil {
-					continue
-				}
-				result = append(result, models.VolumeInfo{
-					Name:       vol.Name,
-					Driver:     vol.Driver,
-					Mountpoint: vol.Mountpoint,
-					Created:    vol.CreatedAt,
-					Labels:     vol.Labels,
-					Host:       name,
-				})
-			}
-		}(hostName, apiClient)
+	for _, infos := range byHost {
+		result = append(result, infos...)
 	}
-
-	wg.Wait()
 	return result, hostErrors
 }
 
 func (c *MultiHostClient) ListNetworksAllHosts(ctx context.Context) ([]models.NetworkInfo, []HostError) {
-	result := []models.NetworkInfo{}
-	var hostErrors []HostError
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-
-	for hostName, apiClient := range c.clients {
-		wg.Add(1)
-		go func(name string, cl *client.Client) {
-			defer wg.Done()
-
-			networks, err := cl.NetworkList(ctx, network.ListOptions{})
-			mu.Lock()
-			defer mu.Unlock()
-
-			if err != nil {
-				hostErrors = append(hostErrors, HostError{HostName: name, Err: err})
-				return
-			}
-
-			for _, nw := range networks {
-				var subnets []string
-				for _, cfg := range nw.IPAM.Config {
-					if cfg.Subnet != "" {
-						subnets = append(subnets, cfg.Subnet)
-					}
+	byHost, hostErrors := eachHost(ctx, c, func(ctx context.Context, name string, cl *client.Client) ([]models.NetworkInfo, error) {
+		networks, err := cl.NetworkList(ctx, network.ListOptions{})
+		if err != nil {
+			return nil, err
+		}
+		infos := make([]models.NetworkInfo, 0, len(networks))
+		for _, nw := range networks {
+			var subnets []string
+			for _, cfg := range nw.IPAM.Config {
+				if cfg.Subnet != "" {
+					subnets = append(subnets, cfg.Subnet)
 				}
-				result = append(result, models.NetworkInfo{
-					ID:      shortID(nw.ID),
-					Name:    nw.Name,
-					Driver:  nw.Driver,
-					Scope:   nw.Scope,
-					Subnets: subnets,
-					Host:    name,
-				})
 			}
-		}(hostName, apiClient)
-	}
+			infos = append(infos, models.NetworkInfo{
+				ID:      shortID(nw.ID),
+				Name:    nw.Name,
+				Driver:  nw.Driver,
+				Scope:   nw.Scope,
+				Subnets: subnets,
+				Host:    name,
+			})
+		}
+		return infos, nil
+	})
 
-	wg.Wait()
+	result := []models.NetworkInfo{}
+	for _, infos := range byHost {
+		result = append(result, infos...)
+	}
 	return result, hostErrors
 }
