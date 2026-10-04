@@ -10,7 +10,7 @@ Checked against the Dozzle v11 documentation in September 2026. If something her
 | Search                            | Regex, level, and time range on the server, across history     | Regex on the live view, SQL over JSON logs in the browser   |
 | Alerts                            | Event and log rules, rate windows, cooldowns, delivery history | Event, log, and metric rules with an expression language    |
 | Alert channels                    | Webhook (Slack and Discord as-is), ntfy, Gotify, Telegram      | Webhook, Slack, Discord, ntfy; Telegram and email via Cloud |
-| Edit env vars and resource limits | Yes, with .env import and Coolify sync                         | No                                                          |
+| Edit env vars and resource limits | Yes, with .env import and Coolify configuration editing        | No                                                          |
 | Compose stacks                    | Start, stop, restart a whole stack; merged logs                | Merged group logs                                           |
 | Multi-host                        | Local, TCP, or SSH; no agents                                  | TCP, or an agent container on each host                     |
 | Web terminal                      | Yes                                                            | Yes                                                         |
@@ -49,7 +49,7 @@ Both tools alert on container events and log lines. Dozzle's rules use an expres
 
 ## Changing containers
 
-Both have a web terminal. LogDeck also edits memory limits, CPU limits, and restart policies live through the engine's update API, edits environment variables (recreating the container, with optional Coolify sync), and starts, stops, or restarts a whole Compose stack. Dozzle does not change containers beyond that.
+Both have a web terminal. LogDeck also edits memory limits, CPU limits, and restart policies live through the engine's update API, edits environment variables (recreating standalone containers or saving through Coolify for managed applications and services), and starts, stops, or restarts a whole Compose stack. Dozzle does not change containers beyond that.
 
 ## CLI, API, and AI agents
 

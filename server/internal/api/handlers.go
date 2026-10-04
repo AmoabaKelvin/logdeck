@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -13,7 +12,6 @@ import (
 	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/auth"
-	"github.com/AmoabaKelvin/logdeck/internal/coolify"
 	"github.com/AmoabaKelvin/logdeck/internal/docker"
 	"github.com/AmoabaKelvin/logdeck/internal/models"
 	"github.com/AmoabaKelvin/logdeck/internal/system"
@@ -369,74 +367,6 @@ func clampTail(tail string) string {
 		return strconv.Itoa(maxTailLines)
 	}
 	return tail
-}
-
-func (ar *APIRouter) GetEnvVariables(w http.ResponseWriter, r *http.Request) {
-	host, id, ok := containerParams(w, r)
-	if !ok {
-		return
-	}
-
-	envVariables, err := ar.registry.Docker().GetEnvVariables(r.Context(), host, id)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	WriteJsonResponse(w, http.StatusOK, map[string]any{
-		"env": envVariables,
-	})
-}
-
-var envKeyRegex = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_\-\.]*$`)
-
-func (ar *APIRouter) UpdateEnvVariables(w http.ResponseWriter, r *http.Request) {
-	host, id, ok := containerParams(w, r)
-	if !ok {
-		return
-	}
-
-	var envVariables models.EnvVariables
-	if err := json.NewDecoder(r.Body).Decode(&envVariables); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	for key := range envVariables.Env {
-		if !envKeyRegex.MatchString(key) {
-			http.Error(w, fmt.Sprintf("invalid environment variable key: %s", key), http.StatusBadRequest)
-			return
-		}
-	}
-
-	newContainerID, labels, err := ar.registry.Docker().SetEnvVariables(r.Context(), host, id, envVariables.Env)
-	if err != nil {
-		http.Error(w, err.Error(), actionErrorStatus(err))
-		return
-	}
-
-	response := map[string]any{
-		"message":          "Environment variables updated",
-		"new_container_id": newContainerID,
-	}
-
-	// Best-effort sync to Coolify API
-	coolifyClient := ar.registry.Coolify().GetClient(host)
-	coolifyResource := coolify.ExtractResourceInfo(labels)
-	if coolifyClient != nil && coolifyResource != nil {
-		syncCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-		defer cancel()
-
-		if syncErr := coolifyClient.SyncEnvVars(syncCtx, coolifyResource, envVariables.Env); syncErr != nil {
-			log.Printf("Warning: failed to sync env vars to Coolify for host %s: %v", host, syncErr)
-			response["coolify_synced"] = false
-			response["coolify_error"] = syncErr.Error()
-		} else {
-			response["coolify_synced"] = true
-		}
-	}
-
-	WriteJsonResponse(w, http.StatusOK, response)
 }
 
 // actionErrorStatus answers 409 for actions refused on systemd-managed

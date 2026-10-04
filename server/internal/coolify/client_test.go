@@ -2,11 +2,9 @@ package coolify
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"sort"
 	"testing"
 
 	"github.com/AmoabaKelvin/logdeck/internal/config"
@@ -64,9 +62,9 @@ func TestExtractResourceInfo(t *testing.T) {
 			want:   &ResourceInfo{Type: ResourceTypeDatabase, UUID: "uuid-db"},
 		},
 		{
-			name:   "unknown type defaults to application",
+			name:   "unknown type remains unsupported",
 			labels: map[string]string{LabelManaged: "true", "coolify.type": "mystery", "com.docker.compose.project": "uuid-x"},
-			want:   &ResourceInfo{Type: ResourceTypeApplication, UUID: "uuid-x"},
+			want:   &ResourceInfo{Type: ResourceType("mystery"), UUID: "uuid-x"},
 		},
 	}
 	for _, tt := range tests {
@@ -192,111 +190,5 @@ func TestConnectionCallsVersionEndpoint(t *testing.T) {
 	}
 	if gotPath != "/api/v1/version" {
 		t.Errorf("path = %q, want /api/v1/version", gotPath)
-	}
-}
-
-func TestSyncEnvVarsDatabaseUnsupported(t *testing.T) {
-	c := newClient("http://unused.invalid", "tok")
-	resource := &ResourceInfo{Type: ResourceTypeDatabase, UUID: "uuid-db"}
-	err := c.SyncEnvVars(context.Background(), resource, map[string]string{"A": "1"})
-	if err == nil {
-		t.Fatal("expected error syncing database resource, got nil")
-	}
-}
-
-// TestSyncEnvVarsDeletionAndUpsert exercises the full sync flow against a fake
-// Coolify API: it must list existing vars, delete removed non-default vars,
-// preserve Coolify-injected defaults, and bulk-upsert the current set (also
-// excluding defaults). It also verifies the pluralized URL construction.
-func TestSyncEnvVarsDeletionAndUpsert(t *testing.T) {
-	var deleted []string
-	var bulkKeys []string
-	var listPath, bulkPath string
-
-	mux := http.NewServeMux()
-	// Existing env vars in Coolify: KEEP (still present), REMOVED (should be
-	// deleted), COOLIFY_URL (default, must NOT be deleted).
-	mux.HandleFunc("/api/v1/applications/uuid-1/envs", func(w http.ResponseWriter, r *http.Request) {
-		listPath = r.URL.Path
-		existing := []coolifyEnvVar{
-			{UUID: "u-keep", Key: "KEEP"},
-			{UUID: "u-removed", Key: "REMOVED"},
-			{UUID: "u-default", Key: "COOLIFY_URL"},
-		}
-		_ = json.NewEncoder(w).Encode(existing)
-	})
-	// Bulk upsert endpoint.
-	mux.HandleFunc("/api/v1/applications/uuid-1/envs/bulk", func(w http.ResponseWriter, r *http.Request) {
-		bulkPath = r.URL.Path
-		var payload bulkEnvPayload
-		_ = json.NewDecoder(r.Body).Decode(&payload)
-		for _, e := range payload.Data {
-			bulkKeys = append(bulkKeys, e.Key)
-		}
-		w.WriteHeader(http.StatusOK)
-	})
-	// Per-var delete endpoint: capture the UUID from the path.
-	mux.HandleFunc("/api/v1/applications/uuid-1/envs/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodDelete {
-			// path: /api/v1/applications/uuid-1/envs/<uuid>
-			deleted = append(deleted, r.URL.Path[len("/api/v1/applications/uuid-1/envs/"):])
-		}
-		w.WriteHeader(http.StatusOK)
-	})
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
-
-	c := newClient(srv.URL, "tok")
-	resource := &ResourceInfo{Type: ResourceTypeApplication, UUID: "uuid-1"}
-	newVars := map[string]string{
-		"KEEP":         "v1",
-		"NEW":          "v2",
-		"COOLIFY_BILT": "should-be-excluded", // default prefix, excluded from upsert
-	}
-	if err := c.SyncEnvVars(context.Background(), resource, newVars); err != nil {
-		t.Fatalf("SyncEnvVars error: %v", err)
-	}
-
-	// URL pluralization: "application" -> "applications".
-	if listPath != "/api/v1/applications/uuid-1/envs" {
-		t.Errorf("list path = %q", listPath)
-	}
-	if bulkPath != "/api/v1/applications/uuid-1/envs/bulk" {
-		t.Errorf("bulk path = %q", bulkPath)
-	}
-
-	// Only REMOVED should be deleted. COOLIFY_URL (default) must be preserved,
-	// KEEP is still present.
-	if len(deleted) != 1 || deleted[0] != "u-removed" {
-		t.Errorf("deleted = %v, want [u-removed]", deleted)
-	}
-
-	// Bulk upsert must contain KEEP and NEW, but exclude the COOLIFY_ default.
-	sort.Strings(bulkKeys)
-	want := []string{"KEEP", "NEW"}
-	if len(bulkKeys) != len(want) {
-		t.Fatalf("bulk keys = %v, want %v", bulkKeys, want)
-	}
-	for i := range want {
-		if bulkKeys[i] != want[i] {
-			t.Errorf("bulk keys = %v, want %v", bulkKeys, want)
-			break
-		}
-	}
-}
-
-func TestListEnvVarsParsesResponse(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`[{"uuid":"u1","key":"A"},{"uuid":"u2","key":"B"}]`))
-	}))
-	defer srv.Close()
-
-	c := newClient(srv.URL, "tok")
-	got, err := c.listEnvVars(context.Background(), &ResourceInfo{Type: ResourceTypeService, UUID: "uuid-s"})
-	if err != nil {
-		t.Fatalf("listEnvVars error: %v", err)
-	}
-	if len(got) != 2 || got[0].Key != "A" || got[1].UUID != "u2" {
-		t.Errorf("listEnvVars = %+v", got)
 	}
 }

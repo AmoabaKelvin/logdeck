@@ -50,7 +50,7 @@ These need an admin token. There are no flags to set. Hand the assistant the tok
 - `start_container` / `stop_container` / `restart_container`: reversible lifecycle actions.
 - `remove_container`: remove a container. Irreversible, and marked destructive so clients prompt harder.
 - `run_command`: run one non-interactive command in a container and return separate stdout, stderr, and the exit code.
-- `get_env` / `set_env`: read and replace a container's environment variables. Values often hold secrets, and a write recreates the container, so it restarts with a new ID.
+- `get_env` / `set_env`: read and edit environment variables. For `source: docker`, send the complete `env` map to recreate the container. For `source: coolify`, send explicit `changes` using the saved records' `uuid`, `key`, `is_preview`, and `expected_value` from the loaded `value`, plus a replacement `value` or `remove: true`. New records omit `uuid`. Coolify saves do not deploy; apply the configuration through Coolify. Unknown values stay unchanged unless explicitly replaced or removed.
 - `get_settings` / `set_read_only` / `set_log_storage`: read settings, toggle server-wide read-only mode, and change log persistence and its retention caps.
 - `set_docker_hosts` / `set_coolify_hosts`: replace the configured hosts. Each takes the complete list instead of merging, plus the section's `revision` from `get_settings`. If the hosts changed since that read, the write is rejected instead of overwriting the other change.
 - `set_auth` / `list_api_tokens` / `create_api_token` / `delete_api_token`: change authentication and manage API tokens. Disabling auth leaves the server open to anyone who can reach it.

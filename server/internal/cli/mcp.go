@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/AmoabaKelvin/logdeck/internal/coolify"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 )
@@ -391,8 +392,9 @@ func registerMCPTools(s *mcp.Server, a *app) []string {
 }
 
 // registerEnvTools registers container environment-variable access. The server
-// denies /env to read-scoped tokens because the values are secrets, and a write
-// recreates the container, so set_env is marked destructive.
+// denies /env to read-scoped tokens because the values are secrets. Direct
+// edits recreate containers, so set_env is marked destructive. Coolify edits
+// save configuration without deploying.
 func registerEnvTools(s *mcp.Server, a *app, register func(*mcp.Tool)) {
 	tool := &mcp.Tool{Name: "get_env", Description: "Read a container's environment variables. These commonly hold secrets.", Annotations: readOnlyAnnot()}
 	mcp.AddTool(s, tool, func(ctx context.Context, _ *mcp.CallToolRequest, in containerRef) (*mcp.CallToolResult, any, error) {
@@ -400,9 +402,7 @@ func registerEnvTools(s *mcp.Server, a *app, register func(*mcp.Tool)) {
 		if err != nil {
 			return nil, nil, err
 		}
-		var resp struct {
-			Env map[string]string `json:"env"`
-		}
+		var resp envResponse
 		if err := a.client.get(ctx, "/containers/"+container.ID+"/env", url.Values{"host": {container.Host}}, &resp); err != nil {
 			return nil, nil, err
 		}
@@ -411,21 +411,26 @@ func registerEnvTools(s *mcp.Server, a *app, register func(*mcp.Tool)) {
 	register(tool)
 
 	type setEnvInput struct {
-		Container string            `json:"container" jsonschema:"container name or ID"`
-		Host      string            `json:"host,omitempty" jsonschema:"host name (disambiguates duplicate names)"`
-		Env       map[string]string `json:"env" jsonschema:"the complete variable map to apply; it replaces the container's existing environment, so read it with get_env first"`
+		Container string              `json:"container" jsonschema:"container name or ID"`
+		Host      string              `json:"host,omitempty" jsonschema:"host name (disambiguates duplicate names)"`
+		Env       map[string]string   `json:"env,omitempty" jsonschema:"complete replacement environment for containers with source docker only"`
+		Changes   []coolify.EnvChange `json:"changes,omitempty" jsonschema:"explicit Coolify edits from get_env records; use uuid and key for existing rows, expected_value from the loaded value (null if unknown), value to replace, remove to delete, is_preview for scope; omit uuid for new variables"`
 	}
-	tool = &mcp.Tool{Name: "set_env", Description: "Replace a container's environment variables. The container is recreated to apply them, so it restarts and gets a new ID.", Annotations: destructiveAnnot()}
+	tool = &mcp.Tool{Name: "set_env", Description: "Edit environment variables. Read get_env first. For source docker send env to recreate the container. For source coolify send explicit changes to save configuration without deploying; apply it through Coolify.", Annotations: destructiveAnnot()}
 	mcp.AddTool(s, tool, func(ctx context.Context, _ *mcp.CallToolRequest, in setEnvInput) (*mcp.CallToolResult, any, error) {
-		if len(in.Env) == 0 {
-			return nil, nil, fmt.Errorf("env is required and must be the complete variable map")
+		if (in.Env == nil) == (in.Changes == nil) {
+			return nil, nil, fmt.Errorf("provide env for Docker or changes for Coolify")
 		}
 		container, err := a.resolve(ctx, in.Container, in.Host)
 		if err != nil {
 			return nil, nil, err
 		}
+		payload := map[string]any{"env": in.Env}
+		if in.Changes != nil {
+			payload = map[string]any{"changes": in.Changes}
+		}
 		var resp map[string]any
-		if err := a.client.put(ctx, "/containers/"+container.ID+"/env", url.Values{"host": {container.Host}}, map[string]any{"env": in.Env}, &resp); err != nil {
+		if err := a.client.put(ctx, "/containers/"+container.ID+"/env", url.Values{"host": {container.Host}}, payload, &resp); err != nil {
 			return nil, nil, err
 		}
 		return mcpJSON(resp)

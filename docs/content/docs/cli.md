@@ -178,7 +178,7 @@ logdeck stack restart myapp
 
 ### `env`
 
-Print a container's environment variables as `KEY=value` lines.
+Print a container's environment variables as `KEY=value` lines. For Coolify-managed applications and services, read the saved Coolify configuration. Each line includes its production or preview scope, and hidden values print as `<unknown>`. JSON output includes the saved records and their settings.
 
 ```bash
 logdeck env web

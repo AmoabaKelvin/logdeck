@@ -3,10 +3,8 @@ package coolify
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -120,91 +118,8 @@ func ExtractResourceInfo(labels map[string]string) *ResourceInfo {
 	case "database":
 		return &ResourceInfo{Type: ResourceTypeDatabase, UUID: uuid}
 	default:
-		return &ResourceInfo{Type: ResourceTypeApplication, UUID: uuid}
+		return &ResourceInfo{Type: ResourceType(labels["coolify.type"]), UUID: uuid}
 	}
-}
-
-type envVarEntry struct {
-	Key       string `json:"key"`
-	Value     string `json:"value"`
-	IsPreview bool   `json:"is_preview"`
-}
-
-type bulkEnvPayload struct {
-	Data []envVarEntry `json:"data"`
-}
-
-type coolifyEnvVar struct {
-	UUID string `json:"uuid"`
-	Key  string `json:"key"`
-}
-
-// SyncEnvVars syncs environment variables to Coolify's API so they persist
-// across redeployments. It upserts new/changed vars and deletes removed ones.
-func (c *Client) SyncEnvVars(ctx context.Context, resource *ResourceInfo, envVars map[string]string) error {
-	if resource.Type == ResourceTypeDatabase {
-		return fmt.Errorf("coolify: syncing env vars for database resources is not supported")
-	}
-
-	// 1. Fetch current env vars from Coolify to find deletions
-	existing, err := c.listEnvVars(ctx, resource)
-	if err != nil {
-		return fmt.Errorf("coolify: failed to fetch existing env vars: %w", err)
-	}
-
-	// 2. Delete env vars that no longer exist (skip Coolify-injected defaults)
-	for _, ev := range existing {
-		if IsCoolifyDefaultEnvVar(ev.Key) {
-			continue
-		}
-		if _, exists := envVars[ev.Key]; !exists {
-			if delErr := c.deleteEnvVar(ctx, resource, ev.UUID); delErr != nil {
-				log.Printf("Warning: failed to delete Coolify env var %s (%s): %v", ev.Key, ev.UUID, delErr)
-			}
-		}
-	}
-
-	// 3. Bulk upsert the current env vars, excluding Coolify-injected defaults
-	entries := make([]envVarEntry, 0, len(envVars))
-	for key, value := range envVars {
-		if IsCoolifyDefaultEnvVar(key) {
-			continue
-		}
-		entries = append(entries, envVarEntry{Key: key, Value: value, IsPreview: false})
-	}
-
-	body, err := json.Marshal(bulkEnvPayload{Data: entries})
-	if err != nil {
-		return fmt.Errorf("coolify: failed to marshal env vars: %w", err)
-	}
-
-	url := fmt.Sprintf("%s/api/v1/%ss/%s/envs/bulk", c.apiURL, resource.Type, resource.UUID)
-	if _, err := c.doRequest(ctx, http.MethodPatch, url, body); err != nil {
-		return fmt.Errorf("coolify: bulk update failed: %w", err)
-	}
-
-	return nil
-}
-
-func (c *Client) listEnvVars(ctx context.Context, resource *ResourceInfo) ([]coolifyEnvVar, error) {
-	url := fmt.Sprintf("%s/api/v1/%ss/%s/envs", c.apiURL, resource.Type, resource.UUID)
-
-	respBody, err := c.doRequest(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	var envVars []coolifyEnvVar
-	if err := json.Unmarshal(respBody, &envVars); err != nil {
-		return nil, err
-	}
-	return envVars, nil
-}
-
-func (c *Client) deleteEnvVar(ctx context.Context, resource *ResourceInfo, envUUID string) error {
-	url := fmt.Sprintf("%s/api/v1/%ss/%s/envs/%s", c.apiURL, resource.Type, resource.UUID, envUUID)
-	_, err := c.doRequest(ctx, http.MethodDelete, url, nil)
-	return err
 }
 
 func (c *Client) doRequest(ctx context.Context, method, url string, body []byte) ([]byte, error) {
