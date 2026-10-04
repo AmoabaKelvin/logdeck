@@ -156,6 +156,45 @@ it("saves only the edited preview row, leaving hidden and build variables untouc
 	).toContain("Unknown value");
 });
 
+it("leaves an unknown secret untouched when its replacement is cleared", async () => {
+	const writes: RequestInit[] = [];
+	vi.stubGlobal(
+		"fetch",
+		vi.fn<typeof fetch>(async (_input, init) => {
+			if (init?.method === "PUT") {
+				writes.push(init);
+				return Response.json({ saved: true, completed: 1 });
+			}
+			return Response.json(savedConfiguration);
+		}),
+	);
+	renderPanel();
+	const hidden = await screen.findByRole("textbox", {
+		name: "TOKEN production value",
+	});
+	fireEvent.change(hidden, { target: { value: "replacement" } });
+	fireEvent.change(hidden, { target: { value: "" } });
+	expect(
+		button(screen.getByRole("button", { name: "Save in Coolify" })).disabled,
+	).toBe(true);
+	fireEvent.change(await editableField("KEY preview value"), {
+		target: { value: "edited-preview" },
+	});
+	fireEvent.click(screen.getByRole("button", { name: "Save in Coolify" }));
+	await waitFor(() => expect(writes).toHaveLength(1));
+	expect(JSON.parse(String(writes[0].body))).toEqual({
+		changes: [
+			{
+				uuid: "preview",
+				key: "KEY",
+				expected_value: "preview",
+				is_preview: true,
+				value: "edited-preview",
+			},
+		],
+	});
+});
+
 it("offers a separate deployment after a production save and reports a request rather than applied changes", async () => {
 	const methods: string[] = [];
 	vi.stubGlobal(

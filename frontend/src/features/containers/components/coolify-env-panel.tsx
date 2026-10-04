@@ -193,7 +193,7 @@ export function CoolifyEnvPanel({
 								onChange={(event) =>
 									update(
 										variable.uuid,
-										event.target.value === variable.value
+										event.target.value === (variable.value ?? "")
 											? undefined
 											: {
 													uuid: variable.uuid,
