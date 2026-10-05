@@ -24,10 +24,10 @@ The confirmed deployment is remembered in the browser for that container, so reo
 
 The editor works with raw environment text, retaining comments, quoted multiline values, and shared or vault references. Values are initially hidden. Editing changes service-level configuration, not shared project/environment variables or the Compose definition.
 
-| Resource | Save operation | Settings retained | Apply operation |
-| --- | --- | --- | --- |
-| Application | `application.saveEnvironment` | `buildArgs`, `buildSecrets`, `createEnvFile`, including nullable build fields | `application.deploy` |
-| Compose or Stack | `compose.saveEnvironment` | `createEnvFile`; no application build fields are sent | `compose.deploy`, without `freshVolumes` |
+| Resource         | Save operation                | Settings retained                                                             | Apply operation                          |
+| ---------------- | ----------------------------- | ----------------------------------------------------------------------------- | ---------------------------------------- |
+| Application      | `application.saveEnvironment` | `buildArgs`, `buildSecrets`, `createEnvFile`, including nullable build fields | `application.deploy`                     |
+| Compose or Stack | `compose.saveEnvironment`     | `createEnvFile`; no application build fields are sent                         | `compose.deploy`, without `freshVolumes` |
 
 Compose variables belong to the whole deployment. They enter a service only when the Compose definition references them or uses `env_file`. Saving a variable does not add that reference. Deployment may restart several containers.
 

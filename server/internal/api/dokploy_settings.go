@@ -120,7 +120,7 @@ func (ar *APIRouter) TestDokployHost(w http.ResponseWriter, r *http.Request) {
 	err := dokploy.NewClient(req).TestConnection(r.Context())
 	message := "Connected. Resource discovery is available; save and deploy permissions are checked when used."
 	if err != nil {
-		message = err.Error()
+		message = dokployMessage(err)
 	}
 	WriteJsonResponse(w, 200, map[string]any{"success": err == nil, "message": message})
 }

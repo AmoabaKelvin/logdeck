@@ -63,7 +63,7 @@ type record struct {
 func (c *Client) readRecord(ctx context.Context, resource Resource) (record, error) {
 	var rec record
 	if resource.ID == "" || (resource.Type != Application && resource.Type != Compose) {
-		return rec, fmt.Errorf("Unsupported Dokploy resource")
+		return rec, fmt.Errorf("unsupported Dokploy resource")
 	}
 	key := string(resource.Type) + "Id"
 	err := c.request(ctx, http.MethodGet, string(resource.Type)+".one?"+key+"="+url.QueryEscape(resource.ID), nil, &rec)
@@ -79,7 +79,7 @@ func (c *Client) readRecord(ctx context.Context, resource Resource) (record, err
 		server = *rec.ServerID
 	}
 	if id != resource.ID || server != c.serverID || rec.AppName == "" || (resource.AppName != "" && resource.AppName != rec.AppName) {
-		return rec, fmt.Errorf("Dokploy resource no longer belongs to the configured server; choose its deployment again")
+		return rec, fmt.Errorf("dokploy resource no longer belongs to the configured server; choose its deployment again")
 	}
 	return rec, nil
 }
@@ -115,7 +115,7 @@ func (c *Client) Resources(ctx context.Context) ([]Resource, error) {
 			for _, r := range ids {
 				var rec record
 				if r.ID == "" {
-					return nil, fmt.Errorf("Dokploy returned an incomplete resource inventory")
+					return nil, fmt.Errorf("dokploy returned an incomplete resource inventory")
 				}
 				if err := c.request(ctx, http.MethodGet, string(r.Type)+".one?"+string(r.Type)+"Id="+url.QueryEscape(r.ID), nil, &rec); err != nil {
 					return nil, err
@@ -152,19 +152,19 @@ func revision(rec record) string {
 func environment(rec record, kind ResourceType) (Environment, error) {
 	var result Environment
 	if len(rec.Env) == 0 || len(rec.CreateEnvFile) == 0 {
-		return result, fmt.Errorf("Dokploy omitted environment settings; editing is unavailable")
+		return result, fmt.Errorf("dokploy omitted environment settings; editing is unavailable")
 	}
 	if kind == Application && (len(rec.BuildArgs) == 0 || len(rec.BuildSecrets) == 0) {
-		return result, fmt.Errorf("Dokploy omitted build settings; editing is unavailable")
+		return result, fmt.Errorf("dokploy omitted build settings; editing is unavailable")
 	}
 	if err := json.Unmarshal(rec.Env, &result.Text); err != nil {
-		return result, fmt.Errorf("Unsupported Dokploy environment format")
+		return result, fmt.Errorf("unsupported Dokploy environment format")
 	}
 	if err := json.Unmarshal(rec.CreateEnvFile, &result.CreateEnvFile); err != nil {
-		return result, fmt.Errorf("Unsupported Dokploy environment-file setting")
+		return result, fmt.Errorf("unsupported Dokploy environment-file setting")
 	}
 	if result.CreateEnvFile == nil {
-		return result, fmt.Errorf("Unsupported Dokploy environment-file setting")
+		return result, fmt.Errorf("unsupported Dokploy environment-file setting")
 	}
 	result.Revision = revision(rec)
 	return result, nil
@@ -177,7 +177,7 @@ func (c *Client) ReadEnvironment(ctx context.Context, r Resource) (Environment, 
 	return environment(rec, r.Type)
 }
 
-var ErrStaleEnvironment = errors.New("Dokploy configuration changed; reload before saving")
+var ErrStaleEnvironment = errors.New("dokploy configuration changed; reload before saving")
 var saveLocks sync.Map
 
 func (c *Client) SaveEnvironment(ctx context.Context, r Resource, text, expected string) (Environment, error) {
@@ -208,7 +208,7 @@ func (c *Client) SaveEnvironment(ctx context.Context, r Resource, text, expected
 		return Environment{}, err
 	}
 	if !acknowledged {
-		return Environment{}, fmt.Errorf("Dokploy did not acknowledge the save; reload before retrying")
+		return Environment{}, fmt.Errorf("dokploy did not acknowledge the save; reload before retrying")
 	}
 	// A read-back can fail after a successful write. Do not claim it was rolled back.
 	rec.Env, _ = json.Marshal(text)

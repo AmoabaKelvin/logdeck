@@ -62,24 +62,24 @@ func (c *Client) request(ctx context.Context, method, endpoint string, body any,
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("Dokploy request could not be confirmed; reload configuration before retrying: %w", err)
+		return fmt.Errorf("dokploy request could not be confirmed; reload configuration before retrying: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		switch resp.StatusCode {
 		case 401:
-			return fmt.Errorf("Dokploy rejected the API token (401)")
+			return fmt.Errorf("dokploy rejected the API token (401)")
 		case 403:
-			return fmt.Errorf("Dokploy denied permission for %s (403)", strings.Split(endpoint, "?")[0])
+			return fmt.Errorf("dokploy denied permission for %s (403)", strings.Split(endpoint, "?")[0])
 		case 404:
-			return fmt.Errorf("Dokploy resource or operation is unavailable (404)")
+			return fmt.Errorf("dokploy resource or operation is unavailable (404)")
 		default:
-			return fmt.Errorf("Dokploy %s returned status %d; reload to check whether configuration changed", strings.Split(endpoint, "?")[0], resp.StatusCode)
+			return fmt.Errorf("dokploy %s returned status %d; reload to check whether configuration changed", strings.Split(endpoint, "?")[0], resp.StatusCode)
 		}
 	}
 	if result != nil {
 		if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
-			return fmt.Errorf("Dokploy returned an unreadable response: %w", err)
+			return fmt.Errorf("dokploy returned an unreadable response: %w", err)
 		}
 	}
 	return nil

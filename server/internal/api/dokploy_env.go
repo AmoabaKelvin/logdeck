@@ -12,6 +12,16 @@ import (
 	"github.com/docker/docker/api/types/container"
 )
 
+// dokployMessage capitalizes a Dokploy client error for display. Go error
+// strings start lowercase, and these reach the UI verbatim.
+func dokployMessage(err error) string {
+	message := err.Error()
+	if message == "" {
+		return message
+	}
+	return strings.ToUpper(message[:1]) + message[1:]
+}
+
 // handleDokployEnvironment returns false only for containers whose environment
 // should follow the existing Docker or Coolify path.
 func (ar *APIRouter) handleDokployEnvironment(w http.ResponseWriter, r *http.Request, host, id string, inspect container.InspectResponse) bool {
@@ -30,15 +40,15 @@ func (ar *APIRouter) handleDokployEnvironment(w http.ResponseWriter, r *http.Req
 	}
 	if client == nil {
 		if hinted {
-			http.Error(w, "This container is managed by Dokploy. Connect its instance and server in Settings to edit the saved environment", 409)
+			http.Error(w, "This container is managed by Dokploy. Connect its instance and server in Settings to edit the saved environment", http.StatusConflict)
 			return true
 		}
 		if swarm {
-			http.Error(w, "This container belongs to a Swarm service. Connect its deployment platform to edit the saved environment", 409)
+			http.Error(w, "This container belongs to a Swarm service. Connect its deployment platform to edit the saved environment", http.StatusConflict)
 			return true
 		}
 		if selected != "" {
-			http.Error(w, "No Dokploy integration is configured for this host", 409)
+			http.Error(w, "No Dokploy integration is configured for this host", http.StatusConflict)
 			return true
 		}
 		return false
@@ -50,36 +60,36 @@ func (ar *APIRouter) handleDokployEnvironment(w http.ResponseWriter, r *http.Req
 	}
 	for _, entry := range inspect.Config.Env {
 		if strings.HasPrefix(entry, "DOKPLOY_DEPLOY_URL=") {
-			http.Error(w, "Dokploy preview environments must be edited and deployed in Dokploy", 409)
+			http.Error(w, "Dokploy preview environments must be edited and deployed in Dokploy", http.StatusConflict)
 			return true
 		}
 	}
 	resources, err := client.Resources(r.Context())
 	if err != nil {
 		if hinted || swarm {
-			http.Error(w, err.Error()+". Direct container recreation is unavailable for this workload", 502)
+			http.Error(w, dokployMessage(err)+". Direct container recreation is unavailable for this workload", http.StatusBadGateway)
 			return true
 		}
 		// Ownership cannot be checked, but nothing marks this Compose workload
 		// as Dokploy's, so the caller may still choose the runtime editor.
 		if selected == "" && r.Method == http.MethodGet {
-			WriteJsonResponse(w, 200, map[string]any{"source": "dokploy", "env": map[string]string{}, "resources": []dokploy.Resource{}, "mapping_required": true, "plain_compose_allowed": true, "inventory_error": err.Error(), "instance_url": ar.dokployInstanceURL(host), "workload": inspect.Name})
+			WriteJsonResponse(w, 200, map[string]any{"source": "dokploy", "env": map[string]string{}, "resources": []dokploy.Resource{}, "mapping_required": true, "plain_compose_allowed": true, "inventory_error": dokployMessage(err), "instance_url": ar.dokployInstanceURL(host), "workload": inspect.Name})
 			return true
 		}
-		http.Error(w, err.Error(), 502)
+		http.Error(w, dokployMessage(err), http.StatusBadGateway)
 		return true
 	}
 	for _, res := range resources {
 		for _, preview := range res.PreviewNames {
 			if preview != "" && (preview == labels["com.docker.swarm.service.name"] || preview == labels["com.docker.compose.project"]) {
-				http.Error(w, "Dokploy preview environments are unsupported here. Edit and deploy the preview in Dokploy; production configuration will not be changed", 409)
+				http.Error(w, "Dokploy preview environments are unsupported here. Edit and deploy the preview in Dokploy; production configuration will not be changed", http.StatusConflict)
 				return true
 			}
 		}
 	}
 	if selected == "" {
 		if r.Method != http.MethodGet {
-			http.Error(w, "Confirm the owning Dokploy application or Compose deployment before editing", 409)
+			http.Error(w, "Confirm the owning Dokploy application or Compose deployment before editing", http.StatusConflict)
 			return true
 		}
 		suggested := make([]string, 0)
@@ -99,22 +109,22 @@ func (ar *APIRouter) handleDokployEnvironment(w http.ResponseWriter, r *http.Req
 		}
 	}
 	if owner == nil {
-		http.Error(w, "The selected Dokploy resource is unavailable on this server. Choose the deployment again", 409)
+		http.Error(w, "The selected Dokploy resource is unavailable on this server. Choose the deployment again", http.StatusConflict)
 		return true
 	}
 	if r.URL.Query().Get("mapping_revision") != owner.MappingRevision {
-		http.Error(w, "The Dokploy connection or deployment name changed. Choose the deployment again", 409)
+		http.Error(w, "The Dokploy connection or deployment name changed. Choose the deployment again", http.StatusConflict)
 		return true
 	}
 	if r.URL.Query().Get("confirmed") != "true" {
-		http.Error(w, "Explicit confirmation of this container's Dokploy mapping is required", 409)
+		http.Error(w, "Explicit confirmation of this container's Dokploy mapping is required", http.StatusConflict)
 		return true
 	}
 	var store dokploy.EnvironmentStore = client
 	if r.Method == http.MethodGet {
 		env, err := store.ReadEnvironment(r.Context(), *owner)
 		if err != nil {
-			http.Error(w, err.Error(), 502)
+			http.Error(w, dokployMessage(err), http.StatusBadGateway)
 			return true
 		}
 		WriteJsonResponse(w, 200, map[string]any{"source": "dokploy", "env": map[string]string{}, "resource": owner, "configuration": env, "instance_url": ar.dokployInstanceURL(host)})
@@ -135,7 +145,7 @@ func (ar *APIRouter) handleDokployEnvironment(w http.ResponseWriter, r *http.Req
 			if errors.Is(err, dokploy.ErrStaleEnvironment) {
 				status = http.StatusConflict
 			}
-			WriteJsonResponse(w, status, map[string]any{"message": err.Error(), "saved": nil, "applied": false, "reload_required": true})
+			WriteJsonResponse(w, status, map[string]any{"message": dokployMessage(err), "saved": nil, "applied": false, "reload_required": true})
 			return true
 		}
 		WriteJsonResponse(w, 200, map[string]any{"saved": true, "applied": false, "configuration": env, "message": "Environment saved in Dokploy. Deploy separately to apply it"})
@@ -143,13 +153,13 @@ func (ar *APIRouter) handleDokployEnvironment(w http.ResponseWriter, r *http.Req
 	}
 	if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/deploy") {
 		if err := store.Deploy(r.Context(), *owner); err != nil {
-			http.Error(w, err.Error()+". Saved configuration remains in Dokploy; check deployment progress before retrying", 502)
+			http.Error(w, dokployMessage(err)+". Saved configuration remains in Dokploy; check deployment progress before retrying", http.StatusBadGateway)
 			return true
 		}
 		WriteJsonResponse(w, http.StatusAccepted, map[string]any{"message": "Dokploy deployment requested. Check Dokploy for progress", "applied": false})
 		return true
 	}
-	http.Error(w, "Unsupported Dokploy environment operation", 405)
+	http.Error(w, "Unsupported Dokploy environment operation", http.StatusMethodNotAllowed)
 	return true
 }
 func (ar *APIRouter) dokployInstanceURL(host string) string {
