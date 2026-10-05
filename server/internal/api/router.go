@@ -141,6 +141,7 @@ func (ar *APIRouter) registerContainerRoutes(r chi.Router) {
 			mutating.Post("/restart", ar.RestartContainer)
 			mutating.Post("/remove", ar.RemoveContainer)
 			mutating.Put("/env", ar.UpdateEnvVariables)
+			mutating.Post("/env/deploy", ar.DeployEnvironment)
 			mutating.Put("/resources", ar.UpdateContainerResources)
 			// Exec is GET (websocket upgrade) but spawns a shell, so
 			// read-scoped tokens are denied explicitly

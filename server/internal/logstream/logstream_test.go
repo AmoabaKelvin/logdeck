@@ -271,7 +271,9 @@ func TestStartEventSpawnsTail(t *testing.T) {
 	f.events <- docker.EngineEvent{Host: "h1", ContainerID: "c9", ContainerName: "api", Action: "start",
 		Labels: map[string]string{"name": "api"}}
 
-	waitFor(t, "start event to spawn tail", func() bool { return f.activeTails(containerKey{"h1", "c9"}) == 1 })
+	// The pending empty snapshot can cancel the tail after it opens. Count
+	// starts so this assertion does not depend on observing that brief window.
+	waitFor(t, "start event to spawn tail", func() bool { return f.totalStarts(containerKey{"h1", "c9"}) == 1 })
 }
 
 func TestFirstRecordOnNewTailRequestsAttachmentRecovery(t *testing.T) {

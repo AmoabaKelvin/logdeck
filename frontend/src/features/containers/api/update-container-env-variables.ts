@@ -4,14 +4,10 @@ import { API_BASE_URL } from "@/types/api";
 interface UpdateEnvResponse {
 	message: string;
 	new_container_id: string;
-	coolify_synced?: boolean;
-	coolify_error?: string;
 }
 
 export interface UpdateEnvResult {
 	newContainerId: string;
-	coolifySynced?: boolean;
-	coolifyError?: string;
 }
 
 export async function updateContainerEnvVariables(
@@ -40,7 +36,5 @@ export async function updateContainerEnvVariables(
 	const data = await readJson<UpdateEnvResponse>(response);
 	return {
 		newContainerId: data.new_container_id,
-		coolifySynced: data.coolify_synced,
-		coolifyError: data.coolify_error,
 	};
 }

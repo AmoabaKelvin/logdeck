@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"maps"
 	"net/url"
 	"slices"
 	"strings"
@@ -203,35 +202,13 @@ func (c *MultiHostClient) SetEnvVariables(ctx context.Context, hostName, id stri
 		return "", nil, err
 	}
 	isCoolifyManaged := labels[coolify.LabelManaged] == "true"
+	if isCoolifyManaged {
+		return "", nil, fmt.Errorf("coolify-managed environments must be saved and deployed through Coolify")
+	}
 	c.stops.Store(hostName+"|"+inspect.ID, time.Now())
 
-	// Split existing env vars into user-defined and Coolify-injected defaults.
-	// Coolify defaults are kept aside so the user cannot accidentally delete or
-	// overwrite them — they get merged back unconditionally before recreation.
-	envMap := make(map[string]string)
-	coolifyDefaults := make(map[string]string)
-	for _, env := range inspect.Config.Env {
-		parts := strings.SplitN(env, "=", 2)
-		if len(parts) == 2 {
-			if isCoolifyManaged && coolify.IsCoolifyDefaultEnvVar(parts[0]) {
-				coolifyDefaults[parts[0]] = parts[1]
-			} else {
-				envMap[parts[0]] = parts[1]
-			}
-		}
-	}
-
-	for key := range envMap {
-		if _, exists := envVariables[key]; !exists {
-			delete(envMap, key)
-		}
-	}
-
-	maps.Copy(envMap, envVariables)
-	maps.Copy(envMap, coolifyDefaults)
-
-	envs := make([]string, 0, len(envMap))
-	for key, value := range envMap {
+	envs := make([]string, 0, len(envVariables))
+	for key, value := range envVariables {
 		envs = append(envs, key+"="+value)
 	}
 

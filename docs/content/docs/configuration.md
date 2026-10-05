@@ -303,7 +303,7 @@ Legacy and optional. Older LogDeck deployments hashed the admin password as SHA2
 
 ## Coolify integration
 
-> **Only needed for Coolify-managed servers.** If you deploy containers through Coolify, this integration syncs environment variable changes made in LogDeck to Coolify, so they persist across redeployments. Without it, the next Coolify redeploy loses those changes.
+> **For Coolify-managed servers.** LogDeck reads and edits saved environment configuration through Coolify. Connect the integration to edit managed applications and services. Containers without a working integration cannot be edited directly.
 
 ### `COOLIFY_CONFIGS`
 
@@ -321,8 +321,12 @@ COOLIFY_CONFIGS=prod|https://coolify-prod.example.com|token-abc,staging|https://
 How it works:
 
 - LogDeck detects Coolify-managed containers automatically through their Docker labels
-- When you update environment variables, LogDeck syncs the change to the Coolify API
-- Sync is best-effort. If the Coolify API is unreachable, the container update still succeeds
+- The editor reads saved variables from Coolify, including production and preview scopes. It preserves build, runtime, literal, multiline, and hidden settings, and uses raw shared references
+- Saving writes only variables explicitly edited, added, or removed. It does not recreate the container
+- After a successful save, choose **Deploy through Coolify** to request an application deployment or a service restart. A service restart affects the whole service. Preview settings apply on the next preview deployment through Coolify
+- Hidden or unreadable values appear as unknown. They stay unchanged unless you enter a replacement or explicitly remove the variable
+- Failed saves report acknowledged changes. Coolify does not save a batch atomically, so review the refreshed saved configuration before retrying
+- Database environment editing and unknown resource types are unsupported. Edit those resources in Coolify
 - Coolify-managed containers get a badge in the container list
 
 ## Password hashing

@@ -12,14 +12,12 @@ import {
 interface EnvUpdateConfirmDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
-	isCoolifyManaged: boolean;
 	onConfirm: () => void;
 }
 
 export function EnvUpdateConfirmDialog({
 	open,
 	onOpenChange,
-	isCoolifyManaged,
 	onConfirm,
 }: EnvUpdateConfirmDialogProps) {
 	return (
@@ -29,10 +27,7 @@ export function EnvUpdateConfirmDialog({
 					<AlertDialogTitle>Update environment variables?</AlertDialogTitle>
 					<AlertDialogDescription>
 						Changing environment variables requires recreating the container.
-						This will cause a brief downtime.
-						{isCoolifyManaged
-							? " Changes will also be synced to Coolify so they persist across redeployments. Are you sure you want to continue?"
-							: " Are you sure you want to continue?"}
+						This will cause a brief downtime. Are you sure you want to continue?
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>

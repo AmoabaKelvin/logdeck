@@ -5,8 +5,15 @@ import (
 	"net/url"
 	"sort"
 
+	"github.com/AmoabaKelvin/logdeck/internal/coolify"
 	"github.com/spf13/cobra"
 )
+
+type envResponse struct {
+	Env       map[string]string `json:"env"`
+	Source    string            `json:"source,omitempty"`
+	Variables []coolify.EnvVar  `json:"variables,omitempty"`
+}
 
 func newEnvCmd(a *app) *cobra.Command {
 	var host string
@@ -22,9 +29,7 @@ func newEnvCmd(a *app) *cobra.Command {
 				return err
 			}
 
-			var resp struct {
-				Env map[string]string `json:"env"`
-			}
+			var resp envResponse
 			query := url.Values{"host": {container.Host}}
 			if err := a.client.get(ctx, "/containers/"+container.ID+"/env", query, &resp); err != nil {
 				return err
@@ -34,9 +39,23 @@ func newEnvCmd(a *app) *cobra.Command {
 				if resp.Env == nil {
 					resp.Env = map[string]string{}
 				}
-				return a.printJSON(map[string]any{"env": resp.Env})
+				return a.printJSON(resp)
 			}
 
+			if resp.Source == "coolify" {
+				for _, variable := range resp.Variables {
+					scope := "production"
+					if variable.IsPreview {
+						scope = "preview"
+					}
+					value := "<unknown>"
+					if variable.Value != nil {
+						value = *variable.Value
+					}
+					fmt.Printf("%s [%s]=%s\n", variable.Key, scope, value)
+				}
+				return nil
+			}
 			keys := make([]string, 0, len(resp.Env))
 			for key := range resp.Env {
 				keys = append(keys, key)

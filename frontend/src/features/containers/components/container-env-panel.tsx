@@ -27,6 +27,7 @@ import { PanelError, PanelLoading, PanelNote } from "./container-panel-ui";
 import { isSecretKey, parseEnvFile } from "./env-file";
 import { EnvUpdateConfirmDialog } from "./env-update-confirm-dialog";
 import { EnvUploadPreviewDialog } from "./env-upload-preview-dialog";
+import { CoolifyEnvPanel } from "./coolify-env-panel";
 import { useEnvDraft } from "./use-env-draft";
 
 interface ContainerEnvPanelProps {
@@ -54,7 +55,6 @@ export function ContainerEnvPanel({
 	containerId,
 	containerHost,
 	isReadOnly: isReadOnlyMode = false,
-	isCoolifyManaged = false,
 	systemdUnit,
 	onContainerIdChange,
 }: ContainerEnvPanelProps) {
@@ -73,7 +73,7 @@ export function ContainerEnvPanel({
 	const listRef = useRef<HTMLDivElement>(null);
 
 	const {
-		data: original,
+		data: configuration,
 		isLoading,
 		error,
 	} = useQuery({
@@ -82,6 +82,7 @@ export function ContainerEnvPanel({
 		enabled: !!containerId && !!containerHost,
 	});
 
+	const original = configuration?.env;
 	const draft = useEnvDraft(original);
 
 	const updateMutation = useMutation({
@@ -101,21 +102,9 @@ export function ContainerEnvPanel({
 			onContainerIdChange?.(result.newContainerId);
 			discard();
 
-			if (result.coolifySynced === true) {
-				toast.success("Environment updated", {
-					description: "Container recreated and changes synced to Coolify.",
-				});
-			} else if (result.coolifySynced === false) {
-				toast.warning("Updated, but Coolify sync failed", {
-					description:
-						result.coolifyError ||
-						"Container recreated, but Coolify was not updated. Changes may be lost on redeployment.",
-				});
-			} else {
-				toast.success("Environment updated", {
-					description: "Container recreated with the new environment.",
-				});
-			}
+			toast.success("Environment updated", {
+				description: "Container recreated with the new environment.",
+			});
 		},
 		onError: (mutationError: Error) => {
 			toast.error("Failed to update environment", {
@@ -248,8 +237,18 @@ export function ContainerEnvPanel({
 		return <PanelLoading label="Reading environment…" />;
 	}
 	if (error && !original) {
+		return <PanelError>{error.message}</PanelError>;
+	}
+
+	if (configuration?.source === "coolify") {
 		return (
-			<PanelError>Could not read this container's environment.</PanelError>
+			<CoolifyEnvPanel
+				key={`${containerHost}/${containerId}`}
+				containerId={containerId}
+				containerHost={containerHost}
+				configuration={configuration}
+				isReadOnly={isReadOnly}
+			/>
 		);
 	}
 
@@ -539,7 +538,6 @@ export function ContainerEnvPanel({
 			<EnvUpdateConfirmDialog
 				open={showConfirmDialog}
 				onOpenChange={setShowConfirmDialog}
-				isCoolifyManaged={isCoolifyManaged}
 				onConfirm={() => {
 					updateMutation.mutate(draft.payload());
 					setShowConfirmDialog(false);
