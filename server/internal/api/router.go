@@ -183,6 +183,7 @@ func (ar *APIRouter) registerSettingsRoutes(r chi.Router) {
 		r.Get("/", ar.GetSettings)
 		r.Put("/docker-hosts", ar.UpdateDockerHosts)
 		r.Put("/coolify-hosts", ar.UpdateCoolifyHosts)
+		r.Put("/dokploy-hosts", ar.UpdateDokployHosts)
 		r.Put("/read-only", ar.UpdateReadOnly)
 		r.Put("/auth", ar.UpdateAuth)
 		// Lowering a retention cap makes the next janitor pass evict stored
@@ -196,6 +197,7 @@ func (ar *APIRouter) registerSettingsRoutes(r chi.Router) {
 		r.Delete("/api-tokens/{prefix}", ar.DeleteAPIToken)
 		r.Post("/test/docker-host", ar.TestDockerHost)
 		r.Post("/test/coolify-host", ar.TestCoolifyHost)
+		r.Post("/test/dokploy-host", ar.TestDokployHost)
 	})
 }
 

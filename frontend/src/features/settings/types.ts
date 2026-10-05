@@ -6,11 +6,22 @@ export interface DockerHost {
 	source: ConfigSource;
 }
 
-export interface CoolifyHost {
+export interface PlatformHost {
 	hostName: string;
 	apiURL: string;
 	apiToken: string;
 	source: ConfigSource;
+}
+
+export type CoolifyHost = PlatformHost;
+
+export interface DokployHost extends PlatformHost {
+	serverId: string;
+}
+export interface DokployHostsConfig {
+	source: ConfigSource;
+	hosts: DokployHost[];
+	revision?: string;
 }
 
 export interface DockerHostsConfig {
@@ -55,6 +66,7 @@ export interface LogStoreConfig {
 export interface SettingsResponse {
 	dockerHosts: DockerHostsConfig;
 	coolifyHosts: CoolifyHostsConfig;
+	dokployHosts?: DokployHostsConfig;
 	readOnly: ReadOnlyConfig;
 	auth: AuthConfig;
 	/** Absent on servers older than the editable retention caps. */

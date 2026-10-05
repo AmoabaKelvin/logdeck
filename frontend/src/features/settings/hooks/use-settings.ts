@@ -6,9 +6,14 @@ import { getApiTokens } from "../api/get-api-tokens";
 import { getSettings } from "../api/get-settings";
 import { testCoolifyHost } from "../api/test-coolify-host";
 import { testDockerHost } from "../api/test-docker-host";
+import { testDokployHost } from "../api/test-dokploy-host";
 import { type UpdateAuthPayload, updateAuth } from "../api/update-auth";
 import { updateCoolifyHosts } from "../api/update-coolify-hosts";
 import { updateDockerHosts } from "../api/update-docker-hosts";
+import {
+	type DokployHostInput,
+	updateDokployHosts,
+} from "../api/update-dokploy-hosts";
 import {
 	type UpdateLogStoragePayload,
 	updateLogStorage,
@@ -21,6 +26,8 @@ const API_TOKENS_KEY = ["settings", "api-tokens"] as const;
 const HISTORY_STATUS_KEY = ["history", "status"] as const;
 // The container list carries the host set and the read-only flag.
 const CONTAINERS_KEY = ["containers"] as const;
+// An open environment panel is routed by whether its host has a connection.
+const CONTAINER_ENV_KEY = ["container-env"] as const;
 
 export function useSettings() {
 	return useQuery({
@@ -58,6 +65,21 @@ export function useUpdateCoolifyHosts() {
 		onSettled: () => {
 			queryClient.invalidateQueries({ queryKey: SETTINGS_KEY });
 			queryClient.invalidateQueries({ queryKey: CONTAINERS_KEY });
+		},
+	});
+}
+
+export function useUpdateDokployHosts() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (input: { hosts: DokployHostInput[]; revision?: string }) =>
+			updateDokployHosts(input.hosts, input.revision),
+		// Settled, not success: a 409 means the list changed under the user, and
+		// refetching remounts the section with the current hosts and revision.
+		onSettled: () => {
+			queryClient.invalidateQueries({ queryKey: SETTINGS_KEY });
+			queryClient.invalidateQueries({ queryKey: CONTAINERS_KEY });
+			queryClient.invalidateQueries({ queryKey: CONTAINER_ENV_KEY });
 		},
 	});
 }
@@ -143,5 +165,11 @@ export function useTestCoolifyHost() {
 			apiURL: string;
 			apiToken: string;
 		}) => testCoolifyHost(hostName, apiURL, apiToken),
+	});
+}
+
+export function useTestDokployHost() {
+	return useMutation({
+		mutationFn: (host: DokployHostInput) => testDokployHost(host),
 	});
 }

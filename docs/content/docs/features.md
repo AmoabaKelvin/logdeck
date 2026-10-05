@@ -92,6 +92,7 @@ View and change a container's environment variables from the UI.
 - Add, edit, and delete variables. Saving recreates standalone containers
 - Bulk import from a `.env` file for direct container edits
 - Coolify applications and services read and save their environment in Coolify, then offer a separate deployment request. Saved variable settings and preview scopes are preserved
+- Dokploy applications and Compose deployments edit saved environment text after ownership confirmation, preserve related settings, and deploy separately. Compose variables follow the Compose file's references or `env_file`; preview and database edits stay in Dokploy
 - LogDeck detects Coolify-managed containers and labels them in the UI
 - Works with Docker Compose setups
 

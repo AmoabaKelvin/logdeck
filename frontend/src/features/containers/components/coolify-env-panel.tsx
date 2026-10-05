@@ -8,9 +8,10 @@ import {
 	saveCoolifyEnv,
 	type CoolifyEnvChange,
 } from "../api/coolify-env";
-import type { EnvVariablesResponse } from "../api/get-container-env-variables";
+import type { ContainerEnvResponse } from "../api/get-container-env-variables";
 import { isSecretKey } from "./env-file";
 import { PanelNote } from "./container-panel-ui";
+import { EnvConfirmDialog } from "./env-confirm-dialog";
 
 export function CoolifyEnvPanel({
 	containerId,
@@ -20,7 +21,7 @@ export function CoolifyEnvPanel({
 }: {
 	containerId: string;
 	containerHost: string;
-	configuration: EnvVariablesResponse;
+	configuration: ContainerEnvResponse;
 	isReadOnly: boolean;
 }) {
 	const queryClient = useQueryClient();
@@ -30,7 +31,9 @@ export function CoolifyEnvPanel({
 	const [saved, setSaved] = useState(false);
 	const [revealed, setRevealed] = useState<ReadonlySet<string>>(new Set());
 	const [needsReload, setNeedsReload] = useState(false);
+	const [confirmDeploy, setConfirmDeploy] = useState(false);
 	const variables = configuration.variables ?? [];
+	const isApplication = configuration.resource_type === "application";
 	const refresh = () =>
 		queryClient.invalidateQueries({
 			queryKey: ["container-env", containerId, containerHost],
@@ -320,18 +323,11 @@ export function CoolifyEnvPanel({
 						{saved && (
 							<Button
 								disabled={busy || Object.keys(changes).length > 0}
-								onClick={() => {
-									if (
-										window.confirm(
-											"Deploy this saved configuration through Coolify? This can restart the application or the whole service and cause downtime.",
-										)
-									)
-										deploy.mutate();
-								}}
+								onClick={() => setConfirmDeploy(true)}
 							>
 								{deploy.isPending
 									? "Requesting deployment…"
-									: configuration.resource_type === "application"
+									: isApplication
 										? "Deploy production through Coolify"
 										: "Restart service through Coolify"}
 							</Button>
@@ -339,6 +335,21 @@ export function CoolifyEnvPanel({
 					</div>
 				</>
 			)}
+			<EnvConfirmDialog
+				copy={
+					confirmDeploy
+						? {
+								title: isApplication
+									? "Deploy through Coolify?"
+									: "Restart service through Coolify?",
+								description: `This applies the saved configuration. It can restart ${isApplication ? "the application" : "the whole service"} and cause downtime.`,
+								confirmLabel: isApplication ? "Deploy" : "Restart",
+							}
+						: null
+				}
+				onOpenChange={setConfirmDeploy}
+				onConfirm={() => deploy.mutate()}
+			/>
 		</div>
 	);
 }

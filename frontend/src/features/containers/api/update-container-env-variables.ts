@@ -14,9 +14,10 @@ export async function updateContainerEnvVariables(
 	id: string,
 	host: string,
 	env: Record<string, string>,
+	plainCompose = false,
 ): Promise<UpdateEnvResult> {
 	const response = await authenticatedFetch(
-		`${API_BASE_URL}/api/v1/containers/${encodeURIComponent(id)}/env?host=${encodeURIComponent(host)}`,
+		`${API_BASE_URL}/api/v1/containers/${encodeURIComponent(id)}/env?host=${encodeURIComponent(host)}${plainCompose ? "&platform=docker&confirmed=true" : ""}`,
 		{
 			method: "PUT",
 			headers: {

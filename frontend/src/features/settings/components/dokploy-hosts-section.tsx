@@ -3,13 +3,21 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 
+import type { DokployHostInput } from "../api/update-dokploy-hosts";
 import {
-	useTestCoolifyHost,
-	useUpdateCoolifyHosts,
+	useTestDokployHost,
+	useUpdateDokployHosts,
 } from "../hooks/use-settings";
-import type { CoolifyHostsConfig } from "../types";
+import type { DokployHostsConfig } from "../types";
 import { showResultToast } from "./mutation-toast";
 import { SaveButton } from "./save-button";
 import {
@@ -27,45 +35,91 @@ import {
 } from "./settings-ui";
 import { TruncatedValue } from "./truncated-value";
 
-interface CoolifyHostsSectionProps {
-	config: CoolifyHostsConfig;
+interface DokployHostsSectionProps {
+	config: DokployHostsConfig;
+	/** Names of the configured Docker hosts a connection can attach to. */
+	dockerHosts: string[];
 }
 
-interface EditingHost {
-	hostName: string;
-	apiURL: string;
-	apiToken: string;
-}
-
-const EMPTY_HOST: EditingHost = { hostName: "", apiURL: "", apiToken: "" };
+const EMPTY_HOST: DokployHostInput = {
+	hostName: "",
+	apiURL: "",
+	apiToken: "",
+	serverId: "",
+};
 
 // Must match the server's secretMask constant. GET /settings returns tokens
 // masked with this value, and the server only resolves it back to the stored
-// token when the host name matches an existing entry.
+// token when the host name and API URL match an existing entry.
 const SECRET_MASK = "••••••••";
 
-export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
+const LOCAL_SERVER = "Instance's own server";
+
+function normalize(host: DokployHostInput): DokployHostInput {
+	return {
+		hostName: host.hostName,
+		apiURL: host.apiURL.trim().replace(/\/+$/, ""),
+		apiToken: host.apiToken.trim(),
+		serverId: host.serverId.trim(),
+	};
+}
+
+function HostSelect({
+	id,
+	label,
+	value,
+	options,
+	onChange,
+}: {
+	id?: string;
+	label?: string;
+	value: string;
+	options: string[];
+	onChange: (value: string) => void;
+}) {
+	return (
+		<Select value={value} onValueChange={onChange}>
+			<SelectTrigger id={id} aria-label={label} className="h-8 w-full">
+				<SelectValue placeholder="Choose a host" />
+			</SelectTrigger>
+			<SelectContent>
+				{options.map((name) => (
+					<SelectItem key={name} value={name}>
+						{name}
+					</SelectItem>
+				))}
+			</SelectContent>
+		</Select>
+	);
+}
+
+export function DokployHostsSection({
+	config,
+	dockerHosts,
+}: DokployHostsSectionProps) {
 	const envHosts = config.hosts.filter((h) => h.source === "env");
 	const originalFileHosts = config.hosts
 		.filter((h) => h.source !== "env")
-		.map(({ hostName, apiURL, apiToken }) => ({
+		.map(({ hostName, apiURL, apiToken, serverId }) => ({
 			hostName,
 			apiURL,
 			apiToken,
+			serverId,
 		}));
 
-	const [fileHosts, setFileHosts] = useState<EditingHost[]>(originalFileHosts);
+	const [fileHosts, setFileHosts] =
+		useState<DokployHostInput[]>(originalFileHosts);
 	const [editingIndex, setEditingIndex] = useState<number | null>(null);
-	const [editingHost, setEditingHost] = useState<EditingHost>(EMPTY_HOST);
+	const [editingHost, setEditingHost] = useState<DokployHostInput>(EMPTY_HOST);
 	const [isAdding, setIsAdding] = useState(false);
-	const [newHost, setNewHost] = useState<EditingHost>(EMPTY_HOST);
+	const [newHost, setNewHost] = useState<DokployHostInput>(EMPTY_HOST);
 	const [testResults, setTestResults] = useState<
 		Record<string, { success: boolean; message: string }>
 	>({});
 	const [testingKey, setTestingKey] = useState<string | null>(null);
 
-	const updateMutation = useUpdateCoolifyHosts();
-	const testMutation = useTestCoolifyHost();
+	const updateMutation = useUpdateDokployHosts();
+	const testMutation = useTestDokployHost();
 
 	const hasChanges =
 		fileHosts.length !== originalFileHosts.length ||
@@ -73,8 +127,34 @@ export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
 			(h, i) =>
 				h.hostName !== originalFileHosts[i]?.hostName ||
 				h.apiURL !== originalFileHosts[i]?.apiURL ||
-				h.apiToken !== originalFileHosts[i]?.apiToken,
+				h.apiToken !== originalFileHosts[i]?.apiToken ||
+				h.serverId !== originalFileHosts[i]?.serverId,
 		);
+
+	// A Docker host takes one connection, so the picker only offers the ones
+	// still free, plus the one the edited row already holds.
+	function availableHosts(exceptIndex?: number) {
+		return dockerHosts.filter(
+			(name) =>
+				!envHosts.some((h) => h.hostName === name) &&
+				!fileHosts.some((h, i) => i !== exceptIndex && h.hostName === name),
+		);
+	}
+
+	function validate(host: DokployHostInput): string | null {
+		if (!host.hostName || !host.apiURL || !host.apiToken) {
+			return "Docker host, API URL, and API token are all required";
+		}
+		if (
+			host.apiToken === SECRET_MASK &&
+			!originalFileHosts.some(
+				(h) => h.hostName === host.hostName && h.apiURL === host.apiURL,
+			)
+		) {
+			return `Enter the API token for "${host.hostName}" — a masked token can only be kept for the same host and API URL`;
+		}
+		return null;
+	}
 
 	function handleSave() {
 		updateMutation.mutate(
@@ -100,38 +180,14 @@ export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
 
 	function handleSaveEdit() {
 		if (editingIndex === null) return;
-		if (
-			!editingHost.hostName.trim() ||
-			!editingHost.apiURL.trim() ||
-			!editingHost.apiToken.trim()
-		) {
-			toast.error("Host name, API URL, and API token are all required");
-			return;
-		}
-		const trimmedName = editingHost.hostName.trim();
-		if (envHosts.some((h) => h.hostName === trimmedName)) {
-			toast.error(
-				`Host name "${trimmedName}" is defined via environment variable`,
-			);
-			return;
-		}
-		if (
-			fileHosts.some((h, i) => i !== editingIndex && h.hostName === trimmedName)
-		) {
-			toast.error(`Host name "${trimmedName}" already exists`);
-			return;
-		}
-		if (
-			editingHost.apiToken === SECRET_MASK &&
-			!originalFileHosts.some((h) => h.hostName === trimmedName)
-		) {
-			toast.error(
-				`Enter the API token for "${trimmedName}" — a masked token can only be kept for an existing host name`,
-			);
+		const host = normalize(editingHost);
+		const problem = validate(host);
+		if (problem) {
+			toast.error(problem);
 			return;
 		}
 		const next = [...fileHosts];
-		next[editingIndex] = { ...editingHost };
+		next[editingIndex] = host;
 		setFileHosts(next);
 		setEditingIndex(null);
 		setEditingHost(EMPTY_HOST);
@@ -139,45 +195,27 @@ export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
 	}
 
 	function handleAddHost() {
-		if (
-			!newHost.hostName.trim() ||
-			!newHost.apiURL.trim() ||
-			!newHost.apiToken.trim()
-		) {
-			toast.error("Host name, API URL, and API token are all required");
+		const host = normalize(newHost);
+		const problem = validate(host);
+		if (problem) {
+			toast.error(problem);
 			return;
 		}
-		const trimmedName = newHost.hostName.trim();
-		if (envHosts.some((h) => h.hostName === trimmedName)) {
-			toast.error(
-				`Host name "${trimmedName}" is already defined via environment variable`,
-			);
-			return;
-		}
-		if (fileHosts.some((h) => h.hostName === trimmedName)) {
-			toast.error(`Host name "${trimmedName}" already exists`);
-			return;
-		}
-		setFileHosts([
-			...fileHosts,
-			{
-				hostName: trimmedName,
-				apiURL: newHost.apiURL.trim(),
-				apiToken: newHost.apiToken.trim(),
-			},
-		]);
+		setFileHosts([...fileHosts, host]);
 		setNewHost(EMPTY_HOST);
 		setIsAdding(false);
 		setTestResults({});
 	}
 
-	function handleTest(
-		key: string,
-		h: { hostName: string; apiURL: string; apiToken: string },
-	) {
+	function handleTest(key: string, h: DokployHostInput) {
 		setTestingKey(key);
 		testMutation.mutate(
-			{ hostName: h.hostName, apiURL: h.apiURL, apiToken: h.apiToken },
+			{
+				hostName: h.hostName,
+				apiURL: h.apiURL,
+				apiToken: h.apiToken,
+				serverId: h.serverId,
+			},
 			{
 				onSuccess: (result) => {
 					setTestResults((prev) => ({
@@ -198,7 +236,7 @@ export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
 	}
 
 	function renderRow(
-		h: { hostName: string; apiURL: string; apiToken: string },
+		h: DokployHostInput,
 		isEnvRow: boolean,
 		fileIndex?: number,
 	) {
@@ -209,16 +247,13 @@ export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
 			return (
 				<tr key={testKey}>
 					<Td>
-						<Input
-							aria-label="Host name"
+						<HostSelect
+							label="Docker host"
 							value={editingHost.hostName}
-							onChange={(e) =>
-								setEditingHost((prev) => ({
-									...prev,
-									hostName: e.target.value,
-								}))
+							options={availableHosts(fileIndex)}
+							onChange={(hostName) =>
+								setEditingHost((prev) => ({ ...prev, hostName }))
 							}
-							className="h-8"
 						/>
 					</Td>
 					<Td>
@@ -229,7 +264,21 @@ export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
 								setEditingHost((prev) => ({ ...prev, apiURL: e.target.value }))
 							}
 							className="h-8"
-							placeholder="https://coolify.example.com"
+							placeholder="https://dokploy.example.com"
+						/>
+					</Td>
+					<Td>
+						<Input
+							aria-label="Server ID"
+							value={editingHost.serverId}
+							onChange={(e) =>
+								setEditingHost((prev) => ({
+									...prev,
+									serverId: e.target.value,
+								}))
+							}
+							className="h-8"
+							placeholder={LOCAL_SERVER}
 						/>
 					</Td>
 					<Td>
@@ -272,6 +321,13 @@ export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
 				</Td>
 				<Td className="font-mono text-muted-foreground">
 					<TruncatedValue value={h.apiURL} className="max-w-48" />
+				</Td>
+				<Td className="text-muted-foreground">
+					{h.serverId ? (
+						<TruncatedValue value={h.serverId} className="max-w-36 font-mono" />
+					) : (
+						LOCAL_SERVER
+					)}
 				</Td>
 				<Td className="text-muted-foreground">{h.apiToken}</Td>
 				<Td>
@@ -322,23 +378,24 @@ export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
 		...envHosts.map((h) => ({ ...h, isEnv: true as const })),
 		...fileHosts.map((h, i) => ({
 			...h,
-			source: "file" as const,
 			isEnv: false as const,
 			fileIndex: i,
 		})),
 	];
+	const canAdd = availableHosts().length > 0;
 
 	return (
 		<SettingsSection
-			title="Coolify hosts"
-			description="Environment variable edits are written back to Coolify so they survive a redeploy."
+			title="Dokploy hosts"
+			description="Environment variable edits are written back to Dokploy so they survive a redeploy. Each Docker host connects to the Dokploy instance and server that deploys to it."
 		>
 			<div className="space-y-4">
 				{allHosts.length > 0 && (
 					<SettingsTable>
 						<THead>
-							<Th>Name</Th>
+							<Th>Docker host</Th>
 							<Th>API URL</Th>
+							<Th>Server</Th>
 							<Th>Token</Th>
 							<Th>Status</Th>
 							<Th className="text-right">
@@ -354,29 +411,24 @@ export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
 				)}
 
 				{allHosts.length === 0 && !isAdding && (
-					<Note>No Coolify hosts configured.</Note>
+					<Note>No Dokploy hosts configured.</Note>
 				)}
 
 				{isAdding && (
 					<Well>
-						<div className="grid gap-3 sm:grid-cols-3">
-							<Field id="new-coolify-name" label="Name">
-								<Input
-									id="new-coolify-name"
-									name="hostName"
+						<div className="grid gap-3 sm:grid-cols-2">
+							<Field id="new-dokploy-host" label="Docker host">
+								<HostSelect
+									id="new-dokploy-host"
 									value={newHost.hostName}
-									onChange={(e) =>
-										setNewHost((prev) => ({
-											...prev,
-											hostName: e.target.value,
-										}))
+									options={availableHosts()}
+									onChange={(hostName) =>
+										setNewHost((prev) => ({ ...prev, hostName }))
 									}
-									placeholder="production"
-									className="h-8"
 								/>
 							</Field>
 							<Field
-								id="new-coolify-url"
+								id="new-dokploy-url"
 								label="API URL"
 								hint={
 									newHost.apiURL.trim().startsWith("http://") &&
@@ -384,19 +436,19 @@ export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
 								}
 							>
 								<Input
-									id="new-coolify-url"
+									id="new-dokploy-url"
 									name="apiURL"
 									value={newHost.apiURL}
 									onChange={(e) =>
 										setNewHost((prev) => ({ ...prev, apiURL: e.target.value }))
 									}
-									placeholder="https://coolify.example.com"
+									placeholder="https://dokploy.example.com"
 									className="h-8"
 								/>
 							</Field>
-							<Field id="new-coolify-token" label="API token">
+							<Field id="new-dokploy-token" label="API token">
 								<Input
-									id="new-coolify-token"
+									id="new-dokploy-token"
 									name="apiToken"
 									value={newHost.apiToken}
 									onChange={(e) =>
@@ -407,6 +459,26 @@ export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
 									}
 									placeholder="Token"
 									type="password"
+									autoComplete="off"
+									className="h-8"
+								/>
+							</Field>
+							<Field
+								id="new-dokploy-server"
+								label="Server ID"
+								hint="Leave empty when this host runs the Dokploy instance itself."
+							>
+								<Input
+									id="new-dokploy-server"
+									name="serverId"
+									value={newHost.serverId}
+									onChange={(e) =>
+										setNewHost((prev) => ({
+											...prev,
+											serverId: e.target.value,
+										}))
+									}
+									placeholder={LOCAL_SERVER}
 									className="h-8"
 								/>
 							</Field>
@@ -429,8 +501,12 @@ export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
 					</Well>
 				)}
 
+				{!isAdding && !canAdd && allHosts.length > 0 && (
+					<Note>Every Docker host already has a Dokploy connection.</Note>
+				)}
+
 				<div className="flex items-center gap-2">
-					{!isAdding && (
+					{!isAdding && canAdd && (
 						<Button
 							variant="outline"
 							size="sm"

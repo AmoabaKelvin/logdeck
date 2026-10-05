@@ -416,7 +416,7 @@ func registerEnvTools(s *mcp.Server, a *app, register func(*mcp.Tool)) {
 		Env       map[string]string   `json:"env,omitempty" jsonschema:"complete replacement environment for containers with source docker only"`
 		Changes   []coolify.EnvChange `json:"changes,omitempty" jsonschema:"explicit Coolify edits from get_env records; use uuid and key for existing rows, expected_value from the loaded value (null if unknown), value to replace, remove to delete, is_preview for scope; omit uuid for new variables"`
 	}
-	tool = &mcp.Tool{Name: "set_env", Description: "Edit environment variables. Read get_env first. For source docker send env to recreate the container. For source coolify send explicit changes to save configuration without deploying; apply it through Coolify.", Annotations: destructiveAnnot()}
+	tool = &mcp.Tool{Name: "set_env", Description: "Edit environment variables. Read get_env first. For source docker send env to recreate the container. For source coolify send explicit changes to save configuration without deploying; apply it through Coolify. For source dokploy, confirm the mapping and edit in the LogDeck UI; set_env does not support Dokploy.", Annotations: destructiveAnnot()}
 	mcp.AddTool(s, tool, func(ctx context.Context, _ *mcp.CallToolRequest, in setEnvInput) (*mcp.CallToolResult, any, error) {
 		if (in.Env == nil) == (in.Changes == nil) {
 			return nil, nil, fmt.Errorf("provide env for Docker or changes for Coolify")

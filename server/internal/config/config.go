@@ -17,7 +17,15 @@ type CoolifyHostConfig struct {
 	APIToken string `json:"apiToken"`
 }
 
+type DokployHostConfig struct {
+	HostName string `json:"hostName"`
+	APIURL   string `json:"apiURL"`
+	APIToken string `json:"apiToken"`
+	ServerID string `json:"serverId"`
+}
+
 type Config struct {
+	DokployHosts []DokployHostConfig
 	ReadOnly     bool
 	DockerHosts  []DockerHost
 	CoolifyHosts []CoolifyHostConfig
@@ -47,7 +55,7 @@ func NewConfig() *Config {
 		}
 	}
 
-	return &Config{ReadOnly: isReadOnlyMode, DockerHosts: dockerHosts, CoolifyHosts: coolifyHosts}
+	return &Config{ReadOnly: isReadOnlyMode, DockerHosts: dockerHosts, CoolifyHosts: coolifyHosts, DokployHosts: parseDokployHostConfigs()}
 }
 
 func parseDockerHosts() []DockerHost {
@@ -114,4 +122,29 @@ func parseCoolifyHostConfigs() []CoolifyHostConfig {
 	}
 
 	return configs
+}
+
+// DOKPLOY_CONFIGS uses hostName|apiURL|apiToken|serverId; an empty serverId means the instance's local server.
+func parseDokployHostConfigs() []DokployHostConfig {
+	raw := os.Getenv("DOKPLOY_CONFIGS")
+	var hosts []DokployHostConfig
+	if raw == "" {
+		return hosts
+	}
+	seen := map[string]bool{}
+	for _, entry := range strings.Split(raw, ",") {
+		parts := strings.Split(strings.TrimSpace(entry), "|")
+		if len(parts) != 4 {
+			log.Fatal("Invalid DOKPLOY_CONFIGS: expected hostName|apiURL|apiToken|serverId")
+		}
+		for i := range parts {
+			parts[i] = strings.TrimSpace(parts[i])
+		}
+		if parts[0] == "" || parts[1] == "" || parts[2] == "" || seen[parts[0]] {
+			log.Fatal("Invalid or duplicate DOKPLOY_CONFIGS host")
+		}
+		seen[parts[0]] = true
+		hosts = append(hosts, DokployHostConfig{HostName: parts[0], APIURL: parts[1], APIToken: parts[2], ServerID: parts[3]})
+	}
+	return hosts
 }

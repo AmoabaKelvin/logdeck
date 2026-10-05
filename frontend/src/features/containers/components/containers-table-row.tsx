@@ -35,6 +35,7 @@ import {
 	getContainerUrlIdentifier,
 	getSystemdUnit,
 	isCoolifyManaged,
+	isDokployManaged,
 	isRemovedContainer,
 	splitContainerStatus,
 } from "./container-utils";
@@ -250,6 +251,11 @@ export function ContainerRow({
 						{isCoolifyManaged(container.labels) && (
 							<Badge className="h-4 shrink-0 border-0 bg-purple-500/10 px-1.5 text-[0.625rem] text-purple-700 dark:text-purple-400">
 								Coolify
+							</Badge>
+						)}
+						{isDokployManaged(container.labels) && (
+							<Badge className="h-4 shrink-0 border-0 bg-sky-500/10 px-1.5 text-[0.625rem] text-sky-700 dark:text-sky-400">
+								Dokploy
 							</Badge>
 						)}
 					</div>

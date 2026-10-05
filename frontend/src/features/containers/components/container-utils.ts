@@ -553,3 +553,13 @@ export function resolvePublishedHost(
 			return null;
 	}
 }
+
+export function isDokployManaged(labels?: Record<string, string>): boolean {
+	return (
+		labels?.["dokploy.managed"] === "true" ||
+		[
+			"com.docker.compose.project.working_dir",
+			"com.docker.compose.project.config_files",
+		].some((key) => labels?.[key]?.includes("/dokploy/"))
+	);
+}

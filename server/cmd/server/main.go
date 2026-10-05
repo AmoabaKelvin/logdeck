@@ -17,6 +17,7 @@ import (
 	"github.com/AmoabaKelvin/logdeck/internal/config"
 	"github.com/AmoabaKelvin/logdeck/internal/coolify"
 	"github.com/AmoabaKelvin/logdeck/internal/docker"
+	"github.com/AmoabaKelvin/logdeck/internal/dokploy"
 	"github.com/AmoabaKelvin/logdeck/internal/logstore"
 	"github.com/AmoabaKelvin/logdeck/internal/logstream"
 	"github.com/AmoabaKelvin/logdeck/internal/services"
@@ -102,6 +103,7 @@ func main() {
 		}
 
 		registry.SwapCoolify(coolify.NewMultiClient(newCfg.CoolifyHosts))
+		registry.SwapDokploy(dokploy.NewMultiClient(newCfg.DokployHosts))
 
 		// Recreate auth service from file config (env-based auth is immutable).
 		fc := manager.FileConfigSnapshot()
