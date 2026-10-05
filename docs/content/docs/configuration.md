@@ -4,13 +4,13 @@ LogDeck runs with no configuration at all, and every environment variable on thi
 
 LogDeck reads its configuration from environment variables and from a JSON config file that the Settings page writes. Environment variables win. A value pinned by the environment shows in the UI but can't be changed there, which is what you want when the deployment, not the admin, should have the final say.
 
-Hosts, Coolify hosts, read-only mode, and authentication can come from either source. API tokens, alert rules, and log retention live only in the config file. Manage tokens in the UI, alert rules in the UI or the CLI, and retention through the config file or its [environment overrides](#log-persistence). [The config file](#the-config-file) section documents every key, so you can also generate the file yourself.
+Hosts, Coolify and Dokploy connections, read-only mode, and authentication can come from either source. API tokens, alert rules, and log retention live only in the config file. Manage tokens in the UI, alert rules in the UI or the CLI, and retention through the config file or its [environment overrides](#log-persistence). [The config file](#the-config-file) section documents every key, so you can also generate the file yourself.
 
 ## The data directory
 
 Everything LogDeck persists lives in one directory, the directory of its config file. That is `/data` by default:
 
-- `config.json`: hosts, Coolify hosts, read-only mode, auth, API tokens, alert rules, and log-store settings
+- `config.json`: hosts, Coolify and Dokploy connections, read-only mode, auth, API tokens, alert rules, and log-store settings
 - `logs.db`: the SQLite [log store](/docs/log-history)
 - `alerts-history.json`: recently fired [alerts](/docs/alerting)
 
@@ -40,6 +40,14 @@ Every key is optional. This example sets all of them:
       "hostName": "prod",
       "apiURL": "https://coolify.example.com",
       "apiToken": "your-coolify-token"
+    }
+  ],
+  "dokployHosts": [
+    {
+      "hostName": "prod",
+      "apiURL": "https://dokploy.example.com",
+      "apiToken": "your-dokploy-api-key",
+      "serverId": "dokploy-deployment-server-id"
     }
   ],
   "readOnly": false,
@@ -119,6 +127,10 @@ A list of `{ "name", "host" }` objects, the same as [`DOCKER_HOSTS`](#docker_hos
 ### `coolifyHosts`
 
 A list of `{ "hostName", "apiURL", "apiToken" }` objects, the same as [`COOLIFY_CONFIGS`](#coolify_configs). Each `hostName` must match a Docker host name. Merged with `COOLIFY_CONFIGS` the same way Docker hosts are.
+
+### `dokployHosts`
+
+A list of `{ "hostName", "apiURL", "apiToken", "serverId" }` objects. The host name matches a LogDeck Docker host. The server ID identifies the Dokploy deployment server; an empty string means the server running the Dokploy instance. Multiple Docker hosts can connect to the same instance with different server IDs. Entries merge with `DOKPLOY_CONFIGS`, with environment-defined names taking precedence.
 
 ### `readOnly`
 
@@ -300,6 +312,24 @@ Required for auth from the environment. A bcrypt hash of the admin password, nev
 ### `ADMIN_PASSWORD_SALT`
 
 Legacy and optional. Older LogDeck deployments hashed the admin password as SHA256(password + salt). LogDeck still accepts that combination, with `ADMIN_PASSWORD_SALT` set and `ADMIN_PASSWORD` holding the resulting hex digest, so existing setups keep working. Use bcrypt for new deployments and leave this unset.
+
+## Dokploy integration
+
+Connect and test Dokploy instances in Settings → Connections, or set `DOKPLOY_CONFIGS`.
+
+### `DOKPLOY_CONFIGS`
+
+Optional. Comma-separated entries use `hostName|apiURL|apiToken|serverId`. Keep the fourth field, even when empty:
+
+```bash
+DOKPLOY_CONFIGS=local|https://dokploy.example.com|api-key|,prod|https://dokploy.example.com|api-key|server-id
+```
+
+LogDeck discovers accessible applications and Compose deployments on that Dokploy server. Choose the owning deployment in the container's Environment panel, reveal its saved environment text, then save. Application saves preserve build arguments, build secrets, and environment-file settings; Compose saves preserve its environment-file option. Compose variables must be referenced by the Compose definition or loaded through `env_file` to enter containers.
+
+Saving leaves the running deployment unchanged. **Deploy saved configuration** requests a separate Dokploy deployment; completion must be checked in Dokploy. Recognized Dokploy and Swarm workloads cannot fall back to direct container recreation. For plain Compose on a connected host, choose **Not managed by Dokploy** to use the runtime editor, and persist edits in the Compose source too.
+
+Preview deployments, database resources, and shared project/environment variable editing stay in Dokploy. A revision check rejects detected stale edits, but Dokploy has no atomic conditional-save API, so avoid simultaneous edits from another client. A failed or uncertain operation requires reloading configuration and checking deployment progress before retrying.
 
 ## Coolify integration
 

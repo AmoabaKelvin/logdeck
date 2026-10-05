@@ -85,7 +85,6 @@ function renderPanel() {
 			<ContainerEnvPanel
 				containerId="container"
 				containerHost="local"
-				isCoolifyManaged
 				onContainerIdChange={onContainerIdChange}
 			/>
 		</QueryClientProvider>,
@@ -208,7 +207,6 @@ it("offers a separate deployment after a production save and reports a request r
 			);
 		}),
 	);
-	vi.spyOn(window, "confirm").mockReturnValue(true);
 	const { onContainerIdChange } = renderPanel();
 	fireEvent.change(await editableField("KEY production value"), {
 		target: { value: "edited" },
@@ -227,6 +225,8 @@ it("offers a separate deployment after a production save and reports a request r
 	fireEvent.click(screen.getByRole("button", { name: "Discard" }));
 	expect(button(deploy).disabled).toBe(false);
 	fireEvent.click(deploy);
+	expect(methods).toEqual(["PUT"]);
+	fireEvent.click(await screen.findByRole("button", { name: "Deploy" }));
 	await waitFor(() => expect(methods).toEqual(["PUT", "POST"]));
 	await waitFor(() =>
 		expect(toast.success).toHaveBeenCalledWith(

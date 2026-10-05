@@ -57,6 +57,22 @@ func (ar *APIRouter) GetSettings(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	envDokployNames := ar.manager.EnvDokployHostNames()
+	dokployHosts := make([]map[string]any, 0, len(cfg.DokployHosts))
+	for _, ch := range cfg.DokployHosts {
+		source := config.SourceFile
+		if envDokployNames[ch.HostName] {
+			source = config.SourceEnv
+		}
+		dokployHosts = append(dokployHosts, map[string]any{
+			"hostName": ch.HostName,
+			"apiURL":   ch.APIURL,
+			"apiToken": secretMask,
+			"serverId": ch.ServerID,
+			"source":   source,
+		})
+	}
+
 	authResp := map[string]any{
 		"source":  sources.Auth,
 		"enabled": false,
@@ -94,6 +110,11 @@ func (ar *APIRouter) GetSettings(w http.ResponseWriter, r *http.Request) {
 			"source":   sources.CoolifyHosts,
 			"hosts":    coolifyHosts,
 			"revision": config.HostsRevision(cfg.CoolifyHosts),
+		},
+		"dokployHosts": map[string]any{
+			"source":   sources.DokployHosts,
+			"hosts":    dokployHosts,
+			"revision": config.HostsRevision(cfg.DokployHosts),
 		},
 		"readOnly": map[string]any{
 			"source": sources.ReadOnly,

@@ -11,7 +11,7 @@ import {
 	PanelError,
 	PanelLoading,
 } from "./container-panel-ui";
-import { getSystemdUnit, isCoolifyManaged } from "./container-utils";
+import { getSystemdUnit } from "./container-utils";
 
 const PANELS = ["overview", "network", "environment", "limits"] as const;
 type Panel = (typeof PANELS)[number];
@@ -76,7 +76,6 @@ function PanelBody({
 			containerId={containerId}
 			containerHost={container.host}
 			isReadOnly={isReadOnly}
-			isCoolifyManaged={isCoolifyManaged(container.labels)}
 			systemdUnit={getSystemdUnit(container.labels)}
 			onContainerIdChange={onContainerRecreated}
 		/>

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/coolify"
+	"github.com/AmoabaKelvin/logdeck/internal/deployment"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
@@ -200,6 +201,9 @@ func (c *MultiHostClient) SetEnvVariables(ctx context.Context, hostName, id stri
 	labels := inspect.Config.Labels
 	if err := checkNotSystemdManaged(labels, "edit"); err != nil {
 		return "", nil, err
+	}
+	if deployment.DokployHint(labels) || deployment.SwarmManaged(labels) {
+		return "", nil, fmt.Errorf("managed environments must be saved and deployed through their deployment platform")
 	}
 	isCoolifyManaged := labels[coolify.LabelManaged] == "true"
 	if isCoolifyManaged {

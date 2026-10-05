@@ -7,6 +7,7 @@ import (
 	"github.com/AmoabaKelvin/logdeck/internal/config"
 	"github.com/AmoabaKelvin/logdeck/internal/coolify"
 	"github.com/AmoabaKelvin/logdeck/internal/docker"
+	"github.com/AmoabaKelvin/logdeck/internal/dokploy"
 )
 
 // Registry holds all runtime services behind a RWMutex, allowing hot-swap.
@@ -14,6 +15,7 @@ type Registry struct {
 	mu      sync.RWMutex
 	docker  *docker.MultiHostClient
 	coolify *coolify.MultiClient
+	dokploy *dokploy.MultiClient
 	auth    *auth.Service
 	config  *config.Config
 }
@@ -24,9 +26,14 @@ func NewRegistry(
 	authService *auth.Service,
 	cfg *config.Config,
 ) *Registry {
+	var dokployClient *dokploy.MultiClient
+	if cfg != nil {
+		dokployClient = dokploy.NewMultiClient(cfg.DokployHosts)
+	}
 	return &Registry{
 		docker:  dockerClient,
 		coolify: coolifyClient,
+		dokploy: dokployClient,
 		auth:    authService,
 		config:  cfg,
 	}
@@ -80,4 +87,15 @@ func (r *Registry) UpdateConfig(cfg *config.Config) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.config = cfg
+}
+
+func (r *Registry) Dokploy() *dokploy.MultiClient {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.dokploy
+}
+func (r *Registry) SwapDokploy(client *dokploy.MultiClient) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.dokploy = client
 }

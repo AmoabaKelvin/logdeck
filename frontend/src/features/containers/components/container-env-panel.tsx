@@ -28,13 +28,18 @@ import { isSecretKey, parseEnvFile } from "./env-file";
 import { EnvUpdateConfirmDialog } from "./env-update-confirm-dialog";
 import { EnvUploadPreviewDialog } from "./env-upload-preview-dialog";
 import { CoolifyEnvPanel } from "./coolify-env-panel";
+import { DokployEnvPanel } from "./dokploy-env-panel";
+import {
+	PLAIN_COMPOSE,
+	readDokployMapping,
+	writeDokployMapping,
+} from "./dokploy-mapping";
 import { useEnvDraft } from "./use-env-draft";
 
 interface ContainerEnvPanelProps {
 	containerId: string;
 	containerHost: string;
 	isReadOnly?: boolean;
-	isCoolifyManaged?: boolean;
 	systemdUnit?: string;
 	onContainerIdChange?: (newContainerId: string) => void;
 }
@@ -60,6 +65,11 @@ export function ContainerEnvPanel({
 }: ContainerEnvPanelProps) {
 	const isReadOnly = isReadOnlyMode || Boolean(systemdUnit);
 	const queryClient = useQueryClient();
+	// A Compose container on a Dokploy host that the user said Dokploy does not
+	// manage, so it is edited at runtime like any other container.
+	const [plainCompose, setPlainCompose] = useState(
+		() => readDokployMapping(containerHost, containerId) === PLAIN_COMPOSE,
+	);
 	const [filter, setFilter] = useState("");
 	const [revealed, setRevealed] = useState<ReadonlySet<string>>(new Set());
 	// Only what the user changed, so the original stays the source of truth and
@@ -77,8 +87,9 @@ export function ContainerEnvPanel({
 		isLoading,
 		error,
 	} = useQuery({
-		queryKey: ["container-env", containerId, containerHost],
-		queryFn: () => getContainerEnvVariables(containerId, containerHost),
+		queryKey: ["container-env", containerId, containerHost, plainCompose],
+		queryFn: () =>
+			getContainerEnvVariables(containerId, containerHost, plainCompose),
 		enabled: !!containerId && !!containerHost,
 	});
 
@@ -87,7 +98,12 @@ export function ContainerEnvPanel({
 
 	const updateMutation = useMutation({
 		mutationFn: (env: Record<string, string>) =>
-			updateContainerEnvVariables(containerId, containerHost, env),
+			updateContainerEnvVariables(
+				containerId,
+				containerHost,
+				env,
+				plainCompose,
+			),
 		onSuccess: (result) => {
 			// Invalidate for BOTH the old and new container IDs: the update
 			// recreates the container under a new one.
@@ -240,6 +256,22 @@ export function ContainerEnvPanel({
 		return <PanelError>{error.message}</PanelError>;
 	}
 
+	if (configuration?.source === "dokploy") {
+		return (
+			<DokployEnvPanel
+				key={`${containerHost}/${containerId}`}
+				containerId={containerId}
+				containerHost={containerHost}
+				configuration={configuration}
+				onPlainCompose={() => {
+					writeDokployMapping(containerHost, containerId, PLAIN_COMPOSE);
+					setPlainCompose(true);
+				}}
+				isReadOnly={isReadOnly}
+			/>
+		);
+	}
+
 	if (configuration?.source === "coolify") {
 		return (
 			<CoolifyEnvPanel
@@ -270,6 +302,23 @@ export function ContainerEnvPanel({
 				className="hidden"
 			/>
 
+			{configuration?.plain_compose && (
+				<div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+					<PanelNote>
+						Editing this container directly, outside Dokploy. Compose can
+						overwrite the change, so persist it in the Compose file too.
+					</PanelNote>
+					<Button
+						variant="ghost"
+						onClick={() => {
+							writeDokployMapping(containerHost, containerId, undefined);
+							setPlainCompose(false);
+						}}
+					>
+						Map to Dokploy
+					</Button>
+				</div>
+			)}
 			{systemdUnit && !isReadOnlyMode && (
 				<p className="mb-3 text-base text-muted-foreground sm:text-sm">
 					Managed by {systemdUnit}. Change variables in its Quadlet file, then

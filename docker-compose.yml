@@ -17,6 +17,7 @@ services:
       # variable, not a LogDeck one.
       - DOCKER_HOSTS=${DOCKER_HOSTS:-}
       - COOLIFY_CONFIGS=${COOLIFY_CONFIGS:-}
+      - DOKPLOY_CONFIGS=${DOKPLOY_CONFIGS:-}
       # Log persistence (on by default). Uncomment to change the retention caps;
       # they are also editable in Settings.
       # - LOG_STORE_PER_CONTAINER_MB=50

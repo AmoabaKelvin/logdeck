@@ -9,8 +9,8 @@ import (
 	"github.com/AmoabaKelvin/logdeck/internal/coolify"
 )
 
-// Inspect ownership before choosing an editor. Missing Coolify metadata is
-// never evidence that direct Docker editing is safe.
+// Resolve platform ownership before choosing an editor. Managed workloads
+// never fall back to direct recreation when their integration fails.
 func (ar *APIRouter) environmentOwner(w http.ResponseWriter, r *http.Request, host, id string) (*coolify.Client, *coolify.ResourceInfo, bool) {
 	inspect, err := ar.registry.Docker().GetContainer(r.Context(), host, id)
 	if err != nil {
@@ -19,6 +19,9 @@ func (ar *APIRouter) environmentOwner(w http.ResponseWriter, r *http.Request, ho
 	}
 	if inspect.Config == nil {
 		http.Error(w, "Container configuration is unavailable", http.StatusConflict)
+		return nil, nil, false
+	}
+	if ar.handleDokployEnvironment(w, r, host, id, inspect) {
 		return nil, nil, false
 	}
 	if inspect.Config.Labels[coolify.LabelManaged] != "true" {
@@ -68,7 +71,10 @@ func (ar *APIRouter) GetEnvVariables(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	WriteJsonResponse(w, http.StatusOK, map[string]any{"source": "docker", "env": env})
+	// Tells the UI this runtime editor was chosen over a Dokploy mapping, which
+	// only means something while the host still has a Dokploy connection.
+	plainCompose := r.URL.Query().Get("platform") == "docker" && ar.registry.Dokploy().GetClient(host) != nil
+	WriteJsonResponse(w, http.StatusOK, map[string]any{"source": "docker", "env": env, "plain_compose": plainCompose})
 }
 
 var envKeyRegex = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_\-\.]*$`)
@@ -78,16 +84,16 @@ func (ar *APIRouter) UpdateEnvVariables(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
+	client, resource, ok := ar.environmentOwner(w, r, host, id)
+	if !ok {
+		return
+	}
 	var req struct {
 		Env     map[string]string   `json:"env"`
 		Changes []coolify.EnvChange `json:"changes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	client, resource, ok := ar.environmentOwner(w, r, host, id)
-	if !ok {
 		return
 	}
 	if client != nil {

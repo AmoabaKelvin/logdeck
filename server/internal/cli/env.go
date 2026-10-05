@@ -10,9 +10,10 @@ import (
 )
 
 type envResponse struct {
-	Env       map[string]string `json:"env"`
-	Source    string            `json:"source,omitempty"`
-	Variables []coolify.EnvVar  `json:"variables,omitempty"`
+	Env             map[string]string `json:"env"`
+	Source          string            `json:"source,omitempty"`
+	MappingRequired bool              `json:"mapping_required,omitempty"`
+	Variables       []coolify.EnvVar  `json:"variables,omitempty"`
 }
 
 func newEnvCmd(a *app) *cobra.Command {
@@ -42,6 +43,9 @@ func newEnvCmd(a *app) *cobra.Command {
 				return a.printJSON(resp)
 			}
 
+			if resp.Source == "dokploy" {
+				return fmt.Errorf("confirm the owning Dokploy deployment in the LogDeck environment panel before reading or editing its saved configuration")
+			}
 			if resp.Source == "coolify" {
 				for _, variable := range resp.Variables {
 					scope := "production"

@@ -6,6 +6,7 @@ import { useSettings } from "../hooks/use-settings";
 import { AlertsSection } from "./alerts-section";
 import { ApiTokensSection } from "./api-tokens-section";
 import { AuthSection } from "./auth-section";
+import { DokployHostsSection } from "./dokploy-hosts-section";
 import { CoolifyHostsSection } from "./coolify-hosts-section";
 import { DockerHostsSection } from "./docker-hosts-section";
 import { LogStorageSection } from "./log-storage-section";
@@ -91,6 +92,13 @@ export function SettingsPage() {
 										key={JSON.stringify(data.coolifyHosts)}
 										config={data.coolifyHosts}
 									/>
+									{data.dokployHosts && (
+										<DokployHostsSection
+											key={JSON.stringify(data.dokployHosts)}
+											config={data.dokployHosts}
+											dockerHosts={data.dockerHosts.hosts.map((h) => h.name)}
+										/>
+									)}
 								</>
 							)}
 							{tab === "access" && (

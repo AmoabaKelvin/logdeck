@@ -14,6 +14,7 @@ import (
 
 // FileConfig represents the JSON config file structure.
 type FileConfig struct {
+	DokployHosts []DokployHostConfig `json:"dokployHosts,omitempty"`
 	DockerHosts  []DockerHost        `json:"dockerHosts,omitempty"`
 	CoolifyHosts []CoolifyHostConfig `json:"coolifyHosts,omitempty"`
 	ReadOnly     *bool               `json:"readOnly,omitempty"`
@@ -57,6 +58,7 @@ const (
 // EnvSnapshot captures which env vars are set at startup.
 type EnvSnapshot struct {
 	DockerHostsSet bool
+	DokploySet     bool
 	CoolifySet     bool
 	ReadOnlySet    bool
 	AuthSet        bool
@@ -77,6 +79,7 @@ type Manager struct {
 
 // ConfigSources tracks the source of each config category.
 type ConfigSources struct {
+	DokployHosts Source `json:"dokployHosts"`
 	DockerHosts  Source `json:"dockerHosts"`
 	CoolifyHosts Source `json:"coolifyHosts"`
 	ReadOnly     Source `json:"readOnly"`
@@ -92,6 +95,7 @@ func NewManager() *Manager {
 
 	envSnapshot := EnvSnapshot{
 		DockerHostsSet: os.Getenv("DOCKER_HOSTS") != "",
+		DokploySet:     os.Getenv("DOKPLOY_CONFIGS") != "",
 		CoolifySet:     os.Getenv("COOLIFY_CONFIGS") != "",
 		ReadOnlySet:    os.Getenv("READONLY_MODE") != "",
 		AuthSet: os.Getenv("JWT_SECRET") != "" ||
@@ -177,6 +181,19 @@ func (m *Manager) EnvCoolifyHostNames() map[string]bool {
 	return names
 }
 
+// EnvDokployHostNames returns the set of Dokploy host names defined via env vars.
+func (m *Manager) EnvDokployHostNames() map[string]bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	names := make(map[string]bool)
+	if m.envSnapshot.DokploySet {
+		for _, h := range m.envConfig.DokployHosts {
+			names[h.HostName] = true
+		}
+	}
+	return names
+}
+
 var ErrStaleRevision = errors.New("hosts changed since they were read; fetch settings again and retry")
 
 // HostsRevision is a content hash of a merged host list. Clients echo it back
@@ -251,6 +268,40 @@ func (m *Manager) UpdateCoolifyHosts(hosts []CoolifyHostConfig, ifRevision strin
 	m.fileConfig.CoolifyHosts = hosts
 	if err := m.persist(); err != nil {
 		m.fileConfig.CoolifyHosts = oldCoolifyHosts
+		m.mu.Unlock()
+		return err
+	}
+	m.remerge() // unlocks m.mu before firing callbacks
+	return nil
+}
+
+// UpdateDokployHosts updates the file-defined Dokploy hosts.
+// Rejects any host names that collide with env-defined hosts.
+func (m *Manager) UpdateDokployHosts(hosts []DokployHostConfig, ifRevision string) error {
+	m.mu.Lock()
+
+	if ifRevision != "" && ifRevision != HostsRevision(m.merged.DokployHosts) {
+		m.mu.Unlock()
+		return ErrStaleRevision
+	}
+
+	if m.envSnapshot.DokploySet {
+		envNames := make(map[string]bool)
+		for _, h := range m.envConfig.DokployHosts {
+			envNames[h.HostName] = true
+		}
+		for _, h := range hosts {
+			if envNames[h.HostName] {
+				m.mu.Unlock()
+				return fmt.Errorf("dokploy host %q is defined via environment variable and cannot be managed from the UI", h.HostName)
+			}
+		}
+	}
+
+	oldDokployHosts := m.fileConfig.DokployHosts
+	m.fileConfig.DokployHosts = hosts
+	if err := m.persist(); err != nil {
+		m.fileConfig.DokployHosts = oldDokployHosts
 		m.mu.Unlock()
 		return err
 	}
@@ -387,6 +438,29 @@ func (m *Manager) merge() (*Config, ConfigSources) {
 		sources.CoolifyHosts = SourceEnv
 	} else {
 		sources.CoolifyHosts = SourceFile
+	}
+
+	// Dokploy hosts: same merge strategy.
+	envDokployNames := make(map[string]bool)
+	if m.envSnapshot.DokploySet {
+		for _, h := range m.envConfig.DokployHosts {
+			cfg.DokployHosts = append(cfg.DokployHosts, h)
+			envDokployNames[h.HostName] = true
+		}
+	}
+	for _, h := range m.fileConfig.DokployHosts {
+		if !envDokployNames[h.HostName] {
+			cfg.DokployHosts = append(cfg.DokployHosts, h)
+		}
+	}
+	if len(cfg.DokployHosts) == 0 {
+		sources.DokployHosts = SourceDefault
+	} else if m.envSnapshot.DokploySet && len(m.fileConfig.DokployHosts) > 0 {
+		sources.DokployHosts = SourceMixed
+	} else if m.envSnapshot.DokploySet {
+		sources.DokployHosts = SourceEnv
+	} else {
+		sources.DokployHosts = SourceFile
 	}
 
 	if m.envSnapshot.ReadOnlySet {
