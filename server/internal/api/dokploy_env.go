@@ -165,7 +165,7 @@ func (ar *APIRouter) handleDokployEnvironment(w http.ResponseWriter, r *http.Req
 func (ar *APIRouter) dokployInstanceURL(host string) string {
 	for _, h := range ar.registry.Config().DokployHosts {
 		if h.HostName == host {
-			return h.APIURL
+			return dokploy.InstanceURL(h.APIURL)
 		}
 	}
 	return ""

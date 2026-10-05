@@ -18,7 +18,7 @@ import (
 func TestSaveEnvironmentPreservesDokploySettings(t *testing.T) {
 	for _, kind := range []ResourceType{Application, Compose} {
 		t.Run(string(kind), func(t *testing.T) {
-			rec := map[string]any{string(kind) + "Id": "resource", "appName": "web", "serverId": "remote", "env": "# keep\nTOKEN=${{vault.prod.secret}}\nMULTI=\"one\ntwo\"\n", "buildArgs": "MODE=build", "buildSecrets": nil, "createEnvFile": false}
+			rec := map[string]any{string(kind) + "Id": "resource", "appName": "web", "serverId": "remote", "env": "# keep\nTOKEN=${{vault.prod.secret}}\nURL=postgres://db?sslmode=require&pool=5\nMULTI=\"one\ntwo\"\n", "buildArgs": "MODE=build", "buildSecrets": nil, "createEnvFile": false}
 			var payload map[string]any
 			deploys := 0
 			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -30,12 +30,16 @@ func TestSaveEnvironmentPreservesDokploySettings(t *testing.T) {
 					if r.URL.Query().Get(string(kind)+"Id") != "resource" {
 						t.Error("wrong resource query")
 					}
-					_ = json.NewEncoder(w).Encode(rec)
+					// Dokploy's encoder leaves & < > unescaped, unlike Go's default.
+					encoder := json.NewEncoder(w)
+					encoder.SetEscapeHTML(false)
+					_ = encoder.Encode(rec)
 				case "/api/" + string(kind) + ".saveEnvironment":
 					if r.Method != "POST" {
 						t.Error("save must POST")
 					}
 					_ = json.NewDecoder(r.Body).Decode(&payload)
+					rec["env"] = payload["env"]
 					_, _ = w.Write([]byte("true"))
 				case "/api/" + string(kind) + ".deploy":
 					deploys++
@@ -67,6 +71,11 @@ func TestSaveEnvironmentPreservesDokploySettings(t *testing.T) {
 			}
 			if deploys != 0 || result.Text == nil || *result.Text != edited {
 				t.Fatalf("save deployed or lost raw text: %#v", result)
+			}
+			// The revision a save returns must match what Dokploy serves next,
+			// or a second save from the same panel is rejected as stale.
+			if _, err := client.SaveEnvironment(context.Background(), resource, edited+"MORE=value\n", result.Revision); err != nil {
+				t.Fatalf("second save: %v", err)
 			}
 			if err := client.Deploy(context.Background(), resource); err != nil {
 				t.Fatal(err)

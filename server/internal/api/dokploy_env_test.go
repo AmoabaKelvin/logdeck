@@ -54,7 +54,7 @@ func TestDokployMappingSaveAndDeploy(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { client, _ := dc.GetClient("local"); _ = client.Close() }()
-	cfg := &config.Config{DokployHosts: []config.DokployHostConfig{{HostName: "local", APIURL: platform.URL, APIToken: "token"}}}
+	cfg := &config.Config{DokployHosts: []config.DokployHostConfig{{HostName: "local", APIURL: platform.URL + "/api", APIToken: "token"}}}
 	ar := &APIRouter{registry: services.NewRegistry(dc, nil, nil, cfg)}
 	router := chi.NewRouter()
 	router.Route("/api/v1", ar.registerContainerRoutes)
@@ -76,7 +76,7 @@ func TestDokployMappingSaveAndDeploy(t *testing.T) {
 	}
 	platformDown = false
 	discovered := request("GET", "?host=local", "")
-	if discovered.Code != 200 || !strings.Contains(discovered.Body.String(), `"mapping_required":true`) {
+	if discovered.Code != 200 || !strings.Contains(discovered.Body.String(), `"mapping_required":true`) || !strings.Contains(discovered.Body.String(), `"instance_url":"`+platform.URL+`"`) {
 		t.Fatalf("discovery: %d %s", discovered.Code, discovered.Body.String())
 	}
 	for _, q := range []string{"?host=local", "?host=local&resource=app&resource_type=application", "?host=local&resource=wrong&resource_type=application&confirmed=true"} {

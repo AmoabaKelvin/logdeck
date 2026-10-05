@@ -23,8 +23,14 @@ type Client struct {
 
 type MultiClient struct{ clients map[string]*Client }
 
+// InstanceURL is the Dokploy dashboard address for a configured API URL,
+// which may or may not carry the /api suffix.
+func InstanceURL(apiURL string) string {
+	return strings.TrimSuffix(strings.TrimRight(apiURL, "/"), "/api")
+}
+
 func NewClient(cfg config.DokployHostConfig) *Client {
-	return &Client{apiURL: strings.TrimSuffix(strings.TrimRight(cfg.APIURL, "/"), "/api"), token: cfg.APIToken, serverID: cfg.ServerID, http: &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}}
+	return &Client{apiURL: InstanceURL(cfg.APIURL), token: cfg.APIToken, serverID: cfg.ServerID, http: &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 func NewMultiClient(hosts []config.DokployHostConfig) *MultiClient {
 	if len(hosts) == 0 {
