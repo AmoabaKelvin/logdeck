@@ -427,7 +427,14 @@ export function DokployHostsSection({
 									}
 								/>
 							</Field>
-							<Field id="new-dokploy-url" label="API URL">
+							<Field
+								id="new-dokploy-url"
+								label="API URL"
+								hint={
+									newHost.apiURL.trim().startsWith("http://") &&
+									"Over http:// the token is sent unencrypted. Use it only on a trusted network."
+								}
+							>
 								<Input
 									id="new-dokploy-url"
 									name="apiURL"

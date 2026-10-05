@@ -375,7 +375,14 @@ export function CoolifyHostsSection({ config }: CoolifyHostsSectionProps) {
 									className="h-8"
 								/>
 							</Field>
-							<Field id="new-coolify-url" label="API URL">
+							<Field
+								id="new-coolify-url"
+								label="API URL"
+								hint={
+									newHost.apiURL.trim().startsWith("http://") &&
+									"Over http:// the token is sent unencrypted. Use it only on a trusted network."
+								}
+							>
 								<Input
 									id="new-coolify-url"
 									name="apiURL"

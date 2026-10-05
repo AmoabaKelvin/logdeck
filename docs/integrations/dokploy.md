@@ -4,7 +4,7 @@ LogDeck reads and writes Dokploy's saved configuration rather than recreating a 
 
 ## Connect an instance
 
-In Settings → Connections, add the LogDeck Docker host name, Dokploy instance URL, API token (Dokploy calls it an API key), and Dokploy deployment server ID. Leave the server ID empty only for the server running that Dokploy instance. For an instance managing multiple hosts, add one connection per LogDeck Docker host, with the appropriate server ID. The URL may include `/api`.
+In Settings → Connections, add the LogDeck Docker host name, Dokploy instance URL, API token (Dokploy calls it an API key), and Dokploy deployment server ID. Leave the server ID empty only for the server running that Dokploy instance. For an instance managing multiple hosts, add one connection per LogDeck Docker host, with the appropriate server ID. The URL may include `/api`. Use an `https://` URL where you can: over `http://` the API token is sent unencrypted, so keep that to a trusted private network.
 
 Connections created in Settings persist in `/data/config.json`. Mount `/data` to retain them across container replacement. API tokens are masked in settings responses. Environment-defined entries cannot be changed through the UI.
 
