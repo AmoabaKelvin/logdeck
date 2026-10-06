@@ -2,6 +2,23 @@
 
 All notable changes to LogDeck are documented here.
 
+## [0.9.0](https://github.com/AmoabaKelvin/logdeck/compare/v0.8.3...v0.9.0) (2026-10-05)
+
+
+### Features
+
+* **dokploy:** edit saved environments for Dokploy deployments ([b833ab2](https://github.com/AmoabaKelvin/logdeck/commit/b833ab2154af5f555b7e2ab3ee77868faa1aa9ab))
+* **dokploy:** edit saved environments for Dokploy deployments ([30b8060](https://github.com/AmoabaKelvin/logdeck/commit/30b80604bdc81593d25ad239a9017683e97c887e)), closes [#165](https://github.com/AmoabaKelvin/logdeck/issues/165)
+
+
+### Bug Fixes
+
+* **coolify:** preserve secrets when replacements are cleared ([84ee55c](https://github.com/AmoabaKelvin/logdeck/commit/84ee55c9fd781bc13e6fd895bc7977b1df5e9315))
+* **coolify:** save environment changes before deploying ([474470b](https://github.com/AmoabaKelvin/logdeck/commit/474470bc2b50a37f0bb8996d6c32f8949d49fed6))
+* **coolify:** save environment changes before deploying ([24178a8](https://github.com/AmoabaKelvin/logdeck/commit/24178a8b86a17560c516f472141a141b8a6b41f9)), closes [#164](https://github.com/AmoabaKelvin/logdeck/issues/164)
+* **dokploy:** open the dashboard, not /api, from the env panel ([5d6b1a0](https://github.com/AmoabaKelvin/logdeck/commit/5d6b1a0cb9d72f6f3eba8bd610718929947960f0))
+* **dokploy:** use status constants and lowercase client errors ([f6ee33b](https://github.com/AmoabaKelvin/logdeck/commit/f6ee33bb8f7625f6a14dc8c3bed1f3f57e178397))
+
 ## [0.8.3](https://github.com/AmoabaKelvin/logdeck/compare/v0.8.2...v0.8.3) (2026-09-28)
 
 
