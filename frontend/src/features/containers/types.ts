@@ -16,6 +16,8 @@ export interface ContainerInfo {
 	labels?: Record<string, string>;
 	host: string;
 	ports?: ContainerPort[];
+	/** Set by the server when a platform owns the container. */
+	platform?: "dokploy";
 }
 
 export interface ContainerPort {

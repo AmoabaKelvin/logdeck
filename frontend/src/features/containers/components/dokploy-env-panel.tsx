@@ -52,6 +52,9 @@ function DokployLink({ href }: { href: string }) {
 
 export function DokployEnvPanel(props: DokployEnvPanelProps) {
 	const { containerId, containerHost, configuration, onPlainCompose } = props;
+	// The workload outlives its containers: Swarm replaces a task on every
+	// deployment, so the confirmed mapping is remembered for the workload.
+	const mappingKey = configuration.mapping_key || containerId;
 
 	// Refetched only on demand: the list is re-read when the user backs out of
 	// a deployment, so a mapping that changed meanwhile is confirmed afresh.
@@ -83,7 +86,7 @@ export function DokployEnvPanel(props: DokployEnvPanelProps) {
 	);
 	// A deployment confirmed on an earlier visit opens straight away.
 	const [owner, setOwner] = useState(() => {
-		const remembered = readDokployMapping(containerHost, containerId);
+		const remembered = readDokployMapping(containerHost, mappingKey);
 		return configuration.resources?.find(
 			(resource) => resourceKey(resource) === remembered,
 		);
@@ -100,7 +103,7 @@ export function DokployEnvPanel(props: DokployEnvPanelProps) {
 				{...props}
 				owner={owner}
 				onUnmap={() => {
-					writeDokployMapping(containerHost, containerId, undefined);
+					writeDokployMapping(containerHost, mappingKey, undefined);
 					setOwner(undefined);
 					void inventory.refetch();
 				}}
@@ -177,7 +180,7 @@ export function DokployEnvPanel(props: DokployEnvPanelProps) {
 							if (!chosen) return;
 							writeDokployMapping(
 								containerHost,
-								containerId,
+								mappingKey,
 								resourceKey(chosen),
 							);
 							setOwner(chosen);

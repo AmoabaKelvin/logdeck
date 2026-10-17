@@ -16,11 +16,21 @@ DOKPLOY_CONFIGS=local|https://dokploy.example.com|key|,remote|https://dokploy.ex
 
 Connection testing checks whether accessible resources can be discovered. It does not certify environment-write or deployment-create permissions. Those permissions are checked by Dokploy when each action is requested. A valid token can have no accessible projects; an empty inventory cannot establish that a managed container is safe to recreate.
 
+## How LogDeck recognizes Dokploy workloads
+
+The container list marks a container as Dokploy's when any of these hold:
+
+- It carries Dokploy's `dokploy.application.id` label. Dokploy adds it after v0.30.8, once a resource is redeployed.
+- Its Compose working directory is under `/etc/dokploy/`.
+- It is a Swarm task whose service or stack name matches a deployment name (`appName`) of an application, Compose deployment or preview on the host's connected Dokploy server. Releases up to v0.30.8 leave nothing else on Swarm services, so this needs a connection. LogDeck caches the deployment names for five minutes, so a new deployment can take that long to be marked.
+
+Databases deployed by older releases are not marked, because the inventory does not list database deployment names.
+
 ## Confirm ownership and edit
 
-Open the container's Environment panel. LogDeck reads `project.all`, then each accessible application's or Compose deployment's record to obtain its deployment name and server ID. Inventory summaries alone omit this information. It filters resources to the configured deployment server, suggests exact matches to container Compose/Swarm metadata, and requires confirmation of the selected resource.
+Open the container's Environment panel. LogDeck reads `project.all`, then each accessible application's or Compose deployment's record to obtain its deployment name and server ID. Inventory summaries alone omit this information. It filters resources to the configured deployment server, suggests the resource named by the `dokploy.application.id` label or, without it, exact matches to container Compose/Swarm metadata, and requires confirmation of the selected resource. A mapping to a resource other than the labelled one is rejected.
 
-The confirmed deployment is remembered in the browser for that container, so reopening the panel goes straight to the editor; **Change deployment** forgets it. Each action still verifies the resource ID, type, server, instance, and deployment name again. A renamed resource or changed instance/server requires a new confirmation. The user must connect the correct server for the Docker host; this is not an automatic verification of Docker endpoint identity. Swarm worker nodes must be associated with the Dokploy server that owns the deployment.
+The confirmed deployment is remembered in the browser for the workload (its Swarm service, stack or Compose project), so reopening the panel goes straight to the editor, including after a deployment replaces the container; **Change deployment** forgets it. Each action still verifies the resource ID, type, server, instance, and deployment name again. A renamed resource or changed instance/server requires a new confirmation. The user must connect the correct server for the Docker host; this is not an automatic verification of Docker endpoint identity. Swarm worker nodes must be associated with the Dokploy server that owns the deployment.
 
 The editor works with raw environment text, retaining comments, quoted multiline values, and shared or vault references. Values are initially hidden. Editing changes service-level configuration, not shared project/environment variables or the Compose definition.
 
@@ -33,7 +43,7 @@ Compose variables belong to the whole deployment. They enter a service only when
 
 Known Dokploy workloads and Swarm tasks cannot use direct Docker recreation. For an ordinary Compose workload on a connected host, choose **Not managed by Dokploy** to use the runtime editor if Dokploy does not own it. The choice is remembered in the browser; **Map to Dokploy** undoes it. This option is unavailable when Dokploy-specific metadata or Swarm ownership is present. Runtime edits must also be persisted in the Compose source file to survive Compose recreation. Standalone containers retain the existing Docker editor.
 
-Preview deployments, database resources, and project/environment-level variable editing are unsupported here. Use Dokploy for those operations. Recognized previews are blocked from being mapped to production applications. CLI and MCP environment edits do not support the confirmed Dokploy mapping workflow; use the UI.
+Preview deployments, database resources, and project/environment-level variable editing are unsupported here. A container labelled with a database's ID is refused instead of offered a mapping. Use Dokploy for those operations. Recognized previews are blocked from being mapped to production applications. CLI and MCP environment edits do not support the confirmed Dokploy mapping workflow; use the UI.
 
 ## Failures and concurrent edits
 

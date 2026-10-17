@@ -84,7 +84,24 @@ func (c *Client) readRecord(ctx context.Context, resource Resource) (record, err
 	return rec, nil
 }
 
-func (c *Client) Resources(ctx context.Context) ([]Resource, error) {
+// Inventory is what Dokploy deployed on the configured server.
+type Inventory struct {
+	// Resources are the applications and Compose deployments LogDeck edits.
+	Resources []Resource
+	// Databases holds the IDs of database services, which LogDeck never edits.
+	// project.all lists them without a server, so they span every server.
+	Databases map[string]bool
+}
+
+// databaseKinds are project.all's database lists, each keyed by its kind
+// and identified by "<kind>Id".
+var databaseKinds = []string{"postgres", "mysql", "mariadb", "mongo", "redis", "libsql"}
+
+func (c *Client) Inventory(ctx context.Context) (Inventory, error) {
+	var body json.RawMessage
+	if err := c.request(ctx, http.MethodGet, "project.all", nil, &body); err != nil {
+		return Inventory{}, err
+	}
 	var projects []struct {
 		Name         string `json:"name"`
 		Environments []struct {
@@ -97,10 +114,29 @@ func (c *Client) Resources(ctx context.Context) ([]Resource, error) {
 			} `json:"compose"`
 		} `json:"environments"`
 	}
-	if err := c.request(ctx, http.MethodGet, "project.all", nil, &projects); err != nil {
-		return nil, err
+	// Database entries are read loosely: only their IDs matter here, and a
+	// column Dokploy adds must not break discovery of what LogDeck edits.
+	var databases []struct {
+		Environments []map[string]json.RawMessage `json:"environments"`
 	}
-	resources := make([]Resource, 0)
+	if err := json.Unmarshal(body, &projects); err != nil {
+		return Inventory{}, fmt.Errorf("dokploy returned an unreadable response: %w", err)
+	}
+	_ = json.Unmarshal(body, &databases)
+	inventory := Inventory{Resources: make([]Resource, 0), Databases: make(map[string]bool)}
+	for _, p := range databases {
+		for _, e := range p.Environments {
+			for _, kind := range databaseKinds {
+				var entries []map[string]any
+				_ = json.Unmarshal(e[kind], &entries)
+				for _, db := range entries {
+					if id, _ := db[kind+"Id"].(string); id != "" {
+						inventory.Databases[id] = true
+					}
+				}
+			}
+		}
+	}
 	// project.all intentionally exposes only summaries. Read the owning records
 	// to obtain appName and serverId rather than assuming local deployments.
 	for _, p := range projects {
@@ -115,10 +151,10 @@ func (c *Client) Resources(ctx context.Context) ([]Resource, error) {
 			for _, r := range ids {
 				var rec record
 				if r.ID == "" {
-					return nil, fmt.Errorf("dokploy returned an incomplete resource inventory")
+					return Inventory{}, fmt.Errorf("dokploy returned an incomplete resource inventory")
 				}
 				if err := c.request(ctx, http.MethodGet, string(r.Type)+".one?"+string(r.Type)+"Id="+url.QueryEscape(r.ID), nil, &rec); err != nil {
-					return nil, err
+					return Inventory{}, err
 				}
 				server := ""
 				if rec.ServerID != nil {
@@ -136,11 +172,12 @@ func (c *Client) Resources(ctx context.Context) ([]Resource, error) {
 				for _, preview := range rec.PreviewDeployments {
 					r.PreviewNames = append(r.PreviewNames, preview.AppName)
 				}
-				resources = append(resources, r)
+				inventory.Resources = append(inventory.Resources, r)
 			}
 		}
 	}
-	return resources, nil
+	c.names.store(inventory.Resources)
+	return inventory, nil
 }
 
 func revision(rec record) string {

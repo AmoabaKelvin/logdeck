@@ -19,6 +19,7 @@ type Client struct {
 	token    string
 	serverID string
 	http     *http.Client
+	names    appNames
 }
 
 type MultiClient struct{ clients map[string]*Client }
@@ -92,6 +93,6 @@ func (c *Client) request(ctx context.Context, method, endpoint string, body any,
 }
 
 func (c *Client) TestConnection(ctx context.Context) error {
-	_, err := c.Resources(ctx)
+	_, err := c.Inventory(ctx)
 	return err
 }

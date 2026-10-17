@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -64,7 +65,7 @@ func (ar *APIRouter) handleDokployEnvironment(w http.ResponseWriter, r *http.Req
 			return true
 		}
 	}
-	resources, err := client.Resources(r.Context())
+	inventory, err := client.Inventory(r.Context())
 	if err != nil {
 		if hinted || swarm {
 			http.Error(w, dokployMessage(err)+". Direct container recreation is unavailable for this workload", http.StatusBadGateway)
@@ -79,6 +80,7 @@ func (ar *APIRouter) handleDokployEnvironment(w http.ResponseWriter, r *http.Req
 		http.Error(w, dokployMessage(err), http.StatusBadGateway)
 		return true
 	}
+	resources := inventory.Resources
 	for _, res := range resources {
 		for _, preview := range res.PreviewNames {
 			if preview != "" && (preview == labels["com.docker.swarm.service.name"] || preview == labels["com.docker.compose.project"]) {
@@ -87,18 +89,27 @@ func (ar *APIRouter) handleDokployEnvironment(w http.ResponseWriter, r *http.Req
 			}
 		}
 	}
+	dokployID := deployment.DokployResourceID(labels)
+	if inventory.Databases[dokployID] {
+		http.Error(w, "Dokploy databases are unsupported here. Edit this database's environment in Dokploy", http.StatusConflict)
+		return true
+	}
 	if selected == "" {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Confirm the owning Dokploy application or Compose deployment before editing", http.StatusConflict)
 			return true
 		}
+		// Dokploy's own label names the resource outright. Containers deployed
+		// before Dokploy added it are matched by deployment name.
 		suggested := make([]string, 0)
 		for _, res := range resources {
-			if res.AppName != "" && (res.AppName == labels["com.docker.compose.project"] || res.AppName == labels["com.docker.swarm.service.name"] || res.AppName == labels["com.docker.stack.namespace"]) {
+			byID := dokployID != "" && res.ID == dokployID
+			byName := dokployID == "" && res.AppName != "" && (res.AppName == labels["com.docker.compose.project"] || res.AppName == labels["com.docker.swarm.service.name"] || res.AppName == labels["com.docker.stack.namespace"])
+			if byID || byName {
 				suggested = append(suggested, string(res.Type)+"/"+res.ID)
 			}
 		}
-		WriteJsonResponse(w, 200, map[string]any{"source": "dokploy", "env": map[string]string{}, "suggested_resources": suggested, "resources": resources, "mapping_required": true, "plain_compose_allowed": !hinted && !swarm, "instance_url": ar.dokployInstanceURL(host), "workload": inspect.Name})
+		WriteJsonResponse(w, 200, map[string]any{"source": "dokploy", "env": map[string]string{}, "suggested_resources": suggested, "resources": resources, "mapping_required": true, "plain_compose_allowed": !hinted && !swarm, "instance_url": ar.dokployInstanceURL(host), "workload": inspect.Name, "mapping_key": dokployMappingKey(labels)})
 		return true
 	}
 	var owner *dokploy.Resource
@@ -110,6 +121,10 @@ func (ar *APIRouter) handleDokployEnvironment(w http.ResponseWriter, r *http.Req
 	}
 	if owner == nil {
 		http.Error(w, "The selected Dokploy resource is unavailable on this server. Choose the deployment again", http.StatusConflict)
+		return true
+	}
+	if dokployID != "" && owner.ID != dokployID {
+		http.Error(w, "Dokploy deployed this container from a different resource. Choose the deployment again", http.StatusConflict)
 		return true
 	}
 	if r.URL.Query().Get("mapping_revision") != owner.MappingRevision {
@@ -162,6 +177,38 @@ func (ar *APIRouter) handleDokployEnvironment(w http.ResponseWriter, r *http.Req
 	http.Error(w, "Unsupported Dokploy environment operation", http.StatusMethodNotAllowed)
 	return true
 }
+
+// ownedByDokploy reports whether Dokploy deployed a container. Dokploy up to
+// v0.30.8 leaves nothing of its own on a Swarm task, so its service or stack
+// name is checked against the deployments of the host's Dokploy connection.
+func (ar *APIRouter) ownedByDokploy(ctx context.Context, host string, labels map[string]string) bool {
+	if deployment.DokployHint(labels) {
+		return true
+	}
+	client := ar.registry.Dokploy().GetClient(host)
+	if client == nil {
+		return false
+	}
+	for _, name := range deployment.SwarmDeploymentNames(labels) {
+		if client.OwnsAppName(ctx, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// dokployMappingKey names the workload a confirmed mapping is remembered for.
+// Swarm replaces task containers on every deployment, and Compose recreates
+// its containers, so the container ID would forget the mapping each time.
+func dokployMappingKey(labels map[string]string) string {
+	for _, key := range []string{"com.docker.stack.namespace", "com.docker.swarm.service.name", "com.docker.compose.project"} {
+		if labels[key] != "" {
+			return key + "=" + labels[key]
+		}
+	}
+	return ""
+}
+
 func (ar *APIRouter) dokployInstanceURL(host string) string {
 	for _, h := range ar.registry.Config().DokployHosts {
 		if h.HostName == host {

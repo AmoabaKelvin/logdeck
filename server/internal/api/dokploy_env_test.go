@@ -129,3 +129,95 @@ func TestUnconnectedDokployAndSwarmNeverRecreate(t *testing.T) {
 		}
 	}
 }
+
+// dokployRouter serves one container with labels on a host connected to a
+// Dokploy instance that deployed app (an application named "web") and db (a
+// Postgres database).
+func dokployRouter(t *testing.T, labels map[string]string) http.Handler {
+	t.Helper()
+	engine := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/containers/json"):
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"Id": "container", "Names": []string{"/web.1.task"}, "State": "running", "Labels": labels}})
+		case strings.HasSuffix(r.URL.Path, "/containers/container/json"):
+			_ = json.NewEncoder(w).Encode(map[string]any{"Id": "container", "Name": "/web.1.task", "State": map[string]any{"Running": true}, "HostConfig": map[string]any{}, "Config": map[string]any{"Labels": labels, "Env": []string{"KEY=runtime"}}})
+		default:
+			http.Error(w, "unexpected Docker request", 500)
+		}
+	}))
+	t.Cleanup(engine.Close)
+	platform := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/project.all":
+			_, _ = w.Write([]byte(`[{"environments":[{"name":"production","isDefault":true,"applications":[{"applicationId":"app"}],"postgres":[{"postgresId":"db","name":"db","applicationStatus":"done"}]}]}]`))
+		case "/api/application.one":
+			_, _ = w.Write([]byte(`{"applicationId":"app","appName":"web","serverId":null}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(platform.Close)
+	t.Setenv("DOCKER_API_VERSION", "1.47")
+	dc, err := docker.NewMultiHostClient([]config.DockerHost{{Name: "local", Host: "tcp://" + strings.TrimPrefix(engine.URL, "http://")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { client, _ := dc.GetClient("local"); _ = client.Close() })
+	cfg := &config.Config{DokployHosts: []config.DokployHostConfig{{HostName: "local", APIURL: platform.URL, APIToken: "token"}}}
+	ar := &APIRouter{registry: services.NewRegistry(dc, nil, nil, cfg)}
+	router := chi.NewRouter()
+	router.Route("/api/v1", ar.registerContainerRoutes)
+	return router
+}
+
+func TestDokploySwarmServicesAreMarked(t *testing.T) {
+	for _, tc := range []struct {
+		labels map[string]string
+		marked bool
+	}{
+		{map[string]string{"com.docker.swarm.service.name": "web"}, true},
+		{map[string]string{"com.docker.swarm.service.name": "other"}, false},
+		{map[string]string{"dokploy.application.id": "db", "com.docker.swarm.service.name": "postgres-db"}, true},
+		{map[string]string{"com.docker.compose.project.working_dir": "/etc/dokploy/compose/web/code"}, true},
+		{map[string]string{"com.docker.compose.project.working_dir": "/home/me/dokploy/web"}, false},
+	} {
+		w := httptest.NewRecorder()
+		dokployRouter(t, tc.labels).ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/containers", nil))
+		if marked := strings.Contains(w.Body.String(), `"platform":"dokploy"`); w.Code != 200 || marked != tc.marked {
+			t.Fatalf("labels=%v: code=%d marked=%v, want %v: %s", tc.labels, w.Code, marked, tc.marked, w.Body.String())
+		}
+	}
+}
+
+func TestDokployResourceLabelPicksTheDeployment(t *testing.T) {
+	get := func(labels map[string]string, query string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		dokployRouter(t, labels).ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/containers/container/env?host=local"+query, nil))
+		return w
+	}
+	// The label wins over a deployment name that happens to match.
+	labelled := get(map[string]string{"dokploy.application.id": "app", "com.docker.swarm.service.name": "renamed"}, "")
+	if !strings.Contains(labelled.Body.String(), `"suggested_resources":["application/app"]`) || !strings.Contains(labelled.Body.String(), `"mapping_key":"com.docker.swarm.service.name=renamed"`) {
+		t.Fatalf("labelled: %d %s", labelled.Code, labelled.Body.String())
+	}
+	other := get(map[string]string{"dokploy.application.id": "elsewhere", "com.docker.swarm.service.name": "web"}, "")
+	if !strings.Contains(other.Body.String(), `"suggested_resources":[]`) {
+		t.Fatalf("another resource's label: %d %s", other.Code, other.Body.String())
+	}
+	var inventory struct {
+		Resources []struct {
+			MappingRevision string `json:"mapping_revision"`
+		}
+	}
+	if err := json.Unmarshal(other.Body.Bytes(), &inventory); err != nil || len(inventory.Resources) != 1 {
+		t.Fatalf("inventory: %v %s", err, other.Body.String())
+	}
+	mismatch := get(map[string]string{"dokploy.application.id": "elsewhere"}, "&resource=app&resource_type=application&confirmed=true&mapping_revision="+inventory.Resources[0].MappingRevision)
+	if mismatch.Code != 409 {
+		t.Fatalf("mapping to a resource the label rules out: %d %s", mismatch.Code, mismatch.Body.String())
+	}
+	database := get(map[string]string{"dokploy.application.id": "db", "com.docker.swarm.service.name": "postgres-db"}, "")
+	if database.Code != 409 || !strings.Contains(database.Body.String(), "databases") {
+		t.Fatalf("database: %d %s", database.Code, database.Body.String())
+	}
+}

@@ -14,6 +14,9 @@ type ContainerInfo struct {
 	Labels  map[string]string `json:"labels,omitempty"`
 	Host    string            `json:"host"`
 	Ports   []ContainerPort   `json:"ports,omitempty"`
+	// Platform names the deployment platform that owns the container when its
+	// labels alone cannot say so. Only "dokploy" is set today.
+	Platform string `json:"platform,omitempty"`
 }
 
 // ContainerPort is a port published to the host. Exposed-but-unpublished ports

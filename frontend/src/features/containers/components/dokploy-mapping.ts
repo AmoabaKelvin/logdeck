@@ -5,7 +5,8 @@ const STORAGE_KEY = "logdeck.dokployMappings";
 /** Stored for a Compose container the user said Dokploy does not manage. */
 export const PLAIN_COMPOSE = "plain";
 
-// One "host/container<TAB>mapping" entry per line.
+// One "host/workload<TAB>mapping" entry per line, where the workload is a
+// Swarm service, stack or Compose project, or a container ID.
 function readAll(): Map<string, string> {
 	const entries = (readStorage(STORAGE_KEY) ?? "")
 		.split("\n")
@@ -15,7 +16,7 @@ function readAll(): Map<string, string> {
 }
 
 /**
- * Which Dokploy deployment the user confirmed for a container, as "type/id",
+ * Which Dokploy deployment the user confirmed for a workload, as "type/id",
  * so reopening the panel does not ask again. The server still checks the
  * mapping on every request, so a stale entry fails safely.
  */

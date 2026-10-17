@@ -86,6 +86,14 @@ func (ar *APIRouter) GetContainers(w http.ResponseWriter, r *http.Request) {
 	for _, containers := range containersMap {
 		allContainers = append(allContainers, containers...)
 	}
+	// A cold Dokploy inventory is worth a short wait, not the whole listing.
+	ownersCtx, cancelOwners := context.WithTimeout(ctx, 3*time.Second)
+	defer cancelOwners()
+	for i := range allContainers {
+		if ar.ownedByDokploy(ownersCtx, allContainers[i].Host, allContainers[i].Labels) {
+			allContainers[i].Platform = "dokploy"
+		}
+	}
 
 	WriteJsonResponse(w, http.StatusOK, map[string]any{
 		"containers":        allContainers,
