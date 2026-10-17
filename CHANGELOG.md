@@ -2,6 +2,20 @@
 
 All notable changes to LogDeck are documented here.
 
+## [0.9.1](https://github.com/AmoabaKelvin/logdeck/compare/v0.9.0...v0.9.1) (2026-10-17)
+
+
+### Bug Fixes
+
+* **dokploy:** check hosts side by side, keep earlier confirmations ([b0da365](https://github.com/AmoabaKelvin/logdeck/commit/b0da365a7d698c42baf2cd70087dabf74b32fc30))
+* **dokploy:** recognize Dokploy's Swarm services ([c3503be](https://github.com/AmoabaKelvin/logdeck/commit/c3503bee607d0db8f5a2cef6b4c26ba330b81aa2))
+* **dokploy:** recognize Dokploy's Swarm services ([1ac28f3](https://github.com/AmoabaKelvin/logdeck/commit/1ac28f35bca3fe0de5e2e01a7fc2134466011cfb))
+
+
+### Performance
+
+* **dokploy:** read records in parallel, wait on the first refresh only ([e6a3e37](https://github.com/AmoabaKelvin/logdeck/commit/e6a3e3706ca483506707dc14424222461f4da47c))
+
 ## [0.9.0](https://github.com/AmoabaKelvin/logdeck/compare/v0.8.3...v0.9.0) (2026-10-05)
 
 
