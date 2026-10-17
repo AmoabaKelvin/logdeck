@@ -86,10 +86,18 @@ export function DokployEnvPanel(props: DokployEnvPanelProps) {
 	);
 	// A deployment confirmed on an earlier visit opens straight away.
 	const [owner, setOwner] = useState(() => {
-		const remembered = readDokployMapping(containerHost, mappingKey);
-		return configuration.resources?.find(
+		const legacy = readDokployMapping(containerHost, containerId);
+		const remembered = readDokployMapping(containerHost, mappingKey) ?? legacy;
+		const found = configuration.resources?.find(
 			(resource) => resourceKey(resource) === remembered,
 		);
+		// Confirmations kept per container before mappings were kept per
+		// workload move to the workload.
+		if (found && remembered === legacy && mappingKey !== containerId) {
+			writeDokployMapping(containerHost, mappingKey, remembered);
+			writeDokployMapping(containerHost, containerId, undefined);
+		}
+		return found;
 	});
 	const [confirmPlain, setConfirmPlain] = useState(false);
 	const chosen = resources.find((resource) => resourceKey(resource) === choice);

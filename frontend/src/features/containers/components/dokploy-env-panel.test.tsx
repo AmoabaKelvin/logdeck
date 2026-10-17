@@ -308,6 +308,36 @@ it("remembers a Swarm service's deployment after a deployment replaces its task"
 	).toBeNull();
 });
 
+it("moves a confirmation kept for the container to its workload", async () => {
+	localStorage.setItem(
+		"logdeck.dokployMappings",
+		"local/old-task\tcompose/compose",
+	);
+	vi.stubGlobal(
+		"fetch",
+		vi.fn(async (input: RequestInfo | URL) => {
+			if (String(input).includes("confirmed=true"))
+				return Response.json({
+					source: "dokploy",
+					env: {},
+					resource,
+					configuration: {
+						text: "KEY=value",
+						revision: "revision",
+						createEnvFile: true,
+					},
+					instance_url: "https://dokploy.test",
+				});
+			return Response.json({ ...inventory, mapping_key: "web" });
+		}),
+	);
+	mount("old-task");
+	await screen.findByText(/Variables reach containers only/);
+	expect(localStorage.getItem("logdeck.dokployMappings")).toBe(
+		"local/web\tcompose/compose",
+	);
+});
+
 it("offers the runtime editor for plain Compose when Dokploy cannot be read", async () => {
 	vi.stubGlobal(
 		"fetch",

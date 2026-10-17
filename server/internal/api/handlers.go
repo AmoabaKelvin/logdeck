@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/auth"
@@ -82,17 +83,25 @@ func (ar *APIRouter) GetContainers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A cold Dokploy inventory is worth a short wait, not the whole listing.
+	// Hosts wait side by side, so one slow instance cannot use up the others'.
+	ownersCtx, cancelOwners := context.WithTimeout(ctx, 3*time.Second)
+	defer cancelOwners()
+	var owners sync.WaitGroup
+	for _, containers := range containersMap {
+		owners.Go(func() {
+			for i := range containers {
+				if ar.ownedByDokploy(ownersCtx, containers[i].Host, containers[i].Labels) {
+					containers[i].Platform = "dokploy"
+				}
+			}
+		})
+	}
+	owners.Wait()
+
 	allContainers := []models.ContainerInfo{}
 	for _, containers := range containersMap {
 		allContainers = append(allContainers, containers...)
-	}
-	// A cold Dokploy inventory is worth a short wait, not the whole listing.
-	ownersCtx, cancelOwners := context.WithTimeout(ctx, 3*time.Second)
-	defer cancelOwners()
-	for i := range allContainers {
-		if ar.ownedByDokploy(ownersCtx, allContainers[i].Host, allContainers[i].Labels) {
-			allContainers[i].Platform = "dokploy"
-		}
 	}
 
 	WriteJsonResponse(w, http.StatusOK, map[string]any{
