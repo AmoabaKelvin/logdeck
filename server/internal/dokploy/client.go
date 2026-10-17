@@ -19,6 +19,7 @@ type Client struct {
 	token    string
 	serverID string
 	http     *http.Client
+	names    appNames
 }
 
 type MultiClient struct{ clients map[string]*Client }
@@ -30,7 +31,11 @@ func InstanceURL(apiURL string) string {
 }
 
 func NewClient(cfg config.DokployHostConfig) *Client {
-	return &Client{apiURL: InstanceURL(cfg.APIURL), token: cfg.APIToken, serverID: cfg.ServerID, http: &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}}
+	// Keep a connection per parallel record read rather than the default two,
+	// so an inventory does not reconnect, and over https re-handshake, per read.
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConnsPerHost = recordReads
+	return &Client{apiURL: InstanceURL(cfg.APIURL), token: cfg.APIToken, serverID: cfg.ServerID, http: &http.Client{Timeout: 15 * time.Second, Transport: transport, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 func NewMultiClient(hosts []config.DokployHostConfig) *MultiClient {
 	if len(hosts) == 0 {
@@ -92,6 +97,6 @@ func (c *Client) request(ctx context.Context, method, endpoint string, body any,
 }
 
 func (c *Client) TestConnection(ctx context.Context) error {
-	_, err := c.Resources(ctx)
+	_, err := c.Inventory(ctx)
 	return err
 }

@@ -28,13 +28,13 @@ const resource = {
 	environment: "Production",
 };
 // The panel links to Settings, so it renders inside a router.
-function mount() {
+function mount(containerId = "container") {
 	const client = new QueryClient({
 		defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
 	});
 	const rootRoute = createRootRoute({
 		component: () => (
-			<ContainerEnvPanel containerId="container" containerHost="local" />
+			<ContainerEnvPanel containerId={containerId} containerHost="local" />
 		),
 	});
 	const router = createRouter({
@@ -273,6 +273,69 @@ it("reopens a confirmed deployment without asking again, until the mapping is ch
 	mount();
 	await screen.findByRole("button", { name: "Use this deployment" });
 	expect(screen.queryByText(/Variables reach containers only/)).toBeNull();
+});
+
+it("remembers a Swarm service's deployment after a deployment replaces its task", async () => {
+	vi.stubGlobal(
+		"fetch",
+		vi.fn(async (input: RequestInfo | URL) => {
+			if (String(input).includes("confirmed=true"))
+				return Response.json({
+					source: "dokploy",
+					env: {},
+					resource,
+					configuration: {
+						text: "KEY=value",
+						revision: "revision",
+						createEnvFile: true,
+					},
+					instance_url: "https://dokploy.test",
+				});
+			return Response.json({ ...inventory, mapping_key: "web" });
+		}),
+	);
+	mount("old-task");
+	fireEvent.click(
+		await screen.findByRole("button", { name: "Use this deployment" }),
+	);
+	await screen.findByText(/Variables reach containers only/);
+	cleanup();
+
+	mount("new-task");
+	await screen.findByText(/Variables reach containers only/);
+	expect(
+		screen.queryByRole("button", { name: "Use this deployment" }),
+	).toBeNull();
+});
+
+it("moves a confirmation kept for the container to its workload", async () => {
+	localStorage.setItem(
+		"logdeck.dokployMappings",
+		"local/old-task\tcompose/compose",
+	);
+	vi.stubGlobal(
+		"fetch",
+		vi.fn(async (input: RequestInfo | URL) => {
+			if (String(input).includes("confirmed=true"))
+				return Response.json({
+					source: "dokploy",
+					env: {},
+					resource,
+					configuration: {
+						text: "KEY=value",
+						revision: "revision",
+						createEnvFile: true,
+					},
+					instance_url: "https://dokploy.test",
+				});
+			return Response.json({ ...inventory, mapping_key: "web" });
+		}),
+	);
+	mount("old-task");
+	await screen.findByText(/Variables reach containers only/);
+	expect(localStorage.getItem("logdeck.dokployMappings")).toBe(
+		"local/web\tcompose/compose",
+	);
 });
 
 it("offers the runtime editor for plain Compose when Dokploy cannot be read", async () => {

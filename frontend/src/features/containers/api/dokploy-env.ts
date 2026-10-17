@@ -31,6 +31,8 @@ export interface DokployEnvResponse {
 	inventory_error?: string;
 	instance_url: string;
 	workload?: string;
+	/** The Swarm service, stack or Compose project a mapping is remembered for. */
+	mapping_key?: string;
 }
 
 function endpoint(

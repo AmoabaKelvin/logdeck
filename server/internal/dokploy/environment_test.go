@@ -151,10 +151,11 @@ func TestDiscoveryReadsServerScopedRecords(t *testing.T) {
 	}))
 	defer upstream.Close()
 	client := NewClient(config.DokployHostConfig{APIURL: upstream.URL, ServerID: "server"})
-	resources, err := client.Resources(context.Background())
+	inventory, err := client.Inventory(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
+	resources := inventory.Resources
 	if len(resources) != 2 || resources[0].AppName != "remote-app" || resources[1].Type != Compose || resources[0].Project != "project" || !reflect.DeepEqual(resources[0].PreviewNames, []string{"preview-app"}) {
 		t.Fatalf("resources=%#v", resources)
 	}

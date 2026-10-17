@@ -95,7 +95,8 @@ func tailLogStream(ctx context.Context, logs io.ReadCloser, tty bool, emit func(
 	select {
 	case <-ctx.Done():
 		logs.Close() // unblock the reader goroutine
-		<-done
+		// The reader's error only reports that close.
+		<-done //nolint:errcheck
 		return ctx.Err()
 	case err := <-done:
 		logs.Close()
