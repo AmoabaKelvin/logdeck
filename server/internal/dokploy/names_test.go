@@ -2,10 +2,13 @@ package dokploy
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/config"
 )
@@ -55,5 +58,62 @@ func TestOwnsAppNameDoesNotWaitOnAnUnreachableDokploy(t *testing.T) {
 	client.names.mu.Unlock()
 	if refreshing != nil || fetched.IsZero() {
 		t.Fatal("a failed refresh must wait out the TTL before retrying")
+	}
+}
+
+func TestOnlyTheFirstRefreshIsWaitedFor(t *testing.T) {
+	release := make(chan struct{})
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+		http.Error(w, "down", http.StatusBadGateway)
+	}))
+	defer upstream.Close()
+	defer close(release)
+	client := NewClient(config.DokployHostConfig{APIURL: upstream.URL})
+	// A refresh after a failed one hangs, but the listing must not wait on it.
+	client.names.fetched = time.Now().Add(-2 * appNamesTTL)
+	returned := make(chan bool)
+	go func() { returned <- client.OwnsAppName(context.Background(), "web") }()
+	select {
+	case owned := <-returned:
+		if owned {
+			t.Fatal("an unread inventory owns nothing")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("a later refresh was waited for")
+	}
+}
+
+func TestInventoryReadsRecordsInParallel(t *testing.T) {
+	var inFlight, peak atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/project.all" {
+			apps := make([]string, 3*recordReads)
+			for i := range apps {
+				apps[i] = fmt.Sprintf(`{"applicationId":"app-%d"}`, i)
+			}
+			_, _ = w.Write([]byte(`[{"environments":[{"applications":[` + strings.Join(apps, ",") + `]}]}]`))
+			return
+		}
+		n := inFlight.Add(1)
+		defer inFlight.Add(-1)
+		for p := peak.Load(); n > p && !peak.CompareAndSwap(p, n); p = peak.Load() {
+		}
+		time.Sleep(20 * time.Millisecond)
+		id := r.URL.Query().Get("applicationId")
+		_, _ = fmt.Fprintf(w, `{"applicationId":%q,"appName":%q,"serverId":null}`, id, id)
+	}))
+	defer upstream.Close()
+	inventory, err := NewClient(config.DokployHostConfig{APIURL: upstream.URL}).Inventory(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := peak.Load(); p < 2 || p > recordReads {
+		t.Fatalf("peak concurrent reads = %d, want 2..%d", p, recordReads)
+	}
+	for i, r := range inventory.Resources {
+		if want := fmt.Sprintf("app-%d", i); r.AppName != want {
+			t.Fatalf("resource %d = %q, want %q: order must follow project.all", i, r.AppName, want)
+		}
 	}
 }

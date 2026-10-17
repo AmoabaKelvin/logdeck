@@ -139,45 +139,78 @@ func (c *Client) Inventory(ctx context.Context) (Inventory, error) {
 	}
 	// project.all intentionally exposes only summaries. Read the owning records
 	// to obtain appName and serverId rather than assuming local deployments.
+	resources := make([]Resource, 0)
 	for _, p := range projects {
 		for _, e := range p.Environments {
-			ids := make([]Resource, 0, len(e.Applications)+len(e.Compose))
 			for _, a := range e.Applications {
-				ids = append(ids, Resource{Type: Application, ID: a.ID})
+				resources = append(resources, Resource{Type: Application, ID: a.ID, Project: p.Name, Environment: e.Name})
 			}
 			for _, a := range e.Compose {
-				ids = append(ids, Resource{Type: Compose, ID: a.ID})
-			}
-			for _, r := range ids {
-				var rec record
-				if r.ID == "" {
-					return Inventory{}, fmt.Errorf("dokploy returned an incomplete resource inventory")
-				}
-				if err := c.request(ctx, http.MethodGet, string(r.Type)+".one?"+string(r.Type)+"Id="+url.QueryEscape(r.ID), nil, &rec); err != nil {
-					return Inventory{}, err
-				}
-				server := ""
-				if rec.ServerID != nil {
-					server = *rec.ServerID
-				}
-				if server != c.serverID {
-					continue
-				}
-				r.MappingRevision = c.mappingRevision(r, rec.AppName)
-				r.Name = rec.Name
-				r.AppName = rec.AppName
-				r.ServerID = rec.ServerID
-				r.Project = p.Name
-				r.Environment = e.Name
-				for _, preview := range rec.PreviewDeployments {
-					r.PreviewNames = append(r.PreviewNames, preview.AppName)
-				}
-				inventory.Resources = append(inventory.Resources, r)
+				resources = append(resources, Resource{Type: Compose, ID: a.ID, Project: p.Name, Environment: e.Name})
 			}
 		}
 	}
+	for _, r := range resources {
+		if r.ID == "" {
+			return Inventory{}, fmt.Errorf("dokploy returned an incomplete resource inventory")
+		}
+	}
+	records, err := c.readRecords(ctx, resources)
+	if err != nil {
+		return Inventory{}, err
+	}
+	for i, r := range resources {
+		rec := records[i]
+		server := ""
+		if rec.ServerID != nil {
+			server = *rec.ServerID
+		}
+		if server != c.serverID {
+			continue
+		}
+		r.MappingRevision = c.mappingRevision(r, rec.AppName)
+		r.Name = rec.Name
+		r.AppName = rec.AppName
+		r.ServerID = rec.ServerID
+		for _, preview := range rec.PreviewDeployments {
+			r.PreviewNames = append(r.PreviewNames, preview.AppName)
+		}
+		inventory.Resources = append(inventory.Resources, r)
+	}
 	c.names.store(inventory.Resources)
 	return inventory, nil
+}
+
+// recordReads bounds the record reads in flight. Each one loads a full record
+// with its deployment history, and an instance can hold hundreds.
+const recordReads = 8
+
+// readRecords reads each resource's record, in order. The first failure
+// cancels the reads still running.
+func (c *Client) readRecords(ctx context.Context, resources []Resource) ([]record, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	records := make([]record, len(resources))
+	slots := make(chan struct{}, recordReads)
+	var (
+		reads    sync.WaitGroup
+		failed   sync.Once
+		firstErr error
+	)
+	for i, r := range resources {
+		reads.Go(func() {
+			slots <- struct{}{}
+			defer func() { <-slots }()
+			if err := c.request(ctx, http.MethodGet, string(r.Type)+".one?"+string(r.Type)+"Id="+url.QueryEscape(r.ID), nil, &records[i]); err != nil {
+				failed.Do(func() {
+					firstErr = err
+					cancel()
+				})
+			}
+		})
+	}
+	reads.Wait()
+	return records, firstErr
 }
 
 func revision(rec record) string {

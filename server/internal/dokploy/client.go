@@ -31,7 +31,11 @@ func InstanceURL(apiURL string) string {
 }
 
 func NewClient(cfg config.DokployHostConfig) *Client {
-	return &Client{apiURL: InstanceURL(cfg.APIURL), token: cfg.APIToken, serverID: cfg.ServerID, http: &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}}
+	// Keep a connection per parallel record read rather than the default two,
+	// so an inventory does not reconnect, and over https re-handshake, per read.
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConnsPerHost = recordReads
+	return &Client{apiURL: InstanceURL(cfg.APIURL), token: cfg.APIToken, serverID: cfg.ServerID, http: &http.Client{Timeout: 15 * time.Second, Transport: transport, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 func NewMultiClient(hosts []config.DokployHostConfig) *MultiClient {
 	if len(hosts) == 0 {

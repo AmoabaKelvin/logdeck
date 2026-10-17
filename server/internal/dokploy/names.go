@@ -39,12 +39,16 @@ func (a *appNames) store(resources []Resource) {
 
 // OwnsAppName reports whether Dokploy deployed an application, Compose
 // deployment or preview named name on the configured server, as of its last
-// inventory. A stale inventory is refreshed in the background. Only one never
-// read is waited for, and only until ctx ends.
+// inventory. A stale inventory is refreshed in the background. Only the call
+// that starts the first refresh waits for it, and only until ctx ends, so a
+// slow or unreachable Dokploy delays one listing at most.
 func (c *Client) OwnsAppName(ctx context.Context, name string) bool {
 	a := &c.names
 	a.mu.Lock()
+	first := a.fetched.IsZero()
+	started := false
 	if a.refreshing == nil && time.Since(a.fetched) > appNamesTTL {
+		started = true
 		done := make(chan struct{})
 		a.refreshing = done
 		go func() {
@@ -55,17 +59,15 @@ func (c *Client) OwnsAppName(ctx context.Context, name string) bool {
 			a.mu.Lock()
 			defer a.mu.Unlock()
 			a.refreshing = nil
-			// A failed refresh waits out the TTL too, so an unreachable
-			// Dokploy does not slow every listing.
+			// A failed refresh waits out the TTL before the next try too.
 			if err != nil {
 				a.fetched = time.Now()
 			}
 		}()
 	}
 	refreshing := a.refreshing
-	cold := a.names == nil
 	a.mu.Unlock()
-	if cold && refreshing != nil {
+	if started && first {
 		select {
 		case <-refreshing:
 		case <-ctx.Done():
