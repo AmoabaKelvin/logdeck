@@ -70,7 +70,7 @@ func testInspectResponse(running bool) container.InspectResponse {
 	}
 }
 
-func TestRecreateContainerWithEnv(t *testing.T) {
+func TestRecreateContainer(t *testing.T) {
 	const tempName = "web-logdeck-old-abcdef123456"
 
 	tests := []struct {
@@ -170,12 +170,12 @@ func TestRecreateContainerWithEnv(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			id, err := recreateContainerWithEnv(context.Background(), tt.api, testInspectResponse(tt.running), []string{"A=2"})
+			id, err := recreateContainer(context.Background(), tt.api, testInspectResponse(tt.running), &container.Config{Env: []string{"A=2"}})
 			if (err != nil) != tt.wantErr {
-				t.Fatalf("recreateContainerWithEnv() error = %v, wantErr %t", err, tt.wantErr)
+				t.Fatalf("recreateContainer() error = %v, wantErr %t", err, tt.wantErr)
 			}
 			if id != tt.wantID {
-				t.Fatalf("recreateContainerWithEnv() id = %q, want %q", id, tt.wantID)
+				t.Fatalf("recreateContainer() id = %q, want %q", id, tt.wantID)
 			}
 			if !reflect.DeepEqual(tt.api.calls, tt.wantCalls) {
 				t.Fatalf("call sequence mismatch:\ngot:  %v\nwant: %v", tt.api.calls, tt.wantCalls)
@@ -191,7 +191,7 @@ func TestRecreateContainerWithEnv(t *testing.T) {
 // create rejects a host config carrying both ("NanoCpus conflicts with
 // CpuPeriod and CpuQuota"), which broke every env edit on a container whose CPU
 // limit had been set. The replacement must carry the quota/period pair alone.
-func TestRecreateContainerWithEnvDropsConflictingNanoCpus(t *testing.T) {
+func TestRecreateContainerDropsConflictingNanoCpus(t *testing.T) {
 	inspect := testInspectResponse(true)
 	inspect.HostConfig = &container.HostConfig{
 		Resources: container.Resources{
@@ -203,8 +203,8 @@ func TestRecreateContainerWithEnvDropsConflictingNanoCpus(t *testing.T) {
 	}
 
 	api := &fakeRecreateAPI{}
-	if _, err := recreateContainerWithEnv(context.Background(), api, inspect, []string{"A=2"}); err != nil {
-		t.Fatalf("recreateContainerWithEnv() error = %v", err)
+	if _, err := recreateContainer(context.Background(), api, inspect, &container.Config{Env: []string{"A=2"}}); err != nil {
+		t.Fatalf("recreateContainer() error = %v", err)
 	}
 
 	got := api.lastCreateHostConfig
@@ -228,22 +228,22 @@ func TestRecreateContainerWithEnvDropsConflictingNanoCpus(t *testing.T) {
 
 // A Docker container sets only NanoCpus, with no quota/period; that limit must
 // be left alone.
-func TestRecreateContainerWithEnvKeepsNanoCpusWhenUnambiguous(t *testing.T) {
+func TestRecreateContainerKeepsNanoCpusWhenUnambiguous(t *testing.T) {
 	inspect := testInspectResponse(true)
 	inspect.HostConfig = &container.HostConfig{
 		Resources: container.Resources{NanoCPUs: 1000000000},
 	}
 
 	api := &fakeRecreateAPI{}
-	if _, err := recreateContainerWithEnv(context.Background(), api, inspect, []string{"A=2"}); err != nil {
-		t.Fatalf("recreateContainerWithEnv() error = %v", err)
+	if _, err := recreateContainer(context.Background(), api, inspect, &container.Config{Env: []string{"A=2"}}); err != nil {
+		t.Fatalf("recreateContainer() error = %v", err)
 	}
 	if api.lastCreateHostConfig.NanoCPUs != 1000000000 {
 		t.Errorf("NanoCpus = %d, want 1000000000 preserved", api.lastCreateHostConfig.NanoCPUs)
 	}
 }
 
-func TestRecreateContainerWithEnvKeepsAnonymousVolumes(t *testing.T) {
+func TestRecreateContainerKeepsAnonymousVolumes(t *testing.T) {
 	inspect := testInspectResponse(true)
 	inspect.HostConfig = &container.HostConfig{
 		Binds: []string{"data:/named"},
@@ -261,8 +261,8 @@ func TestRecreateContainerWithEnvKeepsAnonymousVolumes(t *testing.T) {
 	}
 
 	api := &fakeRecreateAPI{}
-	if _, err := recreateContainerWithEnv(context.Background(), api, inspect, []string{"A=2"}); err != nil {
-		t.Fatalf("recreateContainerWithEnv() error = %v", err)
+	if _, err := recreateContainer(context.Background(), api, inspect, &container.Config{Env: []string{"A=2"}}); err != nil {
+		t.Fatalf("recreateContainer() error = %v", err)
 	}
 
 	want := []mount.Mount{

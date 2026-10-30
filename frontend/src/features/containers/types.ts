@@ -18,6 +18,17 @@ export interface ContainerInfo {
 	ports?: ContainerPort[];
 	/** Set by the server when a platform owns the container. */
 	platform?: "dokploy";
+	/** Absent until the server's first background check finishes. */
+	image_update?: ImageUpdate;
+}
+
+/** The last check of a container's image against its registry. */
+export interface ImageUpdate {
+	/** "unknown" carries a reason; "unsupported" means the engine cannot ask. */
+	status: "available" | "current" | "unknown" | "unsupported";
+	reason?: string;
+	/** Unix seconds. */
+	checked_at: number;
 }
 
 export interface ContainerPort {

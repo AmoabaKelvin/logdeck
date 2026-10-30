@@ -65,7 +65,13 @@ function PanelBody({
 			);
 		}
 		return panel === "overview" ? (
-			<ContainerOverviewPanel container={container} inspect={inspect} />
+			<ContainerOverviewPanel
+				container={container}
+				containerId={containerId}
+				inspect={inspect}
+				isReadOnly={isReadOnly}
+				onContainerRecreated={onContainerRecreated}
+			/>
 		) : (
 			<ContainerNetworkPanel inspect={inspect} hostAddress={hostAddress} />
 		);
