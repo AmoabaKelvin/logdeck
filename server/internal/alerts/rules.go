@@ -1,6 +1,7 @@
 package alerts
 
 import (
+	"fmt"
 	"log"
 	"regexp"
 	"slices"
@@ -26,21 +27,27 @@ const (
 type compiledRule struct {
 	id   string
 	name string
-	typ  string // "event" | "log" | "collection"
+	typ  string // "event" | "log" | "collection" | "resource"
 
 	// spec is the rule's container targeting; matching is delegated to
 	// logstream.ContainerSpec.Matches.
 	spec logstream.ContainerSpec
 
-	events []string // event rules: "die" | "oom" | "unhealthy"
+	events []string // event rules: "die" | "oom" | "unhealthy" | "restart"
 
 	minLevel    string // normalized upper-case, "" when unset
 	minSeverity int    // >= 1 when minLevel is set; UNKNOWN (0) never passes
 	pattern     *regexp.Regexp
 
+	// Resource rules: metric must stay above abovePercent, or for memory
+	// aboveBytes when set.
+	metric       string // "cpu" | "memory"
+	abovePercent float64
+	aboveBytes   uint64
+
 	threshold int
-	// window is the rate window, or for a collection rule how long a failure
-	// must last before it fires.
+	// window is the rate window, or for collection and resource rules how
+	// long the condition must last before it fires.
 	window   time.Duration
 	cooldown time.Duration
 
@@ -59,21 +66,26 @@ func compileRules(cfg config.AlertsConfig) []*compiledRule {
 		if !rule.Enabled {
 			continue
 		}
-		if rule.Type != "event" && rule.Type != "log" && rule.Type != "collection" {
+		if rule.Type != "event" && rule.Type != "log" && rule.Type != "collection" && rule.Type != "resource" {
 			log.Printf("alerts: rule %q (%s): unknown type %q, skipping", rule.Name, rule.ID, rule.Type)
 			continue
 		}
 
 		c := &compiledRule{
-			id:        rule.ID,
-			name:      rule.Name,
-			typ:       rule.Type,
-			spec:      logstream.ContainerSpec{Hosts: rule.Hosts, Containers: rule.Containers, Projects: rule.Projects},
-			events:    rule.Events,
-			threshold: rule.Threshold,
-			window:    time.Duration(rule.WindowSeconds) * time.Second,
-			cooldown:  time.Duration(rule.CooldownSeconds) * time.Second,
-			src:       rule,
+			id:           rule.ID,
+			name:         rule.Name,
+			typ:          rule.Type,
+			spec:         logstream.ContainerSpec{Hosts: rule.Hosts, Containers: rule.Containers, Projects: rule.Projects},
+			events:       rule.Events,
+			metric:       rule.Metric,
+			abovePercent: rule.AbovePercent,
+			threshold:    rule.Threshold,
+			window:       time.Duration(rule.WindowSeconds) * time.Second,
+			cooldown:     time.Duration(rule.CooldownSeconds) * time.Second,
+			src:          rule,
+		}
+		if rule.AboveBytes > 0 {
+			c.aboveBytes = uint64(rule.AboveBytes)
 		}
 		if c.threshold < 1 {
 			c.threshold = 1
@@ -122,4 +134,45 @@ func (r *compiledRule) matchesEntry(entry models.LogEntry) bool {
 
 func (r *compiledRule) hasEvent(action string) bool {
 	return slices.Contains(r.events, action)
+}
+
+// usage reports a resource rule's sampled value, formatted for the alert, and
+// whether it is over the rule's limit.
+func (r *compiledRule) usage(stats *models.ContainerStats) (string, bool) {
+	switch {
+	case r.metric == "cpu":
+		return fmt.Sprintf("%.0f%%", stats.CPUPercent), stats.CPUPercent > r.abovePercent
+	case r.aboveBytes > 0:
+		return formatBytes(stats.MemoryUsed), stats.MemoryUsed > r.aboveBytes
+	default:
+		return fmt.Sprintf("%.0f%%", stats.MemoryPercent), stats.MemoryPercent > r.abovePercent
+	}
+}
+
+// limit renders a resource rule's metric and limit for alert reasons, e.g.
+// "CPU" and "150%".
+func (r *compiledRule) limit() (metric, value string) {
+	if r.metric == "cpu" {
+		return "CPU", fmt.Sprintf("%g%%", r.abovePercent)
+	}
+	if r.aboveBytes > 0 {
+		return "memory", formatBytes(r.aboveBytes)
+	}
+	return "memory", fmt.Sprintf("%g%%", r.abovePercent)
+}
+
+// formatBytes renders a byte count with binary units, e.g. "1.5 GiB".
+func formatBytes(n uint64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	value := float64(n)
+	for _, suffix := range []string{"KiB", "MiB", "GiB"} {
+		value /= unit
+		if value < unit {
+			return fmt.Sprintf("%.1f %s", value, suffix)
+		}
+	}
+	return fmt.Sprintf("%.1f TiB", value/unit)
 }

@@ -116,6 +116,10 @@ func (f *fakeEvents) inspectHealth(ctx context.Context, host, containerID string
 	return f.inspectHealthStatus, f.inspectErr
 }
 
+func (f *fakeEvents) sampleStats(ctx context.Context, rules []*compiledRule) ([]sampledContainer, map[string]bool) {
+	return nil, nil
+}
+
 // fakeConf is a mutable alerts config source.
 type fakeConf struct {
 	mu  sync.Mutex

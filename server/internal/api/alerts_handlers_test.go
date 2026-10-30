@@ -200,6 +200,24 @@ var alertRuleValidationCases = []struct{ name, body string }{
 	{"collection targeting containers", `{"name":"r","type":"collection","containers":["web"]}`},
 	{"collection with events", `{"name":"r","type":"collection","events":["die"]}`},
 	{"collection delay under a minute", `{"name":"r","type":"collection","windowSeconds":30}`},
+	{"restart mixed with die", `{"name":"r","type":"event","events":["die","restart"]}`},
+	{"metric on an event rule", `{"name":"r","type":"event","events":["die"],"metric":"cpu"}`},
+	{"resource without metric", `{"name":"r","type":"resource","abovePercent":90}`},
+	{"cpu without limit", `{"name":"r","type":"resource","metric":"cpu"}`},
+	{"cpu in bytes", `{"name":"r","type":"resource","metric":"cpu","abovePercent":90,"aboveBytes":1024}`},
+	{"memory with both limits", `{"name":"r","type":"resource","metric":"memory","abovePercent":90,"aboveBytes":1024}`},
+	{"memory over 100 percent", `{"name":"r","type":"resource","metric":"memory","abovePercent":150}`},
+	{"resource window under a minute", `{"name":"r","type":"resource","metric":"cpu","abovePercent":90,"windowSeconds":30}`},
+	{"resource with events", `{"name":"r","type":"resource","metric":"cpu","abovePercent":90,"events":["die"]}`},
+}
+
+func TestCreateResourceAlertRule(t *testing.T) {
+	router, _ := newAlertsTestRouter(t, nil)
+	created := createAlertRule(t, router, `{"name":"memory","type":"resource","projects":["shop"],"metric":"memory","aboveBytes":1073741824,"windowSeconds":300,"threshold":5}`)
+	if created.Type != "resource" || created.Metric != "memory" || created.AboveBytes != 1<<30 ||
+		created.WindowSeconds != 300 || created.Threshold != 1 {
+		t.Fatalf("unexpected rule: %+v", created)
+	}
 }
 
 func TestCreateCollectionAlertRule(t *testing.T) {
@@ -350,15 +368,23 @@ func TestAlertChannelsCRUD(t *testing.T) {
 	create(`{"type":"ntfy","url":"https://ntfy.sh/mytopic"}`)
 	create(`{"type":"gotify","url":"https://gotify.example.com","token":"apptoken"}`)
 	tg := create(`{"type":"telegram","token":"bot42:secret","target":"-1001234"}`)
+	create(`{"type":"slack","url":"https://hooks.slack.com/services/T/B/x"}`)
+	create(`{"type":"discord","url":"https://discord.com/api/webhooks/1/x"}`)
+	create(`{"type":"email","url":"smtps://smtp.example.com","username":"u","token":"pw","from":"LogDeck <alerts@example.com>","target":"a@example.com, b@example.com"}`)
+	pd := create(`{"type":"pagerduty","token":"routingkey","username":"u","from":"x@example.com"}`)
+	create(`{"type":"opsgenie","url":"https://api.eu.opsgenie.com","token":"apikey"}`)
 
 	_, channels := listAlertChannelsRaw(t, router)
-	if len(channels) != 4 {
-		t.Fatalf("expected 4 channels, got %d", len(channels))
+	if len(channels) != 9 {
+		t.Fatalf("expected 9 channels, got %d", len(channels))
 	}
 
 	// Irrelevant fields are cleared for the chosen type.
 	if tg.URL != "" {
 		t.Errorf("telegram channel should not store a url, got %q", tg.URL)
+	}
+	if pd.Username != "" || pd.From != "" {
+		t.Errorf("pagerduty channel should not store email fields, got %+v", pd)
 	}
 
 	// Update: disable the webhook channel.
@@ -380,8 +406,8 @@ func TestAlertChannelsCRUD(t *testing.T) {
 		t.Fatalf("expected 200 deleting channel, got %d: %s", w.Code, w.Body.String())
 	}
 	_, channels = listAlertChannelsRaw(t, router)
-	if len(channels) != 3 {
-		t.Fatalf("expected 3 channels after delete, got %d", len(channels))
+	if len(channels) != 8 {
+		t.Fatalf("expected 8 channels after delete, got %d", len(channels))
 	}
 
 	// Update / delete of an unknown id are 404s.
@@ -412,6 +438,13 @@ func TestAlertChannelValidation(t *testing.T) {
 		{"gotify no url", `{"type":"gotify","token":"t"}`},
 		{"telegram no token", `{"type":"telegram","target":"123"}`},
 		{"telegram no target", `{"type":"telegram","token":"bot:secret"}`},
+		{"slack no url", `{"type":"slack"}`},
+		{"discord non-http", `{"type":"discord","url":"ftp://x.com"}`},
+		{"pagerduty no token", `{"type":"pagerduty"}`},
+		{"opsgenie bad url", `{"type":"opsgenie","token":"k","url":"not a url"}`},
+		{"email http url", `{"type":"email","url":"https://smtp.example.com","from":"a@example.com","target":"b@example.com"}`},
+		{"email no from", `{"type":"email","url":"smtp://smtp.example.com","target":"b@example.com"}`},
+		{"email bad target", `{"type":"email","url":"smtp://smtp.example.com","from":"a@example.com","target":"not an address"}`},
 		{"malformed json", `{`},
 	} {
 		w := doAlertsRequest(t, router, "POST", "/api/v1/alerts/channels", tc.body)

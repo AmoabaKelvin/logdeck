@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
+import { formatBytes } from "@/features/containers/components/container-utils";
 
 import type { AlertChannel } from "../api/get-alert-channels";
 import type { AlertHistoryEntry } from "../api/get-alert-history";
@@ -41,6 +42,7 @@ import {
 import { AlertRuleDialog } from "./alert-rule-dialog";
 import {
 	buildChannelPayload,
+	channelFields,
 	CHANNEL_TYPES,
 	type ChannelDraft,
 	channelDestination,
@@ -48,6 +50,7 @@ import {
 	EMPTY_CHANNEL_DRAFT,
 } from "./channel-utils";
 import { showResultToast } from "./mutation-toast";
+import { SilenceDialog, SilencesBlock } from "./silences-block";
 import {
 	ErrorNote,
 	Field,
@@ -69,11 +72,12 @@ export function AlertsSection() {
 	return (
 		<SettingsSection
 			title="Alerts"
-			description="Get told when a container dies, runs out of memory, turns unhealthy or logs errors, or when LogDeck itself can't collect logs. Every enabled channel receives each alert, and the history keeps a record."
+			description="Get told when a container dies, runs out of memory, turns unhealthy or logs errors, or when LogDeck itself can't collect logs. Every enabled channel receives each alert unless a silence mutes it, and the history keeps a record."
 		>
 			<div className="space-y-8">
 				<ChannelsBlock />
 				<RulesBlock />
+				<SilencesBlock />
 				<HistoryBlock />
 			</div>
 		</SettingsSection>
@@ -87,59 +91,41 @@ function ChannelDraftFields({
 	draft: ChannelDraft;
 	set: <K extends keyof ChannelDraft>(key: K, value: ChannelDraft[K]) => void;
 }) {
-	const needsURL = draft.type !== "telegram";
-	const needsToken = draft.type === "gotify" || draft.type === "telegram";
-	const needsTarget = draft.type === "telegram";
-
-	const urlLabel = draft.type === "gotify" ? "Server URL" : "URL";
-	const urlPlaceholder =
-		draft.type === "ntfy"
-			? "https://ntfy.sh/mytopic"
-			: draft.type === "gotify"
-				? "https://gotify.example.com"
-				: "https://example.com/webhook";
-	const tokenLabel = draft.type === "gotify" ? "App token" : "Bot token";
-
 	return (
 		<>
-			{needsURL && (
-				<Field id="channel-url" label={urlLabel}>
-					<Input
-						id="channel-url"
-						name="url"
-						value={draft.url}
-						onChange={(e) => set("url", e.target.value)}
-						placeholder={urlPlaceholder}
-						className="h-8"
-					/>
-				</Field>
-			)}
-			{needsToken && (
-				<Field id="channel-token" label={tokenLabel}>
-					<Input
-						id="channel-token"
-						name="token"
-						type="password"
-						autoComplete="new-password"
-						value={draft.token}
-						onChange={(e) => set("token", e.target.value)}
-						placeholder={tokenLabel}
-						className="h-8"
-					/>
-				</Field>
-			)}
-			{needsTarget && (
-				<Field id="channel-target" label="Chat id">
-					<Input
-						id="channel-target"
-						name="target"
-						value={draft.target}
-						onChange={(e) => set("target", e.target.value)}
-						placeholder="-1001234567890"
-						className="h-8"
-					/>
-				</Field>
-			)}
+			{channelFields(draft.type).map((spec) => {
+				const id = `channel-${spec.field}`;
+				const secret = spec.field === "token";
+				return (
+					<Field
+						key={spec.field}
+						id={id}
+						label={
+							spec.optional ? (
+								<>
+									{spec.label}{" "}
+									<span className="font-normal text-muted-foreground">
+										(optional)
+									</span>
+								</>
+							) : (
+								spec.label
+							)
+						}
+					>
+						<Input
+							id={id}
+							name={spec.field}
+							type={secret ? "password" : undefined}
+							autoComplete={secret ? "new-password" : undefined}
+							value={draft[spec.field]}
+							onChange={(e) => set(spec.field, e.target.value)}
+							placeholder={spec.placeholder}
+							className="h-8"
+						/>
+					</Field>
+				);
+			})}
 		</>
 	);
 }
@@ -444,10 +430,17 @@ function renderTrigger(rule: AlertRule): string {
 		if (rule.pattern) parts.push(`pattern /${rule.pattern}/`);
 	} else if (rule.type === "collection") {
 		parts.push(`failing for ${(rule.windowSeconds ?? 60) / 60} min`);
+	} else if (rule.type === "resource") {
+		const limit = rule.aboveBytes
+			? formatBytes(rule.aboveBytes)
+			: `${rule.abovePercent ?? 0}%`;
+		parts.push(
+			`${rule.metric === "cpu" ? "CPU" : "memory"} > ${limit} for ${(rule.windowSeconds ?? 60) / 60} min`,
+		);
 	} else {
 		parts.push((rule.events ?? []).join(", "));
 	}
-	if (rule.threshold > 1) {
+	if (rule.threshold > 1 && rule.type !== "resource") {
 		parts.push(`${rule.threshold} in ${rule.windowSeconds ?? 0}s`);
 	}
 	if (rule.cooldownSeconds) {
@@ -466,6 +459,7 @@ function RulesBlock() {
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
 	const [editingRule, setEditingRule] = useState<AlertRule | null>(null);
 	const [ruleToDelete, setRuleToDelete] = useState<AlertRule | null>(null);
+	const [ruleToMute, setRuleToMute] = useState<AlertRule | null>(null);
 
 	const rules = data?.rules ?? [];
 
@@ -537,10 +531,14 @@ function RulesBlock() {
 									<Td className="font-medium">{rule.name}</Td>
 									<Td className="text-muted-foreground">{rule.type}</Td>
 									<Td className="text-muted-foreground">
-										{renderTarget(rule)}
+										<span className="whitespace-normal">
+											{renderTarget(rule)}
+										</span>
 									</Td>
 									<Td className="font-mono text-muted-foreground">
-										{renderTrigger(rule)}
+										<span className="whitespace-normal">
+											{renderTrigger(rule)}
+										</span>
 									</Td>
 									<Td>
 										<Switch
@@ -563,6 +561,13 @@ function RulesBlock() {
 											<Button
 												variant="ghost"
 												size="sm"
+												onClick={() => setRuleToMute(rule)}
+											>
+												Mute
+											</Button>
+											<Button
+												variant="ghost"
+												size="sm"
 												disabled={deleteMutation.isPending}
 												onClick={() => setRuleToDelete(rule)}
 												className="text-destructive hover:text-destructive"
@@ -581,6 +586,14 @@ function RulesBlock() {
 					open={isDialogOpen}
 					onOpenChange={setIsDialogOpen}
 					rule={editingRule}
+				/>
+
+				<SilenceDialog
+					open={ruleToMute !== null}
+					onOpenChange={(open) => {
+						if (!open) setRuleToMute(null);
+					}}
+					initial={{ ruleId: ruleToMute?.id ?? "" }}
 				/>
 
 				<AlertDialog
@@ -616,6 +629,9 @@ function RulesBlock() {
 function DeliveryStatus({ entry }: { entry: AlertHistoryEntry }) {
 	if (!entry.delivery) {
 		return <span className="text-muted-foreground">—</span>;
+	}
+	if (entry.delivery.status === "muted") {
+		return <span className="text-muted-foreground">muted</span>;
 	}
 	const ok = entry.delivery.status === "ok";
 	const detail = ok
