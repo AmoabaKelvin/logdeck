@@ -32,6 +32,8 @@ var auditActions = map[string]string{
 	"POST /api/v1/containers/{id}/env/deploy":       "container.env.deploy",
 	"PUT /api/v1/containers/{id}/resources":         "container.resources.update",
 	"POST /api/v1/containers/{id}/resources/deploy": "container.resources.deploy",
+	"POST /api/v1/containers/{id}/image/check":      "",
+	"POST /api/v1/containers/{id}/image/update":     "container.image.update",
 	"GET /api/v1/containers/{id}/exec":              "container.terminal",
 	"POST /api/v1/containers/{id}/exec/run":         "container.exec",
 	"POST /api/v1/compose/{project}/{action}":       "compose.",
@@ -65,6 +67,8 @@ var auditActions = map[string]string{
 	"PUT /api/v1/alerts/channels/{id}":              "alert.channel.update",
 	"DELETE /api/v1/alerts/channels/{id}":           "alert.channel.delete",
 	"POST /api/v1/alerts/channels/{id}/test":        "alert.channel.test",
+	"POST /api/v1/alerts/silences":                  "alert.silence.create",
+	"DELETE /api/v1/alerts/silences/{id}":           "alert.silence.delete",
 	"DELETE /api/v1/alerts/history":                 "alert.history.clear",
 }
 
