@@ -56,20 +56,25 @@ export function AuditLogSection() {
 		action: useDebouncedValue(action.trim(), 250),
 		target: useDebouncedValue(target.trim(), 250),
 	};
-	const { data, isLoading, error } = useAuditLog({
-		...text,
-		result: result === "any" ? undefined : result,
-		range,
-		limit: pageSize,
-		offset: (page - 1) * pageSize,
-	});
+	const { data, isLoading, isFetching, isPlaceholderData, error } = useAuditLog(
+		{
+			...text,
+			result: result === "any" ? undefined : result,
+			range,
+			limit: pageSize,
+			offset: (page - 1) * pageSize,
+		},
+	);
 
 	const entries = data?.entries ?? [];
 	const total = data?.total ?? 0;
 	const totalPages = Math.max(1, Math.ceil(total / pageSize));
 	const startIndex = (page - 1) * pageSize;
-	// A refresh can shrink the results and leave the page past the end.
-	if (data && page > totalPages) setPage(totalPages);
+	// A refresh can shrink the results and leave the page past the end. Only
+	// fresh results count: a cached or placeholder total may be out of date.
+	if (data && !isFetching && !isPlaceholderData && page > totalPages) {
+		setPage(totalPages);
+	}
 	const filtered =
 		text.actor !== "" ||
 		text.action !== "" ||
