@@ -76,12 +76,13 @@ type alertChannel struct {
 func newAlertsCmd(a *app) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "alerts",
-		Short: "Manage alert rules, notification channels, and fired-alert history",
+		Short: "Manage alert rules, notification channels, silences, and fired-alert history",
 	}
 	cmd.AddCommand(
 		newAlertRulesCmd(a),
 		newAlertHistoryCmd(a),
 		newAlertChannelsCmd(a),
+		newAlertSilencesCmd(a),
 	)
 	return cmd
 }

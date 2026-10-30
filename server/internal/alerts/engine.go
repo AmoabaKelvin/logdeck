@@ -199,6 +199,7 @@ type matchMsg struct {
 	host          string
 	containerID   string
 	containerName string
+	project       string
 	sample        string
 }
 
@@ -556,6 +557,7 @@ type incident struct {
 	host          string
 	containerID   string
 	containerName string
+	project       string
 	reason        string    // what the last fire reported
 	since         time.Time // resource rules: first sample over the limit, zero when under
 	fired         bool      // a failure was sent and its recovery has not been
@@ -599,7 +601,7 @@ func (e *Engine) checkCollection(st *runState) {
 				continue
 			}
 			inc.fired, inc.lastFired, inc.reason = true, now, f.Reason
-			e.emit(rule, f.Host, "", "", f.Reason, "", 0)
+			e.emit(rule, f.Host, "", "", "", f.Reason, "", 0)
 		}
 	}
 
@@ -609,7 +611,7 @@ func (e *Engine) checkCollection(st *runState) {
 		}
 		if inc.fired {
 			inc.fired = false
-			e.emitRecovery(inc.rule, inc.host, "", "", "collection recovered", inc.reason)
+			e.emitRecovery(inc.rule, inc.host, "", "", "", "collection recovered", inc.reason)
 		}
 		if now.Sub(inc.lastFired) >= inc.rule.cooldown {
 			delete(st.incidents, key)
@@ -677,7 +679,7 @@ func (e *Engine) checkResources(st *runState, s statsSample) {
 				continue
 			}
 			if inc == nil {
-				inc = &incident{rule: rule, host: c.host, containerName: c.name}
+				inc = &incident{rule: rule, host: c.host, containerName: c.name, project: docker.ComposeProject(c.labels)}
 				st.resources[key] = inc
 			}
 			inc.containerID = c.id
@@ -692,7 +694,7 @@ func (e *Engine) checkResources(st *runState, s statsSample) {
 			}
 			inc.fired, inc.lastFired = true, s.at
 			inc.reason = fmt.Sprintf("%s above %s for %ds (now %s)", metric, limit, int(rule.window.Seconds()), value)
-			e.emit(rule, c.host, c.id, c.name, inc.reason, "", 0)
+			e.emit(rule, c.host, c.id, c.name, inc.project, inc.reason, "", 0)
 		}
 	}
 
@@ -710,7 +712,7 @@ func (e *Engine) settleResource(st *runState, key string, inc *incident, now tim
 	inc.since = time.Time{}
 	if inc.fired {
 		inc.fired = false
-		e.emitRecovery(inc.rule, inc.host, inc.containerID, inc.containerName, reason, inc.reason)
+		e.emitRecovery(inc.rule, inc.host, inc.containerID, inc.containerName, inc.project, reason, inc.reason)
 	}
 	if now.Sub(inc.lastFired) >= inc.rule.cooldown {
 		delete(st.resources, key)
@@ -726,7 +728,7 @@ func (e *Engine) settleRestarts(st *runState) {
 			continue
 		}
 		delete(st.loops, key)
-		e.emitRecovery(inc.rule, inc.host, inc.containerID, inc.containerName,
+		e.emitRecovery(inc.rule, inc.host, inc.containerID, inc.containerName, inc.project,
 			fmt.Sprintf("no restart for %ds", int(inc.rule.window.Seconds())), inc.reason)
 	}
 }
@@ -752,6 +754,7 @@ func (e *Engine) subscribeRule(st *runState, rule *compiledRule) {
 			host:          rec.Host,
 			containerID:   rec.ContainerID,
 			containerName: rec.ContainerName,
+			project:       docker.ComposeProject(rec.Labels),
 			sample:        recordSample(rec),
 		}
 		select {
@@ -775,7 +778,7 @@ func (e *Engine) handleMatch(st *runState, m matchMsg) {
 	if !res.fire {
 		return
 	}
-	e.emit(m.rule, m.host, m.containerID, m.containerName, logReason(m.rule), m.sample, res.suppressed)
+	e.emit(m.rule, m.host, m.containerID, m.containerName, m.project, logReason(m.rule), m.sample, res.suppressed)
 }
 
 // handleEvent routes one engine event. Only die, oom, and unhealthy health
@@ -953,10 +956,11 @@ func (e *Engine) recordEventMatch(st *runState, ev docker.EngineEvent, action, e
 			continue
 		}
 		reason := eventReason(rule, action, exitCode)
+		project := docker.ComposeProject(ev.Labels)
 		if action == "restart" {
-			st.loops[key] = &incident{rule: rule, host: ev.Host, containerID: ev.ContainerID, containerName: name, reason: reason}
+			st.loops[key] = &incident{rule: rule, host: ev.Host, containerID: ev.ContainerID, containerName: name, project: project, reason: reason}
 		}
-		e.emit(rule, ev.Host, ev.ContainerID, name, reason, eventSample(action, exitCode), res.suppressed)
+		e.emit(rule, ev.Host, ev.ContainerID, name, project, reason, eventSample(action, exitCode), res.suppressed)
 	}
 }
 
@@ -972,18 +976,18 @@ func (e *Engine) window(st *runState, key string, rule *compiledRule) *ruleWindo
 }
 
 // emit builds the alert and hands it to the dispatcher.
-func (e *Engine) emit(rule *compiledRule, host, containerID, containerName, reason, sample string, suppressed int) {
-	e.send(e.newAlert(rule, host, containerID, containerName, reason, sample, suppressed))
+func (e *Engine) emit(rule *compiledRule, host, containerID, containerName, project, reason, sample string, suppressed int) {
+	e.send(e.newAlert(rule, host, containerID, containerName, project, reason, sample, suppressed))
 }
 
 // emitRecovery sends the notice that a fired condition has cleared.
-func (e *Engine) emitRecovery(rule *compiledRule, host, containerID, containerName, reason, sample string) {
-	alert := e.newAlert(rule, host, containerID, containerName, reason, sample, 0)
+func (e *Engine) emitRecovery(rule *compiledRule, host, containerID, containerName, project, reason, sample string) {
+	alert := e.newAlert(rule, host, containerID, containerName, project, reason, sample, 0)
 	alert.Recovered = true
 	e.send(alert)
 }
 
-func (e *Engine) newAlert(rule *compiledRule, host, containerID, containerName, reason, sample string, suppressed int) models.Alert {
+func (e *Engine) newAlert(rule *compiledRule, host, containerID, containerName, project, reason, sample string, suppressed int) models.Alert {
 	return models.Alert{
 		ID:            newAlertID(),
 		RuleID:        rule.id,
@@ -992,6 +996,7 @@ func (e *Engine) newAlert(rule *compiledRule, host, containerID, containerName, 
 		Host:          host,
 		ContainerID:   containerID,
 		ContainerName: containerName,
+		Project:       project,
 		Reason:        reason,
 		Sample:        sample,
 		Count:         rule.threshold,
@@ -1061,7 +1066,8 @@ func (e *Engine) shutdownRun(st *runState) {
 // dispatchLoop consumes fired alerts: each alert is appended to history first
 // (Delivery nil) so a hung channel can never lose it, then delivered to every
 // enabled channel (read live from config; no enabled channels means
-// history-only) and its history entry updated with the summary result. It exits
+// history-only) and its history entry updated with the summary result. An
+// alert an active silence matches is recorded as muted and not delivered. It exits
 // when the run loop closes dispatchCh, then stops the history flusher, which
 // performs the final synchronous flush. Once the shutdown drain budget has
 // expired, remaining alerts are recorded as failed ("shutdown") without a
@@ -1069,8 +1075,14 @@ func (e *Engine) shutdownRun(st *runState) {
 func (e *Engine) dispatchLoop() {
 	defer close(e.flushStop)
 	for alert := range e.dispatchCh {
+		cfg := e.alertsFn()
+		if firedAt, err := time.Parse(time.RFC3339, alert.FiredAt); err == nil && silenced(cfg.Silences, alert, firedAt) {
+			alert.Delivery = &models.DeliveryResult{Status: "muted"}
+			e.hist.append(alert)
+			continue
+		}
 		e.hist.append(alert)
-		channels := enabledChannels(e.alertsFn().Channels)
+		channels := enabledChannels(cfg.Channels)
 		if len(channels) == 0 {
 			continue
 		}

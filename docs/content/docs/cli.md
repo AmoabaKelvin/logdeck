@@ -225,8 +225,14 @@ logdeck alerts channels add --type gotify --endpoint https://gotify.example.com 
 logdeck alerts channels add --type telegram --secret "$TELEGRAM_BOT_TOKEN" --target "$CHAT_ID"
 logdeck alerts channels test <id>
 logdeck alerts channels delete <id>
+logdeck alerts silences
+logdeck alerts silences add --project checkout --for 2h --comment "deploy"
+logdeck alerts silences add --host prod --every sat,sun --at 02:00 --duration 2h --tz Europe/Berlin
+logdeck alerts silences delete <id>
 logdeck alerts history --limit 20
 ```
+
+`silences add` mutes the alerts that match every `--rule`, `--host`, `--container` and `--project` you give (none mutes everything). Without time flags the silence lasts until you delete it. `--for` or `--until` ends it, and `--from` delays its start. `--every`, `--at`, `--duration` and `--tz` make it a weekly maintenance window instead.
 
 `channels test` sends a test delivery and exits 1 if it fails. See [Alerting](/docs/alerting) for how rules, thresholds, and channels behave.
 
