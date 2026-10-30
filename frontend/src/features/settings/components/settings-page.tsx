@@ -6,6 +6,7 @@ import { useSettings } from "../hooks/use-settings";
 import { AlertsSection } from "./alerts-section";
 import { ApiTokensSection } from "./api-tokens-section";
 import { AuthSection } from "./auth-section";
+import { BackupsSection } from "./backups-section";
 import { CollectionHealthSection } from "./collection-health-section";
 import { DokployHostsSection } from "./dokploy-hosts-section";
 import { CoolifyHostsSection } from "./coolify-hosts-section";
@@ -21,6 +22,7 @@ const SETTINGS_TABS = [
 	"alerts",
 	"redaction",
 	"storage",
+	"backups",
 	"health",
 ] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number];
@@ -31,6 +33,7 @@ const TAB_LABELS = {
 	alerts: "Alerts",
 	redaction: "Redaction",
 	storage: "Log storage",
+	backups: "Backups",
 	health: "Collection health",
 } satisfies Record<SettingsTab, string>;
 
@@ -51,8 +54,9 @@ export function SettingsPage() {
 			<div>
 				<h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
 				<p className="mt-1 max-w-prose text-pretty text-base/6 text-muted-foreground sm:text-sm/6">
-					Hosts, access, alerts, redaction and storage. Anything set via
-					environment variable is shown here but changes only with a restart.
+					Hosts, access, alerts, redaction, storage and backups. Anything set
+					via environment variable is shown here but changes only with a
+					restart.
 				</p>
 			</div>
 
@@ -133,6 +137,9 @@ export function SettingsPage() {
 									config={data.logStore}
 									readOnly={data.readOnly.value}
 								/>
+							)}
+							{tab === "backups" && (
+								<BackupsSection readOnly={data.readOnly.value} />
 							)}
 							{tab === "health" && <CollectionHealthSection />}
 						</div>

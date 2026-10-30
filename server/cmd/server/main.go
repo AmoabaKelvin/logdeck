@@ -14,6 +14,7 @@ import (
 	"github.com/AmoabaKelvin/logdeck/internal/alerts"
 	"github.com/AmoabaKelvin/logdeck/internal/api"
 	"github.com/AmoabaKelvin/logdeck/internal/auth"
+	"github.com/AmoabaKelvin/logdeck/internal/backup"
 	"github.com/AmoabaKelvin/logdeck/internal/config"
 	"github.com/AmoabaKelvin/logdeck/internal/coolify"
 	"github.com/AmoabaKelvin/logdeck/internal/docker"
@@ -32,6 +33,14 @@ var version = "dev"
 
 func main() {
 	system.Init()
+
+	// A restore confirmed in Settings is applied here, before anything has
+	// opened the files it replaces.
+	if prev, err := backup.ApplyPending(config.FilePath()); err != nil {
+		log.Printf("Restoring the backup FAILED, starting with the existing data: %v", err)
+	} else if prev != "" {
+		log.Printf("Restored the backup; the previous data was moved to %s", prev)
+	}
 
 	manager := config.NewManager()
 	cfg := manager.Config()
@@ -131,7 +140,8 @@ func main() {
 		log.Println("Configuration reloaded successfully")
 	})
 
-	apiRouter := api.NewRouter(registry, manager, alertEngine, logStore, collection, version)
+	backups := backup.NewService(manager, alertEngine.AllHistory, logStore, version)
+	apiRouter := api.NewRouter(registry, manager, alertEngine, logStore, collection, backups, version)
 
 	// No WriteTimeout/IdleTimeout: log streaming and terminal WebSockets are
 	// long-lived connections and would be killed by them. ReadTimeout only
@@ -158,6 +168,7 @@ func main() {
 
 	go logHub.Run(ctx)
 	alertEngine.Start(ctx)
+	backups.Start(ctx)
 	if logStore != nil {
 		logStore.Start(ctx, logHub, registry, collection)
 	}

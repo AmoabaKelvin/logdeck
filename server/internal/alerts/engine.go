@@ -191,10 +191,14 @@ func NewEngine(provider DockerProvider, manager *config.Manager, hub *logstream.
 		}
 		return *fc.Alerts
 	}
-	historyPath := filepath.Join(filepath.Dir(manager.ConfigFilePath()), "alerts-history.json")
-	e := newEngine(hub, func() eventClient { return dockerEventAdapter{c: provider.Docker()} }, alertsFn, historyPath)
+	e := newEngine(hub, func() eventClient { return dockerEventAdapter{c: provider.Docker()} }, alertsFn, HistoryPath(manager.ConfigFilePath()))
 	e.health = tracker
 	return e
+}
+
+// HistoryPath returns the alert history file that sits next to the config file.
+func HistoryPath(configFilePath string) string {
+	return filepath.Join(filepath.Dir(configFilePath), "alerts-history.json")
 }
 
 // newEngine is the internal constructor; tests inject fakes here.
@@ -287,6 +291,11 @@ func (e *Engine) TestChannel(ctx context.Context, channel config.AlertChannel) m
 // limit (limit <= 0 falls back to a default). Always returns a non-nil slice.
 func (e *Engine) History(limit int) []models.Alert {
 	return e.hist.list(limit)
+}
+
+// AllHistory returns every retained alert, newest first. Backups use it.
+func (e *Engine) AllHistory() []models.Alert {
+	return e.hist.list(e.hist.max)
 }
 
 func (e *Engine) ClearHistory() {

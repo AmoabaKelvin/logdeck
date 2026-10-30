@@ -36,6 +36,17 @@ LogDeck tells you when a container dies, gets OOM-killed, fails its health check
 
 [Read the guide](/docs/alerting)
 
+## Backup and restore
+
+LogDeck backs up its own state from Settings while it keeps running.
+
+- One file with the settings, alert rules and channels, alert history, and optionally the stored logs
+- Optional credentials and optional passphrase encryption
+- Scheduled backups with a retention count, written to a folder you can mount off the host
+- Restores are checked in full and previewed before anything changes, then applied on the next start with the old data kept aside
+
+[Read the guide](/docs/backups)
+
 ## Log redaction
 
 LogDeck can mask secrets in log lines before it stores them or serves them anywhere.

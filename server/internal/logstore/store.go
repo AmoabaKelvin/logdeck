@@ -122,6 +122,10 @@ type Store struct {
 	// live row count it never decreases when retention evicts, so measurement can
 	// report true ingestion throughput. Maintained only for the stress harness.
 	committed atomic.Int64
+	// snapshots counts Snapshot calls in progress, and walGrew asks the writer
+	// for a checkpoint once they are done; see Snapshot.
+	snapshots atomic.Int32
+	walGrew   atomic.Bool
 
 	// mu guards resume, gaps, and invalidated, all read by goroutines other
 	// than the one that writes them.

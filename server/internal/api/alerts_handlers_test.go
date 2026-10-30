@@ -37,7 +37,7 @@ func newAlertsTestRouter(t *testing.T, authSvc *auth.Service) (http.Handler, str
 	manager := config.NewManager()
 	registry := services.NewRegistry(nil, nil, authSvc, manager.Config())
 	engine := alerts.NewEngine(registry, manager, nil, nil)
-	return NewRouter(registry, manager, engine, nil, nil, "test"), configPath
+	return NewRouter(registry, manager, engine, nil, nil, nil, "test"), configPath
 }
 
 func doAlertsRequest(t *testing.T, router http.Handler, method, path, body string) *httptest.ResponseRecorder {
