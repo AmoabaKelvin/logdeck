@@ -60,6 +60,13 @@ func (w *callbackLogWriter) Flush() {
 // is called sequentially from a single goroutine, and no calls happen after
 // TailContainerLogs returns.
 func (c *MultiHostClient) TailContainerLogs(ctx context.Context, host, containerID string, opts models.LogOptions, emit func(models.LogEntry)) error {
+	return c.FollowContainerLogs(ctx, host, containerID, opts, nil, emit)
+}
+
+// FollowContainerLogs is TailContainerLogs with an attached hook, called once
+// the engine has accepted the log request and before any entry is emitted. It
+// is what tells a quiet container apart from one whose logs cannot be read.
+func (c *MultiHostClient) FollowContainerLogs(ctx context.Context, host, containerID string, opts models.LogOptions, attached func(), emit func(models.LogEntry)) error {
 	apiClient, err := c.GetClient(host)
 	if err != nil {
 		return err
@@ -74,8 +81,23 @@ func (c *MultiHostClient) TailContainerLogs(ctx context.Context, host, container
 	if err != nil {
 		return err
 	}
+	if attached != nil {
+		attached()
+	}
 
 	return tailLogStream(ctx, logs, tty, emit)
+}
+
+// UnreadableLogs reports whether the engine cannot read a container's logs at
+// all: a logging driver without a read API (awslogs, syslog, none, ...).
+// Retrying such a container never helps.
+func UnreadableLogs(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "does not support reading") || // Docker
+		strings.Contains(msg, "cannot read logs") // Podman
 }
 
 // tailLogStream parses the raw Docker log stream and emits entries until the

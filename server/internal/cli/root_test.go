@@ -119,3 +119,44 @@ func TestGrepNoMatchesHint(t *testing.T) {
 		t.Errorf("expected no-matches hint on stderr, got: %q", stderr)
 	}
 }
+
+func TestGrepReportsMissingSources(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/containers", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"containers":[{"id":"web1","names":["/web"],"state":"running","host":"prod"},{"id":"api1","names":["/api"],"state":"running","host":"prod"}],"hosts":[],"hostErrors":[]}`)
+	})
+	mux.HandleFunc("/api/v1/logs/aggregate", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"logs":[],"count":0,"incomplete":true,"sources":[`+
+			`{"host":"prod","containerId":"web1","containerName":"web","status":"no_matches"},`+
+			`{"host":"prod","containerId":"api1","containerName":"api","status":"failed","error":"daemon exploded"}]}`)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	var code int
+	stderr := captureStderr(t, func() {
+		code = execute(context.Background(), "test", []string{"grep", "x", "--url", server.URL, "--since", "30m"})
+	})
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\nstderr: %q", code, stderr)
+	}
+	if !strings.Contains(stderr, "logs of api on prod could not be read: daemon exploded") || !strings.Contains(stderr, "no matches in 1 containers") {
+		t.Errorf("expected a missing-source warning and a searched count of 1, got: %q", stderr)
+	}
+
+	stdout := captureStdout(t, func() {
+		code = execute(context.Background(), "test", []string{"grep", "x", "--url", server.URL, "-o", "json"})
+	})
+	var out struct {
+		Incomplete bool        `json:"incomplete"`
+		Sources    []logSource `json:"sources"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
+		t.Fatalf("bad json %q: %v", stdout, err)
+	}
+	if code != 0 || !out.Incomplete || len(out.Sources) != 2 {
+		t.Errorf("json output must carry coverage, got code %d: %s", code, stdout)
+	}
+}

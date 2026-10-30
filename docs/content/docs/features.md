@@ -104,6 +104,7 @@ View and change a container's environment variables from the UI.
 - Bulk import from a `.env` file for direct container edits
 - Coolify applications and services read and save their environment in Coolify, then offer a separate deployment request. Saved variable settings and preview scopes are preserved
 - Dokploy applications and Compose deployments edit saved environment text after ownership confirmation, preserve related settings, and deploy separately. Compose variables follow the Compose file's references or `env_file`; preview and database edits stay in Dokploy
+- Saving to Coolify or Dokploy first lists the variables it adds, changes and removes. For applications, the editor lists saved values the running container does not have yet, so a save is not mistaken for a deployment
 - LogDeck detects Coolify-managed containers and labels them in the UI
 - Works with Docker Compose setups
 
@@ -113,6 +114,7 @@ Act on a whole Compose stack instead of one container at a time.
 
 - Start, stop, or restart every container in a stack from its group header
 - Aggregated stack logs merge all of a stack's containers into one stream, ordered by timestamp
+- When some containers' logs cannot be read, a banner lists each one with the reason and a Retry button. It clears once they are read again, and downloads carry the same warning
 - Color-coded container badges show which container wrote each line
 - Works with Docker Compose and podman-compose projects
 
@@ -131,6 +133,9 @@ Change container resources without recreating or restarting anything.
 
 - Edit memory limits, CPU limits, and restart policies from the container page
 - LogDeck applies changes live through the engine's update API, so there is no downtime
+- Plain Compose containers update live too. Set the limits in the Compose file as well, or the next `docker compose up` drops them
+- Coolify applications and Dokploy applications save memory and CPU limits in the platform instead, and deploy separately. The panel shows the saved limits next to the ones the container runs with until a deployment applies them
+- Limits LogDeck cannot save in their platform, such as Coolify services, Compose deployments on Coolify or Dokploy, and other Swarm services, are shown but locked, with the reason and a link to the platform. The restart policy of platform-managed containers is left to the platform
 - Human-friendly inputs such as `512m` and `1g`, with validation
 - Blocked in read-only mode
 

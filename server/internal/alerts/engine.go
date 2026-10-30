@@ -1,6 +1,6 @@
-// Package alerts contains the alerting engine: it watches container events
-// and log streams, matches them against the configured rules, and delivers
-// notifications to the configured channels.
+// Package alerts contains the alerting engine: it watches container events,
+// log streams and collection health, matches them against the configured
+// rules, and delivers notifications to the configured channels.
 //
 // Concurrency model: a single run goroutine owns all mutable state (compiled
 // rules, subscription handles, rate/cooldown windows, the event-stream child
@@ -27,6 +27,7 @@ import (
 
 	"github.com/AmoabaKelvin/logdeck/internal/config"
 	"github.com/AmoabaKelvin/logdeck/internal/docker"
+	"github.com/AmoabaKelvin/logdeck/internal/health"
 	"github.com/AmoabaKelvin/logdeck/internal/logstream"
 	"github.com/AmoabaKelvin/logdeck/internal/models"
 )
@@ -166,6 +167,10 @@ type Engine struct {
 	deliverCtx context.Context
 	skipRetry  <-chan struct{}
 
+	// health is read by collection rules on every resync tick; nil disables
+	// them.
+	health *health.Tracker
+
 	resyncInterval time.Duration
 	now            func() time.Time
 	wg             sync.WaitGroup
@@ -175,9 +180,9 @@ type Engine struct {
 }
 
 // NewEngine creates an alerting engine that reads rules through manager,
-// watches events through the provider's Docker clients, and subscribes to
-// log records through hub.
-func NewEngine(provider DockerProvider, manager *config.Manager, hub *logstream.Hub) *Engine {
+// watches events through the provider's Docker clients, subscribes to log
+// records through hub, and evaluates collection rules against tracker.
+func NewEngine(provider DockerProvider, manager *config.Manager, hub *logstream.Hub, tracker *health.Tracker) *Engine {
 	alertsFn := func() config.AlertsConfig {
 		fc := manager.FileConfigSnapshot()
 		if fc.Alerts == nil {
@@ -185,7 +190,9 @@ func NewEngine(provider DockerProvider, manager *config.Manager, hub *logstream.
 		}
 		return *fc.Alerts
 	}
-	return newEngine(hub, func() eventClient { return dockerEventAdapter{c: provider.Docker()} }, alertsFn, HistoryPath(manager.ConfigFilePath()))
+	e := newEngine(hub, func() eventClient { return dockerEventAdapter{c: provider.Docker()} }, alertsFn, HistoryPath(manager.ConfigFilePath()))
+	e.health = tracker
+	return e
 }
 
 // HistoryPath returns the alert history file that sits next to the config file.
@@ -308,9 +315,12 @@ type runState struct {
 	ctx context.Context
 	gen uint64
 
-	subs       map[string]*activeSub // live log-rule subscriptions by rule ID
+	subs map[string]*activeSub // live log-rule subscriptions by rule ID
+	// eventRules holds every rule that is not a log rule: event rules and
+	// collection rules.
 	eventRules []*compiledRule
 	windows    map[string]*ruleWindow // by ruleID|host|containerName
+	incidents  map[string]*incident   // collection failures by ruleID|host
 	lastOOM    map[string]time.Time   // last oom event by host|containerID
 	stopping   map[string]time.Time   // last kill or restart event by host|containerID
 	lifecycle  map[string]time.Time   // last die or start event by host|containerID
@@ -327,6 +337,7 @@ func (e *Engine) run(ctx context.Context) {
 		ctx:       ctx,
 		subs:      make(map[string]*activeSub),
 		windows:   make(map[string]*ruleWindow),
+		incidents: make(map[string]*incident),
 		lastOOM:   make(map[string]time.Time),
 		stopping:  make(map[string]time.Time),
 		lifecycle: make(map[string]time.Time),
@@ -349,6 +360,7 @@ func (e *Engine) run(ctx context.Context) {
 			e.checkEventClient(st)
 			e.pruneWindows(st)
 			e.logDrops()
+			e.checkCollection(st)
 		case m := <-e.firedCh:
 			e.handleMatch(st, m)
 		case ev, ok := <-st.events:
@@ -438,6 +450,77 @@ func (e *Engine) reconcile(st *runState) {
 			if id, _, _ := strings.Cut(key, "|"); stale[id] {
 				delete(st.windows, key)
 			}
+		}
+		for key := range st.incidents {
+			if id, _, _ := strings.Cut(key, "|"); stale[id] {
+				delete(st.incidents, key)
+			}
+		}
+	}
+}
+
+// incident is one collection rule's state for one host ("" for the log
+// store). It outlives the failure until the cooldown has passed, so a
+// flapping host does not notify on every flap.
+type incident struct {
+	rule      *compiledRule
+	host      string
+	reason    string // what the last fire reported
+	fired     bool   // a failure was sent and its recovery has not been
+	lastFired time.Time
+}
+
+// checkCollection fires a collection rule for every host (and the log store)
+// that has been failing for at least the rule's window, and sends a recovery
+// once a fired failure clears. Failures come one per host, so a host outage is
+// one alert however many containers it takes down. It runs on the resync
+// tick, which bounds how late a failure or recovery is noticed.
+func (e *Engine) checkCollection(st *runState) {
+	if e.health == nil {
+		return
+	}
+	failures := e.health.Failures()
+	now := e.now()
+
+	failing := make(map[string]bool)
+	for _, rule := range st.eventRules {
+		if rule.typ != "collection" {
+			continue
+		}
+		for _, f := range failures {
+			// The log store (Host "") serves every host, so every collection
+			// rule watches it.
+			if f.Host != "" && !rule.spec.Matches(f.Host, "", nil) {
+				continue
+			}
+			key := rule.id + "|" + f.Host
+			failing[key] = true
+			inc := st.incidents[key]
+			if inc == nil {
+				inc = &incident{rule: rule, host: f.Host}
+				st.incidents[key] = inc
+			}
+			if inc.fired || now.Sub(f.Since) < rule.window {
+				continue
+			}
+			if !inc.lastFired.IsZero() && now.Sub(inc.lastFired) < rule.cooldown {
+				continue
+			}
+			inc.fired, inc.lastFired, inc.reason = true, now, f.Reason
+			e.emit(rule, f.Host, "", "", f.Reason, "", 0)
+		}
+	}
+
+	for key, inc := range st.incidents {
+		if failing[key] {
+			continue
+		}
+		if inc.fired {
+			inc.fired = false
+			e.emit(inc.rule, inc.host, "", "", "collection recovered", inc.reason, 0)
+		}
+		if now.Sub(inc.lastFired) >= inc.rule.cooldown {
+			delete(st.incidents, key)
 		}
 	}
 }

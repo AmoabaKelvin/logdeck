@@ -20,6 +20,7 @@ import {
 	formatImageName,
 	formatRelativeCreated,
 	getContainerUrlIdentifier,
+	getDeploymentOwner,
 	getHealthBadgeClass,
 	getStateBadgeClass,
 	splitContainerStatus,
@@ -65,12 +66,16 @@ export function ContainersLogsSheet({
 
 	const name = container ? formatContainerName(container.names) : "";
 	const { label } = container ? splitContainerStatus(container) : { label: "" };
+	const owner = container && getDeploymentOwner(container);
 	const meta = container
 		? [
 				formatImageName(container.image),
 				container.host,
+				owner && `managed by ${owner.name}`,
 				`created ${formatRelativeCreated(container.created)}`,
-			].join(" · ")
+			]
+				.filter(Boolean)
+				.join(" · ")
 		: "";
 
 	return (

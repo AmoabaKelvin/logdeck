@@ -266,7 +266,7 @@ func run(cfg runConfig) error {
 	// storeCtx keeps the store's loops (writeLoop, syncLoop, janitorLoop) alive
 	// for the whole run; cancelling it triggers the final flush.
 	storeCtx, storeCancel := context.WithCancel(context.Background())
-	store.Start(storeCtx, hub, emptyProvider{client: client})
+	store.Start(storeCtx, hub, emptyProvider{client: client}, nil)
 
 	sink := hub.get()
 	if sink == nil {

@@ -36,8 +36,8 @@ func newAlertsTestRouter(t *testing.T, authSvc *auth.Service) (http.Handler, str
 
 	manager := config.NewManager()
 	registry := services.NewRegistry(nil, nil, authSvc, manager.Config())
-	engine := alerts.NewEngine(registry, manager, nil)
-	return NewRouter(registry, manager, engine, nil, nil, "test"), configPath
+	engine := alerts.NewEngine(registry, manager, nil, nil)
+	return NewRouter(registry, manager, engine, nil, nil, nil, "test"), configPath
 }
 
 func doAlertsRequest(t *testing.T, router http.Handler, method, path, body string) *httptest.ResponseRecorder {
@@ -197,6 +197,17 @@ var alertRuleValidationCases = []struct{ name, body string }{
 	{"blank containers entry", `{"name":"r","type":"log","minLevel":"ERROR","containers":[" "]}`},
 	{"slash-only containers entry", `{"name":"r","type":"log","minLevel":"ERROR","containers":["/"]}`},
 	{"empty projects entry", `{"name":"r","type":"log","minLevel":"ERROR","projects":[""]}`},
+	{"collection targeting containers", `{"name":"r","type":"collection","containers":["web"]}`},
+	{"collection with events", `{"name":"r","type":"collection","events":["die"]}`},
+	{"collection delay under a minute", `{"name":"r","type":"collection","windowSeconds":30}`},
+}
+
+func TestCreateCollectionAlertRule(t *testing.T) {
+	router, _ := newAlertsTestRouter(t, nil)
+	created := createAlertRule(t, router, `{"name":"collection","type":"collection","hosts":["remote"],"threshold":5}`)
+	if created.Type != "collection" || created.WindowSeconds != 60 || created.Threshold != 1 {
+		t.Fatalf("unexpected rule: %+v", created)
+	}
 }
 
 func TestCreateAlertRuleValidation(t *testing.T) {

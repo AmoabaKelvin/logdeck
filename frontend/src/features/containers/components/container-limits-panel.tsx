@@ -10,19 +10,31 @@ import {
 	DropdownMenuRadioItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDownIcon } from "@/components/ui/icons";
+import { ChevronDownIcon, ExternalLinkIcon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import type { ContainerInspect } from "../api/get-container-inspect";
-import { getContainerResources } from "../api/get-container-resources";
 import {
+	getContainerResources,
+	type ResourceLimits,
+	type ResourcesOwner,
+} from "../api/get-container-resources";
+import {
+	deployContainerResources,
 	type UpdateResourcesRequest,
 	updateContainerResources,
 } from "../api/update-container-resources";
 import type { ContainerStats } from "../types";
-import { PanelError, PanelLoading, PanelSection } from "./container-panel-ui";
+import {
+	PanelError,
+	PanelLoading,
+	PanelNote,
+	PanelSection,
+} from "./container-panel-ui";
 import { formatBytes } from "./container-utils";
+import { PLAIN_COMPOSE, readDokployMapping } from "./dokploy-mapping";
+import { type EnvConfirmCopy, EnvConfirmDialog } from "./env-confirm-dialog";
 import { Meter } from "./meter";
 import { formatMemoryBytes, parseMemoryInput } from "./parse-memory";
 
@@ -35,6 +47,61 @@ const RESTART_POLICIES = [
 
 function policyLabel(value: string) {
 	return RESTART_POLICIES.find((p) => p.value === value)?.label ?? value;
+}
+
+const PLATFORM_NAMES = {
+	coolify: "Coolify",
+	dokploy: "Dokploy",
+	swarm: "its Swarm service",
+	compose: "Compose",
+} satisfies Record<ResourcesOwner["platform"], string>;
+
+const DEPLOY_COPY = {
+	coolify: {
+		title: "Deploy through Coolify?",
+		description:
+			"Coolify redeploys the application with all of its saved settings, including these limits. Its container is replaced, so the application may be briefly unavailable.",
+		confirmLabel: "Deploy",
+	},
+	dokploy: {
+		title: "Deploy through Dokploy?",
+		description:
+			"Dokploy rebuilds and redeploys the application with all of its saved settings, including these limits. Its tasks are replaced, so the application may be briefly unavailable.",
+		confirmLabel: "Deploy",
+	},
+} satisfies Record<string, EnvConfirmCopy>;
+
+const LINK =
+	"inline-flex shrink-0 items-center gap-1.5 rounded-sm text-base text-muted-foreground hover:text-foreground sm:text-sm";
+
+/**
+ * The Dokploy deployment confirmed in the Environment panel, remembered for
+ * the Swarm service, stack or Compose project the way the server keys it.
+ */
+function confirmedDokployMapping(
+	host: string,
+	containerId: string,
+	labels: Record<string, string> | undefined,
+) {
+	const key = [
+		"com.docker.stack.namespace",
+		"com.docker.swarm.service.name",
+		"com.docker.compose.project",
+	].find((label) => labels?.[label]);
+	const mapping =
+		(key && readDokployMapping(host, `${key}=${labels?.[key]}`)) ||
+		readDokployMapping(host, containerId);
+	return mapping === PLAIN_COMPOSE ? undefined : mapping;
+}
+
+function describeLimits(limits: ResourceLimits) {
+	const memory = limits.memoryBytes
+		? formatBytes(limits.memoryBytes)
+		: "no memory limit";
+	const cpus = limits.nanoCPUs
+		? `${limits.nanoCPUs / 1e9} CPU${limits.nanoCPUs === 1e9 ? "" : "s"}`
+		: "no CPU limit";
+	return `${memory}, ${cpus}`;
 }
 
 /**
@@ -86,6 +153,7 @@ interface ContainerLimitsPanelProps {
 	containerId: string;
 	containerHost: string;
 	isReadOnly: boolean;
+	labels: Record<string, string> | undefined;
 	// Live usage, so a limit is set next to what the container actually does.
 	stats: ContainerStats | undefined;
 	inspect: ContainerInspect | undefined;
@@ -94,15 +162,27 @@ interface ContainerLimitsPanelProps {
 /**
  * Resource limits shown against live usage. Setting a memory ceiling without
  * seeing what the container is using is guesswork, so the two live together.
+ *
+ * A platform recreates its containers from saved settings, so for those the
+ * form edits the platform's saved limits and deploying applies them; the
+ * readings keep showing what the container runs with now.
  */
 export function ContainerLimitsPanel({
 	containerId,
 	containerHost,
 	isReadOnly,
+	labels,
 	stats,
 	inspect,
 }: ContainerLimitsPanelProps) {
 	const queryClient = useQueryClient();
+	// Read once: the mapping is confirmed in the Environment panel, and only
+	// one panel is open at a time.
+	const [dokployMapping] = useState(() =>
+		confirmedDokployMapping(containerHost, containerId, labels),
+	);
+	const [saved, setSaved] = useState(false);
+	const [confirmDeploy, setConfirmDeploy] = useState(false);
 	const [memory, setMemory] = useState("");
 	const [cpus, setCpus] = useState("");
 	const [restartPolicy, setRestartPolicy] = useState("no");
@@ -116,17 +196,32 @@ export function ContainerLimitsPanel({
 		isLoading,
 		error,
 	} = useQuery({
-		queryKey: ["container-resources", containerId, containerHost],
-		queryFn: () => getContainerResources(containerId, containerHost),
+		queryKey: [
+			"container-resources",
+			containerId,
+			containerHost,
+			dokployMapping,
+		],
+		queryFn: () =>
+			getContainerResources(containerId, containerHost, dokployMapping),
 		enabled: !!containerId && !!containerHost,
 	});
 
+	const owner = resources?.owner;
+	// Plain Compose updates live too; the Compose file has to keep the change.
+	const live = !owner || owner.platform === "compose";
+	const configured = owner?.persistent ? owner.configured : undefined;
+	const editable = live || Boolean(configured);
+	const platformName = owner ? PLATFORM_NAMES[owner.platform] : "";
+	// What the form edits: the platform's saved limits, or the running ones.
+	const limits = configured ?? resources;
+
 	// Reset the form to the server's values whenever they (re)load.
 	const [formResources, setFormResources] = useState<typeof resources>();
-	if (resources && resources !== formResources) {
+	if (resources && limits && resources !== formResources) {
 		setFormResources(resources);
-		setMemory(formatMemoryBytes(resources.memoryBytes));
-		setCpus(resources.nanoCPUs > 0 ? String(resources.nanoCPUs / 1e9) : "");
+		setMemory(formatMemoryBytes(limits.memoryBytes));
+		setCpus(limits.nanoCPUs > 0 ? String(limits.nanoCPUs / 1e9) : "");
 		setRestartPolicy(resources.restartPolicy.name || "no");
 		setMaxRetries(
 			resources.restartPolicy.maximumRetryCount > 0
@@ -135,39 +230,88 @@ export function ContainerLimitsPanel({
 		);
 	}
 
+	const refresh = () =>
+		queryClient.invalidateQueries({
+			queryKey: ["container-resources", containerId, containerHost],
+		});
+
 	const updateMutation = useMutation({
 		mutationFn: (request: UpdateResourcesRequest) =>
-			updateContainerResources(containerId, containerHost, request),
-		onSuccess: () => {
-			queryClient.invalidateQueries({
-				queryKey: ["container-resources", containerId, containerHost],
-			});
+			updateContainerResources(
+				containerId,
+				containerHost,
+				request,
+				dokployMapping,
+			),
+		onSuccess: (result) => {
+			refresh();
+			if (!result.applied) {
+				setSaved(true);
+				toast.success(`Limits saved in ${platformName}`, {
+					description:
+						"Deploy to apply them. The container keeps its current limits until then.",
+				});
+				return;
+			}
 			queryClient.invalidateQueries({ queryKey: ["containers"] });
 			toast.success("Limits updated", {
 				description: "Applied live — the container did not restart.",
 			});
 		},
 		onError: (mutationError: Error) => {
-			toast.error("Failed to update limits", {
+			// A failed platform save may still have landed, so show what the
+			// platform holds now.
+			if (!live) {
+				setSaved(false);
+				refresh();
+			}
+			toast.error(live ? "Failed to update limits" : "Failed to save limits", {
 				description: mutationError.message,
 			});
 		},
 	});
 
+	const deployMutation = useMutation({
+		mutationFn: () =>
+			deployContainerResources(containerId, containerHost, dokployMapping),
+		onSuccess: () => {
+			setSaved(false);
+			toast.success(`${platformName} deployment requested`, {
+				description: `Check ${platformName} for progress. The container ID may change.`,
+			});
+			queryClient.invalidateQueries({ queryKey: ["containers"] });
+		},
+		onError: (deployError: Error) =>
+			toast.error("Deployment request failed", {
+				description: deployError.message,
+			}),
+	});
+
 	if (isLoading && !resources) {
 		return <PanelLoading label="Reading limits…" />;
 	}
-	if (error || !resources) {
+	if (error || !resources || !limits) {
 		return <PanelError>Could not read this container's limits.</PanelError>;
 	}
 
 	const retryCount =
 		restartPolicy === "on-failure" ? Number.parseInt(maxRetries, 10) || 0 : 0;
 	const isDirty =
-		formatMemoryBytes(resources.memoryBytes) !== memory ||
-		(resources.nanoCPUs > 0 ? String(resources.nanoCPUs / 1e9) : "") !== cpus ||
-		(resources.restartPolicy.name || "no") !== restartPolicy ||
-		resources.restartPolicy.maximumRetryCount !== retryCount;
+		formatMemoryBytes(limits.memoryBytes) !== memory ||
+		(limits.nanoCPUs > 0 ? String(limits.nanoCPUs / 1e9) : "") !== cpus ||
+		(live &&
+			((resources.restartPolicy.name || "no") !== restartPolicy ||
+				resources.restartPolicy.maximumRetryCount !== retryCount));
+	// Saved limits the container does not run with yet wait for a deployment.
+	const differs =
+		configured !== undefined &&
+		(configured.memoryBytes !== resources.memoryBytes ||
+			configured.nanoCPUs !== resources.nanoCPUs);
+	const deployCopy =
+		owner?.platform === "coolify" || owner?.platform === "dokploy"
+			? DEPLOY_COPY[owner.platform]
+			: null;
+	const busy = updateMutation.isPending || deployMutation.isPending;
 
 	const handleSave = () => {
 		const memoryBytes = parseMemoryInput(memory);
@@ -186,11 +330,19 @@ export function ContainerLimitsPanel({
 			return;
 		}
 
-		updateMutation.mutate({
-			memoryBytes,
-			nanoCPUs: Math.round(cpuValue * 1e9),
-			restartPolicy: { name: restartPolicy, maximumRetryCount: retryCount },
-		});
+		const nanoCPUs = Math.round(cpuValue * 1e9);
+		updateMutation.mutate(
+			live
+				? {
+						memoryBytes,
+						nanoCPUs,
+						restartPolicy: {
+							name: restartPolicy,
+							maximumRetryCount: retryCount,
+						},
+					}
+				: { memoryBytes, nanoCPUs },
+		);
 	};
 
 	const memoryLimited = resources.memoryBytes > 0;
@@ -217,7 +369,7 @@ export function ContainerLimitsPanel({
 						name="memory-limit"
 						value={memory}
 						onChange={(e) => setMemory(e.target.value)}
-						disabled={isReadOnly}
+						disabled={isReadOnly || !editable}
 						placeholder="unlimited"
 						className="w-32 font-mono"
 					/>
@@ -248,7 +400,7 @@ export function ContainerLimitsPanel({
 						step="0.1"
 						value={cpus}
 						onChange={(e) => setCpus(e.target.value)}
-						disabled={isReadOnly}
+						disabled={isReadOnly || !editable}
 						placeholder="unlimited"
 						className="w-32 font-mono"
 					/>
@@ -259,7 +411,7 @@ export function ContainerLimitsPanel({
 				<div className="flex flex-wrap items-center gap-2">
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
-							<Button variant="outline" disabled={isReadOnly}>
+							<Button variant="outline" disabled={isReadOnly || !live}>
 								{policyLabel(restartPolicy)}
 								<ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
 							</Button>
@@ -297,7 +449,7 @@ export function ContainerLimitsPanel({
 								step="1"
 								value={maxRetries}
 								onChange={(e) => setMaxRetries(e.target.value)}
-								disabled={isReadOnly}
+								disabled={isReadOnly || !live}
 								placeholder="0"
 								className="w-24 font-mono"
 							/>
@@ -308,23 +460,62 @@ export function ContainerLimitsPanel({
 					{inspect && inspect.RestartCount > 0
 						? `Restarted ${inspect.RestartCount} time${inspect.RestartCount === 1 ? "" : "s"} so far.`
 						: "Has not restarted yet."}
+					{!live && ` Set by ${platformName}, not here.`}
 				</p>
 			</PanelSection>
 
-			<div className="flex items-center gap-3 lg:col-span-3">
+			{configured && differs && (
+				<div className="lg:col-span-3">
+					<PanelNote>
+						Running with {describeLimits(resources)}. {platformName} has{" "}
+						{describeLimits(configured)} saved, which its next deployment
+						applies.
+					</PanelNote>
+				</div>
+			)}
+
+			<div className="flex flex-wrap items-center gap-3 lg:col-span-3">
 				<Button
 					onClick={handleSave}
-					disabled={isReadOnly || !isDirty || updateMutation.isPending}
+					disabled={isReadOnly || !editable || !isDirty || busy}
 				>
 					{updateMutation.isPending && <Spinner className="size-4" />}
-					Save limits
+					{live ? "Save limits" : `Save in ${platformName}`}
 				</Button>
+				{deployCopy && configured && (saved || differs) && !isReadOnly && (
+					<Button
+						variant="outline"
+						onClick={() => setConfirmDeploy(true)}
+						disabled={busy}
+					>
+						{deployMutation.isPending && <Spinner className="size-4" />}
+						Deploy through {platformName}
+					</Button>
+				)}
 				<p className="text-base text-muted-foreground sm:text-sm">
 					{isReadOnly
 						? "LogDeck is in read-only mode."
-						: "Empty means unlimited. Changes apply without a restart."}
+						: !editable
+							? owner?.reason
+							: configured
+								? `Empty means unlimited. Saved in ${platformName}; they apply when it deploys.`
+								: owner?.platform === "compose"
+									? "Applies live without a restart. Compose recreates this container from its file, so set the limits there too to keep them."
+									: "Empty means unlimited. Changes apply without a restart."}
 				</p>
+				{!editable && owner?.url && (
+					<a href={owner.url} target="_blank" rel="noreferrer" className={LINK}>
+						Open {platformName}
+						<ExternalLinkIcon className="size-4 shrink-0" />
+					</a>
+				)}
 			</div>
+
+			<EnvConfirmDialog
+				copy={confirmDeploy ? deployCopy : null}
+				onOpenChange={setConfirmDeploy}
+				onConfirm={() => deployMutation.mutate()}
+			/>
 		</div>
 	);
 }

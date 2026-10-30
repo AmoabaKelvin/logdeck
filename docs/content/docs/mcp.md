@@ -36,7 +36,7 @@ These are always available and read-only.
 
 - `list_containers`: containers across every host, including removed ones and their health state.
 - `get_logs`: recent parsed logs for one container, with tail, level, regex, and time-range filters. Never follows.
-- `search_logs`: regex search across many running containers, merged by timestamp.
+- `search_logs`: regex search across many running containers, merged by timestamp. The result lists each container's status in `sources` and sets `incomplete` when some containers could not be searched.
 - `inspect_container`: the full inspect document for one container.
 - `list_events`: Docker or Podman events collected over a short bounded window.
 - `container_stats` / `host_stats`: live CPU and memory per container, and per-host system stats.

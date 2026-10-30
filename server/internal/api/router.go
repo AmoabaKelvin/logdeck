@@ -11,6 +11,7 @@ import (
 	"github.com/AmoabaKelvin/logdeck/internal/auth"
 	"github.com/AmoabaKelvin/logdeck/internal/backup"
 	"github.com/AmoabaKelvin/logdeck/internal/config"
+	"github.com/AmoabaKelvin/logdeck/internal/health"
 	"github.com/AmoabaKelvin/logdeck/internal/logstore"
 	"github.com/AmoabaKelvin/logdeck/internal/services"
 	"github.com/AmoabaKelvin/logdeck/internal/static"
@@ -26,6 +27,7 @@ type APIRouter struct {
 	engine   *alerts.Engine
 	// logStore is nil when log persistence is disabled or unusable.
 	logStore *logstore.Store
+	health   *health.Tracker
 	// backups is nil when the router is built without backup support (tests).
 	backups *backup.Service
 	version string
@@ -35,13 +37,14 @@ type APIRouter struct {
 	machineHostname   string
 }
 
-func NewRouter(registry *services.Registry, manager *config.Manager, engine *alerts.Engine, logStore *logstore.Store, backups *backup.Service, version string) *chi.Mux {
+func NewRouter(registry *services.Registry, manager *config.Manager, engine *alerts.Engine, logStore *logstore.Store, tracker *health.Tracker, backups *backup.Service, version string) *chi.Mux {
 	r := &APIRouter{
 		router:   chi.NewRouter(),
 		registry: registry,
 		manager:  manager,
 		engine:   engine,
 		logStore: logStore,
+		health:   tracker,
 		backups:  backups,
 		version:  version,
 	}
@@ -105,6 +108,7 @@ func (ar *APIRouter) Routes() *chi.Mux {
 			protected.Get("/volumes", ar.GetVolumes)
 			protected.Get("/networks", ar.GetNetworks)
 			protected.Get("/hosts/stats", ar.GetHostsStats)
+			protected.Get("/health/collection", ar.GetCollectionHealth)
 			ar.registerContainerRoutes(protected)
 			ar.registerComposeRoutes(protected)
 			ar.registerHistoryRoutes(protected)
@@ -147,6 +151,7 @@ func (ar *APIRouter) registerContainerRoutes(r chi.Router) {
 			mutating.Put("/env", ar.UpdateEnvVariables)
 			mutating.Post("/env/deploy", ar.DeployEnvironment)
 			mutating.Put("/resources", ar.UpdateContainerResources)
+			mutating.Post("/resources/deploy", ar.DeployContainerResources)
 			// Exec is GET (websocket upgrade) but spawns a shell, so
 			// read-scoped tokens are denied explicitly
 			mutating.With(auth.DenyReadScope).Get("/exec", ar.HandleTerminal)

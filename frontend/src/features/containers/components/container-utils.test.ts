@@ -6,6 +6,7 @@ import {
 	countContainerStates,
 	findContainerByIdentifier,
 	getComposeProject,
+	getDeploymentOwner,
 	getSystemdUnit,
 	resolvePublishedHost,
 	selectStackMembers,
@@ -133,6 +134,31 @@ describe("getComposeProject", () => {
 				"io.logdeck.stack": "shop",
 			}),
 		).toBe("demo");
+	});
+});
+
+describe("getDeploymentOwner", () => {
+	it("names the platform over the Compose project it deploys with", () => {
+		expect(
+			getDeploymentOwner({
+				labels: {
+					"coolify.managed": "true",
+					"com.docker.compose.project": "uuid",
+				},
+			})?.name,
+		).toBe("Coolify");
+		expect(
+			getDeploymentOwner({
+				platform: "dokploy",
+				labels: { "com.docker.compose.project": "web" },
+			})?.name,
+		).toBe("Dokploy");
+	});
+
+	it("leaves Podman pods and hand-set stacks standalone", () => {
+		expect(
+			getDeploymentOwner({ labels: { "io.logdeck.stack": "shop" } }),
+		).toBeUndefined();
 	});
 });
 

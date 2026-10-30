@@ -8,6 +8,7 @@ import {
 	vi,
 } from "vitest";
 
+import type { LogSource } from "@/features/containers/api/get-aggregated-logs";
 import {
 	getContainerLogsParsed,
 	type LogEntry,
@@ -142,5 +143,31 @@ describe("downloadLogs", () => {
 		expect(capturedBlob?.content).toBe(
 			"[2026-07-15T00:00:00.000Z] [INFO] a\n[] [ERROR] b",
 		);
+	});
+
+	const missing: LogSource[] = [
+		{
+			host: "prod",
+			containerId: "api1",
+			containerName: "api",
+			status: "failed",
+			error: "daemon exploded",
+		},
+	];
+
+	it("heads an incomplete text export with the missing sources", () => {
+		downloadLogs(entries, "stack", "txt", missing);
+		expect(capturedBlob?.content).toBe(
+			"# Incomplete: 1 source missing\n# api on prod: daemon exploded\n[2026-07-15T00:00:00.000Z] [INFO] a\n[] [ERROR] b",
+		);
+	});
+
+	it("wraps an incomplete JSON export with the missing sources", () => {
+		downloadLogs(entries, "stack", "json", missing);
+		expect(JSON.parse(capturedBlob?.content ?? "")).toEqual({
+			incomplete: true,
+			missingSources: missing,
+			logs: entries,
+		});
 	});
 });

@@ -26,7 +26,7 @@ func newBackupTestRouter(t *testing.T) http.Handler {
 	manager := config.NewManager()
 	registry := services.NewRegistry(nil, nil, nil, manager.Config())
 	backups := backup.NewService(manager, nil, nil, "test")
-	return NewRouter(registry, manager, nil, nil, backups, "test")
+	return NewRouter(registry, manager, nil, nil, nil, backups, "test")
 }
 
 func serve(router http.Handler, method, path, body string) *httptest.ResponseRecorder {

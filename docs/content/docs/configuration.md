@@ -354,6 +354,8 @@ LogDeck discovers accessible applications and Compose deployments on that Dokplo
 
 Saving leaves the running deployment unchanged. **Deploy saved configuration** requests a separate Dokploy deployment; completion must be checked in Dokploy. Recognized Dokploy and Swarm workloads cannot fall back to direct container recreation. For plain Compose on a connected host, choose **Not managed by Dokploy** to use the runtime editor, and persist edits in the Compose source too.
 
+The Limits panel saves memory and CPU limits for the application chosen in the Environment panel, and deploys them separately. Compose deployment limits live in the Compose file and stay in Dokploy.
+
 Preview deployments, database resources, and shared project/environment variable editing stay in Dokploy. A revision check rejects detected stale edits, but Dokploy has no atomic conditional-save API, so avoid simultaneous edits from another client. A failed or uncertain operation requires reloading configuration and checking deployment progress before retrying.
 
 ## Coolify integration
@@ -382,6 +384,7 @@ How it works:
 - Hidden or unreadable values appear as unknown. They stay unchanged unless you enter a replacement or explicitly remove the variable
 - Failed saves report acknowledged changes. Coolify does not save a batch atomically, so review the refreshed saved configuration before retrying
 - Database environment editing and unknown resource types are unsupported. Edit those resources in Coolify
+- The Limits panel saves an application's memory and CPU limits in Coolify, then **Deploy through Coolify** applies them. Service, database, and Compose-application limits stay in Coolify
 - Coolify-managed containers get a badge in the container list
 
 ## Password hashing
@@ -449,7 +452,7 @@ volumes:
   logdeck-data:
 ```
 
-The server exposes `GET /api/v1/healthz` for an external health check. The runtime image is minimal and ships no `curl` or `wget`, so a compose `healthcheck` has to come from outside the container.
+The server exposes `GET /api/v1/healthz` for an external health check. The runtime image is minimal and ships no `curl` or `wget`, so a compose `healthcheck` has to come from outside the container. The endpoint answers 200 while the server runs; `GET /api/v1/healthz?strict=1` answers 503 while collection is degraded (a host, a container or log storage is failing), see [Collection health](/docs/alerting#collection-health).
 
 ## Read-only mode
 

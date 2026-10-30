@@ -23,6 +23,24 @@ type ContainerResources struct {
 	RestartPolicy RestartPolicySpec `json:"restartPolicy"`
 }
 
+// ResourceLimits are the memory and CPU limits a deployment platform saves
+// for a workload and applies when it next deploys. Zero means unlimited.
+type ResourceLimits struct {
+	MemoryBytes int64 `json:"memoryBytes"`
+	NanoCPUs    int64 `json:"nanoCPUs"`
+}
+
+// With returns the limits after an update request, keeping those it omits.
+func (l ResourceLimits) With(req UpdateResourcesRequest) ResourceLimits {
+	if req.MemoryBytes != nil {
+		l.MemoryBytes = *req.MemoryBytes
+	}
+	if req.NanoCPUs != nil {
+		l.NanoCPUs = *req.NanoCPUs
+	}
+	return l
+}
+
 var validRestartPolicyNames = map[string]bool{
 	"no":             true,
 	"always":         true,

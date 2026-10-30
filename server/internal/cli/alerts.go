@@ -160,11 +160,14 @@ func ruleTargets(r alertRule) string {
 // ("die,oom 3x/120s cooldown 60s", "level>=ERROR cooldown 300s (default)").
 func ruleTrigger(r alertRule) string {
 	var parts []string
-	if r.Type == "event" {
+	switch r.Type {
+	case "event":
 		if len(r.Events) > 0 {
 			parts = append(parts, strings.Join(r.Events, ","))
 		}
-	} else {
+	case "collection":
+		parts = append(parts, fmt.Sprintf("failing %ds", r.WindowSeconds))
+	default:
 		if r.MinLevel != "" {
 			parts = append(parts, "level>="+r.MinLevel)
 		}
@@ -172,7 +175,7 @@ func ruleTrigger(r alertRule) string {
 			parts = append(parts, "pattern="+r.Pattern)
 		}
 	}
-	if r.Threshold > 0 {
+	if r.Threshold > 0 && r.Type != "collection" {
 		parts = append(parts, fmt.Sprintf("%dx/%ds", r.Threshold, r.WindowSeconds))
 	}
 	if r.CooldownSeconds > 0 {
@@ -213,7 +216,7 @@ func newAlertRuleCreateCmd(a *app) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "create --type <log|event> --name <name>",
+		Use:   "create --type <log|event|collection> --name <name>",
 		Short: "Create an alert rule",
 		Args:  cobra.NoArgs,
 		// Flag validation runs in PreRunE so bad combinations are usage
@@ -242,10 +245,15 @@ func newAlertRuleCreateCmd(a *app) *cobra.Command {
 				if pattern != "" {
 					return fmt.Errorf("--pattern only applies to --type log")
 				}
+			case "collection":
+				// --window is how long a failure lasts before it alerts.
+				if len(events) > 0 || minLevel != "" || pattern != "" || len(containers) > 0 || len(projects) > 0 {
+					return fmt.Errorf("--type collection takes only --host, --window and --cooldown")
+				}
 			case "":
-				return fmt.Errorf("--type is required (log or event)")
+				return fmt.Errorf("--type is required (log, event, or collection)")
 			default:
-				return fmt.Errorf("invalid --type %q (must be log or event)", ruleType)
+				return fmt.Errorf("invalid --type %q (must be log, event, or collection)", ruleType)
 			}
 
 			req = alertRule{
@@ -289,7 +297,7 @@ func newAlertRuleCreateCmd(a *app) *cobra.Command {
 		}),
 	}
 
-	cmd.Flags().StringVar(&ruleType, "type", "", "rule type: log or event")
+	cmd.Flags().StringVar(&ruleType, "type", "", "rule type: log, event, or collection")
 	cmd.Flags().StringVar(&name, "name", "", "rule name")
 	cmd.Flags().StringSliceVar(&hosts, "host", nil, "limit to these hosts (repeatable)")
 	cmd.Flags().StringSliceVar(&containers, "container", nil, "limit to these container names (repeatable)")
@@ -298,7 +306,7 @@ func newAlertRuleCreateCmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&minLevel, "min-level", "", "minimum log level to match, e.g. ERROR (only with --type log)")
 	cmd.Flags().StringVar(&pattern, "pattern", "", "regex the log message must match (only with --type log)")
 	cmd.Flags().IntVar(&threshold, "threshold", 0, "fire only after this many matches within --window")
-	cmd.Flags().StringVar(&window, "window", "", "threshold window (e.g. 60s, 5m, or bare seconds)")
+	cmd.Flags().StringVar(&window, "window", "", "threshold window, or for collection how long a failure lasts first (e.g. 60s, 5m, or bare seconds)")
 	cmd.Flags().StringVar(&cooldown, "cooldown", "", "minimum time between deliveries (e.g. 5m); 0 or omitted uses the server default of 300s")
 	cmd.Flags().BoolVar(&disabled, "disabled", false, "create the rule disabled")
 	return cmd

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"math"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -18,6 +19,8 @@ const (
 	// maxTrimRounds bounds one global sweep; the next pass continues if the
 	// store is still over cap.
 	maxTrimRounds = 1000
+	// minFreeSpace is the least free disk space that does not count as low.
+	minFreeSpace = 64 * bytesPerMB
 )
 
 // logicalGroup is one logical container — every generation of a (host, name)
@@ -38,10 +41,13 @@ type logicalGroup struct {
 // pending is enough. The database file is never VACUUMed: SQLite reuses freed
 // pages, so the file plateaus at its high-water mark instead of shrinking, which
 // avoids a long exclusive lock.
+//
+// The same tick samples the free disk space for collection health.
 func (s *Store) janitorLoop(ctx context.Context) {
 	ticker := time.NewTicker(janitorInterval)
 	defer ticker.Stop()
 
+	s.checkSpace()
 	for {
 		select {
 		case <-ctx.Done():
@@ -51,8 +57,25 @@ func (s *Store) janitorLoop(ctx context.Context) {
 			case s.retainCh <- struct{}{}:
 			default: // a sweep is already pending
 			}
+			s.checkSpace()
 		}
 	}
+}
+
+// checkSpace records whether the disk under the database has room for the
+// store to grow to its total cap. A store already at its cap still needs
+// minFreeSpace for the write-ahead log and freed-page churn.
+func (s *Store) checkSpace() {
+	free, err := diskFree(filepath.Dir(s.path))
+	if err != nil {
+		return
+	}
+	size, err := s.DBSize()
+	if err != nil {
+		return
+	}
+	headroom := int64(s.limits().TotalMB)*bytesPerMB - size
+	s.health.StorageSpace(free, free < max(headroom, minFreeSpace))
 }
 
 // retain evicts oldest-first until every logical container is under the

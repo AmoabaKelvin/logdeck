@@ -50,7 +50,7 @@ func newGrepCmd(a *app) *cobra.Command {
 			}
 			if len(running) == 0 {
 				fmt.Fprintln(os.Stderr, "no running containers to search")
-				return a.printLogs(nil, true)
+				return a.printAggregatedLogs(nil, nil)
 			}
 
 			query := url.Values{}
@@ -63,14 +63,16 @@ func newGrepCmd(a *app) *cobra.Command {
 				query.Set("level", strings.ToUpper(level))
 			}
 
-			logs, err := a.aggregatedLogs(ctx, buildTargets(running), query)
+			logs, sources, err := a.aggregatedLogs(ctx, buildTargets(running), query)
 			if err != nil {
 				return err
 			}
 			if len(logs) == 0 {
-				fmt.Fprintf(os.Stderr, "no matches in %d containers since %s\n", len(running), since)
+				// Containers that could not be read were not searched.
+				searched := len(running) - len(missingSources(sources))
+				fmt.Fprintf(os.Stderr, "no matches in %d containers since %s\n", searched, since)
 			}
-			return a.printLogs(logs, true)
+			return a.printAggregatedLogs(logs, sources)
 		}),
 	}
 
