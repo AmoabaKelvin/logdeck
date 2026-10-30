@@ -6,6 +6,7 @@ import { useSettings } from "../hooks/use-settings";
 import { AlertsSection } from "./alerts-section";
 import { ApiTokensSection } from "./api-tokens-section";
 import { AuthSection } from "./auth-section";
+import { CollectionHealthSection } from "./collection-health-section";
 import { DokployHostsSection } from "./dokploy-hosts-section";
 import { CoolifyHostsSection } from "./coolify-hosts-section";
 import { DockerHostsSection } from "./docker-hosts-section";
@@ -13,7 +14,13 @@ import { LogStorageSection } from "./log-storage-section";
 import { ReadOnlySection } from "./read-only-section";
 import { ErrorNote } from "./settings-ui";
 
-const SETTINGS_TABS = ["connections", "access", "alerts", "storage"] as const;
+const SETTINGS_TABS = [
+	"connections",
+	"access",
+	"alerts",
+	"storage",
+	"health",
+] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number];
 
 const TAB_LABELS = {
@@ -21,6 +28,7 @@ const TAB_LABELS = {
 	access: "Access",
 	alerts: "Alerts",
 	storage: "Log storage",
+	health: "Collection health",
 } satisfies Record<SettingsTab, string>;
 
 const parseAsSettingsTab = parseAsStringLiteral(SETTINGS_TABS)
@@ -118,6 +126,7 @@ export function SettingsPage() {
 									readOnly={data.readOnly.value}
 								/>
 							)}
+							{tab === "health" && <CollectionHealthSection />}
 						</div>
 					)}
 				</div>

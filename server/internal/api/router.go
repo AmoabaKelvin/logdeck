@@ -10,6 +10,7 @@ import (
 	"github.com/AmoabaKelvin/logdeck/internal/api/middleware"
 	"github.com/AmoabaKelvin/logdeck/internal/auth"
 	"github.com/AmoabaKelvin/logdeck/internal/config"
+	"github.com/AmoabaKelvin/logdeck/internal/health"
 	"github.com/AmoabaKelvin/logdeck/internal/logstore"
 	"github.com/AmoabaKelvin/logdeck/internal/services"
 	"github.com/AmoabaKelvin/logdeck/internal/static"
@@ -25,6 +26,7 @@ type APIRouter struct {
 	engine   *alerts.Engine
 	// logStore is nil when log persistence is disabled or unusable.
 	logStore *logstore.Store
+	health   *health.Tracker
 	version  string
 
 	// machineHostname caches the engine-reported hostname; see GetSystemStats.
@@ -32,13 +34,14 @@ type APIRouter struct {
 	machineHostname   string
 }
 
-func NewRouter(registry *services.Registry, manager *config.Manager, engine *alerts.Engine, logStore *logstore.Store, version string) *chi.Mux {
+func NewRouter(registry *services.Registry, manager *config.Manager, engine *alerts.Engine, logStore *logstore.Store, tracker *health.Tracker, version string) *chi.Mux {
 	r := &APIRouter{
 		router:   chi.NewRouter(),
 		registry: registry,
 		manager:  manager,
 		engine:   engine,
 		logStore: logStore,
+		health:   tracker,
 		version:  version,
 	}
 
@@ -101,6 +104,7 @@ func (ar *APIRouter) Routes() *chi.Mux {
 			protected.Get("/volumes", ar.GetVolumes)
 			protected.Get("/networks", ar.GetNetworks)
 			protected.Get("/hosts/stats", ar.GetHostsStats)
+			protected.Get("/health/collection", ar.GetCollectionHealth)
 			ar.registerContainerRoutes(protected)
 			ar.registerComposeRoutes(protected)
 			ar.registerHistoryRoutes(protected)

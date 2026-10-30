@@ -1,9 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { GetContainersResponse } from "../api/get-containers";
 import { useContainerActions } from "../hooks/use-container-actions";
 import { useCollapsedGroups } from "../hooks/use-collapsed-groups";
+import { useCollectionHealth } from "../hooks/use-collection-health";
 import { useContainerStats } from "../hooks/use-container-stats";
 import { useContainersDashboardUrlState } from "../hooks/use-containers-dashboard-url-state";
 import { useDeleteHistoryContainer } from "../hooks/use-delete-history-container";
@@ -15,6 +17,7 @@ import { useSystemUsageHistory } from "../hooks/use-stats-history";
 import { useSystemStats } from "../hooks/use-system-stats";
 import { useTableColumns } from "../hooks/use-table-columns";
 import type { ContainerInfo, ContainerStatsMap } from "../types";
+import { collectionProblems } from "./collection-health";
 import { ConfirmActionDialog } from "./confirm-action-dialog";
 import {
 	countContainerStates,
@@ -51,6 +54,11 @@ export function ContainersDashboard() {
 	const hosts = data?.hosts ?? [];
 	const hostErrors = data?.hostErrors ?? [];
 	const { data: hostsStatsData } = useHostsStats(hosts.length > 1);
+	const { data: collectionHealth } = useCollectionHealth();
+	const collectionIssues = useMemo(
+		() => collectionProblems(collectionHealth, { includeHosts: false }),
+		[collectionHealth],
+	);
 
 	// Containers that were removed but still have stored logs show up as an extra
 	// dashboard state. Without log persistence there is nothing to synthesize.
@@ -300,6 +308,33 @@ export function ContainersDashboard() {
 								"Containers from this host could not be loaded."}
 						</p>
 					))}
+				</div>
+			)}
+
+			{/* Unreachable hosts already have the banner above. */}
+			{collectionIssues.length > 0 && (
+				<div className="mt-6 rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-3">
+					<p className="text-base font-medium sm:text-sm">
+						Log collection is degraded
+					</p>
+					{collectionIssues.map((issue) => (
+						<p
+							key={issue}
+							className="mt-1 text-base text-muted-foreground sm:text-sm"
+						>
+							{issue}
+						</p>
+					))}
+					<p className="mt-1 text-base text-muted-foreground sm:text-sm">
+						Details are under{" "}
+						<Link
+							to="/settings"
+							className="underline underline-offset-4 hover:text-foreground"
+						>
+							Settings
+						</Link>{" "}
+						→ Collection health.
+					</p>
 				</div>
 			)}
 

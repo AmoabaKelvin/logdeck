@@ -26,7 +26,7 @@ const (
 type compiledRule struct {
 	id   string
 	name string
-	typ  string // "event" | "log"
+	typ  string // "event" | "log" | "collection"
 
 	// spec is the rule's container targeting; matching is delegated to
 	// logstream.ContainerSpec.Matches.
@@ -39,8 +39,10 @@ type compiledRule struct {
 	pattern     *regexp.Regexp
 
 	threshold int
-	window    time.Duration
-	cooldown  time.Duration
+	// window is the rate window, or for a collection rule how long a failure
+	// must last before it fires.
+	window   time.Duration
+	cooldown time.Duration
 
 	// src is the original rule as configured, kept for change detection
 	// across reconciles.
@@ -57,7 +59,7 @@ func compileRules(cfg config.AlertsConfig) []*compiledRule {
 		if !rule.Enabled {
 			continue
 		}
-		if rule.Type != "event" && rule.Type != "log" {
+		if rule.Type != "event" && rule.Type != "log" && rule.Type != "collection" {
 			log.Printf("alerts: rule %q (%s): unknown type %q, skipping", rule.Name, rule.ID, rule.Type)
 			continue
 		}

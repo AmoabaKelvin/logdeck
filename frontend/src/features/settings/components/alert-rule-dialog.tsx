@@ -10,6 +10,7 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import {
+	AlertTriangleIcon,
 	ArrowLeftIcon,
 	CheckIcon,
 	HeartPulseIcon,
@@ -41,7 +42,11 @@ import {
 import { cn } from "@/lib/utils";
 
 import type { AlertRulePayload } from "../api/create-alert-rule";
-import type { AlertEventKind, AlertRule } from "../api/get-alert-rules";
+import type {
+	AlertEventKind,
+	AlertRule,
+	AlertRuleType,
+} from "../api/get-alert-rules";
 import { useCreateAlertRule, useUpdateAlertRule } from "../hooks/use-alerts";
 import { MultiCombobox } from "./multi-combobox";
 
@@ -57,7 +62,9 @@ const LOG_LEVELS = [
 
 interface FormState {
 	name: string;
-	type: "log" | "event";
+	type: AlertRuleType;
+	/** Collection rules: how long a failure lasts before it alerts. */
+	delayMinutes: string;
 	minLevel: string;
 	pattern: string;
 	die: boolean;
@@ -76,6 +83,7 @@ interface FormState {
 const EMPTY_FORM: FormState = {
 	name: "",
 	type: "log",
+	delayMinutes: "2",
 	minLevel: "any",
 	pattern: "",
 	die: false,
@@ -164,6 +172,15 @@ const PRESETS: Preset[] = [
 		focus: "pattern",
 	},
 	{
+		id: "collection",
+		icon: AlertTriangleIcon,
+		title: "Collection failing",
+		description:
+			"LogDeck can't reach a host, read a container's logs or store them.",
+		form: { name: "Collection failing", type: "collection" },
+		focus: null,
+	},
+	{
 		id: "custom",
 		icon: SlidersHorizontalIcon,
 		title: "Custom",
@@ -175,15 +192,20 @@ const PRESETS: Preset[] = [
 
 function ruleToForm(rule: AlertRule): FormState {
 	const cooldown = rule.cooldownSeconds ?? 0;
+	const isCollection = rule.type === "collection";
 	return {
 		name: rule.name,
 		type: rule.type,
+		delayMinutes: isCollection
+			? String(Math.max(1, Math.round((rule.windowSeconds ?? 60) / 60)))
+			: EMPTY_FORM.delayMinutes,
 		minLevel: rule.minLevel ?? "any",
 		pattern: rule.pattern ?? "",
 		die: rule.events?.includes("die") ?? false,
 		oom: rule.events?.includes("oom") ?? false,
 		unhealthy: rule.events?.includes("unhealthy") ?? false,
-		rateEnabled: rule.threshold > 1 || Boolean(rule.windowSeconds),
+		rateEnabled:
+			!isCollection && (rule.threshold > 1 || Boolean(rule.windowSeconds)),
 		threshold: String(rule.threshold),
 		windowSeconds: rule.windowSeconds ? String(rule.windowSeconds) : "",
 		containers: rule.containers ?? [],
@@ -210,7 +232,13 @@ function buildPayload(
 		threshold: 1,
 	};
 
-	if (form.type === "log") {
+	if (form.type === "collection") {
+		const minutes = Number.parseInt(form.delayMinutes, 10);
+		if (Number.isNaN(minutes) || minutes < 1 || minutes > 60) {
+			return { error: "The delay must be between 1 and 60 minutes" };
+		}
+		payload.windowSeconds = minutes * 60;
+	} else if (form.type === "log") {
 		const pattern = form.pattern.trim();
 		if (form.minLevel === "any" && !pattern) {
 			return { error: "Log rules need a minimum level or a pattern" };
@@ -228,7 +256,7 @@ function buildPayload(
 		payload.events = events;
 	}
 
-	if (form.rateEnabled) {
+	if (form.rateEnabled && form.type !== "collection") {
 		const threshold = Number.parseInt(form.threshold, 10);
 		if (!Number.isNaN(threshold) && threshold > 0) {
 			payload.threshold = threshold;
@@ -245,8 +273,12 @@ function buildPayload(
 			form.cooldownUnit === "minutes" ? cooldown * 60 : cooldown;
 	}
 
-	if (form.containers.length > 0) payload.containers = form.containers;
-	if (form.projects.length > 0) payload.projects = form.projects;
+	// A collection failure belongs to a host, so collection rules target hosts
+	// only.
+	if (form.type !== "collection") {
+		if (form.containers.length > 0) payload.containers = form.containers;
+		if (form.projects.length > 0) payload.projects = form.projects;
+	}
 	if (form.hosts.length > 0) payload.hosts = form.hosts;
 
 	return { payload };
@@ -257,7 +289,24 @@ function formatList(values: string[]): string {
 	return `${values[0]}, ${values[1]} and ${values.length - 2} more`;
 }
 
+function quietPeriod(form: FormState): string {
+	if (!form.cooldownValue) return "5 minutes";
+	const unit =
+		form.cooldownValue === "1"
+			? form.cooldownUnit.slice(0, -1)
+			: form.cooldownUnit;
+	return `${form.cooldownValue} ${unit}`;
+}
+
 function summarize(form: FormState): string {
+	if (form.type === "collection") {
+		const hosts = form.hosts.length > 0 ? formatList(form.hosts) : "any host";
+		const minutes = form.delayMinutes || "?";
+		return `When LogDeck can't collect from ${hosts} or store logs for ${minutes} ${
+			minutes === "1" ? "minute" : "minutes"
+		} → alert once per host and again when it recovers. A new failure within ${quietPeriod(form)} of the last alert waits until then.`;
+	}
+
 	const targets: string[] = [];
 	if (form.containers.length > 0) targets.push(formatList(form.containers));
 	if (form.projects.length > 0) {
@@ -297,18 +346,7 @@ function summarize(form: FormState): string {
 			: events;
 	}
 
-	let quiet: string;
-	if (form.cooldownValue) {
-		const unit =
-			form.cooldownValue === "1"
-				? form.cooldownUnit.slice(0, -1)
-				: form.cooldownUnit;
-		quiet = `${form.cooldownValue} ${unit}`;
-	} else {
-		quiet = "5 minutes";
-	}
-
-	return `When ${target} ${condition} → alert, then stay quiet for ${quiet}.`;
+	return `When ${target} ${condition} → alert, then stay quiet for ${quietPeriod(form)}.`;
 }
 
 // Extends the click target above/below the visual bounds so 32-36px controls
@@ -600,9 +638,40 @@ function RuleEditor({
 					>
 						Event
 					</Button>
+					<Button
+						type="button"
+						size="sm"
+						variant={form.type === "collection" ? "default" : "outline"}
+						onClick={() => set("type", "collection")}
+					>
+						Collection
+					</Button>
 				</div>
 
-				{form.type === "log" ? (
+				{form.type === "collection" ? (
+					<div className="space-y-2">
+						<div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 text-sm">
+							Alert when LogDeck can't list a host, can't collect a container's
+							logs, or can't store logs, for at least
+							<InlineNumberInput
+								id="alert-rule-delay"
+								value={form.delayMinutes}
+								onChange={(v) => set("delayMinutes", v)}
+								min={1}
+								max={60}
+								placeholder="2"
+								ariaLabel="Delay in minutes"
+							/>
+							minutes
+						</div>
+						<p className="text-xs text-muted-foreground">
+							Checked once a minute. Containers whose logs the engine can't read
+							and containers excluded from storage don't count. LogDeck can't
+							alert while it is stopped itself; point an external monitor at
+							/api/v1/healthz?strict=1 for that.
+						</p>
+					</div>
+				) : form.type === "log" ? (
 					<div className="space-y-3">
 						<div className="flex items-start gap-3">
 							<div className="space-y-1.5">
@@ -666,7 +735,7 @@ function RuleEditor({
 					</div>
 				)}
 
-				{form.rateEnabled ? (
+				{form.type === "collection" ? null : form.rateEnabled ? (
 					<div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 text-sm">
 						Alert after
 						<InlineNumberInput
@@ -718,34 +787,45 @@ function RuleEditor({
 			<div className="space-y-3">
 				<div className="space-y-1.5">
 					<SectionLabel>Where</SectionLabel>
-					{form.containers.length === 0 &&
+					{form.type === "collection" ? (
+						<p className="text-xs text-muted-foreground">
+							{form.hosts.length === 0 ? "Applies to all hosts. " : ""}
+							Log storage failures alert whatever the hosts.
+						</p>
+					) : (
+						form.containers.length === 0 &&
 						form.projects.length === 0 &&
 						form.hosts.length === 0 && (
 							<p className="text-xs text-muted-foreground">
 								Applies to all containers. Narrow it down below.
 							</p>
-						)}
+						)
+					)}
 				</div>
-				<div className="space-y-1.5">
-					<Label htmlFor="alert-rule-containers">Containers</Label>
-					<MultiCombobox
-						id="alert-rule-containers"
-						placeholder="Add container..."
-						options={targetOptions.containers}
-						selected={form.containers}
-						onChange={(values) => set("containers", values)}
-					/>
-				</div>
-				<div className="space-y-1.5">
-					<Label htmlFor="alert-rule-projects">Compose projects</Label>
-					<MultiCombobox
-						id="alert-rule-projects"
-						placeholder="Add compose project..."
-						options={targetOptions.projects}
-						selected={form.projects}
-						onChange={(values) => set("projects", values)}
-					/>
-				</div>
+				{form.type !== "collection" && (
+					<>
+						<div className="space-y-1.5">
+							<Label htmlFor="alert-rule-containers">Containers</Label>
+							<MultiCombobox
+								id="alert-rule-containers"
+								placeholder="Add container..."
+								options={targetOptions.containers}
+								selected={form.containers}
+								onChange={(values) => set("containers", values)}
+							/>
+						</div>
+						<div className="space-y-1.5">
+							<Label htmlFor="alert-rule-projects">Compose projects</Label>
+							<MultiCombobox
+								id="alert-rule-projects"
+								placeholder="Add compose project..."
+								options={targetOptions.projects}
+								selected={form.projects}
+								onChange={(values) => set("projects", values)}
+							/>
+						</div>
+					</>
+				)}
 				<div className="space-y-1.5">
 					<Label htmlFor="alert-rule-hosts">Hosts</Label>
 					<MultiCombobox
@@ -777,8 +857,9 @@ function RuleEditor({
 					)}
 				</div>
 				<p className="text-xs text-muted-foreground">
-					Repeat occurrences during the quiet period are counted and reported on
-					the next alert.
+					{form.type === "collection"
+						? "A recovery notice is sent as soon as collection works again."
+						: "Repeat occurrences during the quiet period are counted and reported on the next alert."}
 				</p>
 			</div>
 

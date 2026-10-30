@@ -18,6 +18,7 @@ import (
 	"github.com/AmoabaKelvin/logdeck/internal/coolify"
 	"github.com/AmoabaKelvin/logdeck/internal/docker"
 	"github.com/AmoabaKelvin/logdeck/internal/dokploy"
+	"github.com/AmoabaKelvin/logdeck/internal/health"
 	"github.com/AmoabaKelvin/logdeck/internal/logstore"
 	"github.com/AmoabaKelvin/logdeck/internal/logstream"
 	"github.com/AmoabaKelvin/logdeck/internal/services"
@@ -76,8 +77,11 @@ func main() {
 
 	registry := services.NewRegistry(multiHostClient, coolifyClient, authService, cfg)
 
-	logHub := logstream.New(registry)
-	alertEngine := alerts.NewEngine(registry, manager, logHub)
+	// collection records what the hub and the store observe, for the health
+	// endpoints and collection alerts.
+	collection := health.NewTracker()
+	logHub := logstream.New(registry, collection)
+	alertEngine := alerts.NewEngine(registry, manager, logHub, collection)
 	// logStore is nil when persistence is disabled or its database is
 	// unusable; every consumer must treat that as "no stored logs".
 	logStore := logstore.OpenFromConfig(manager)
@@ -114,7 +118,7 @@ func main() {
 		log.Println("Configuration reloaded successfully")
 	})
 
-	apiRouter := api.NewRouter(registry, manager, alertEngine, logStore, version)
+	apiRouter := api.NewRouter(registry, manager, alertEngine, logStore, collection, version)
 
 	// No WriteTimeout/IdleTimeout: log streaming and terminal WebSockets are
 	// long-lived connections and would be killed by them. ReadTimeout only
@@ -142,7 +146,7 @@ func main() {
 	go logHub.Run(ctx)
 	alertEngine.Start(ctx)
 	if logStore != nil {
-		logStore.Start(ctx, logHub, registry)
+		logStore.Start(ctx, logHub, registry, collection)
 	}
 
 	// PPROF_ADDR=127.0.0.1:6060 exposes Go runtime profiles (heap, goroutines)

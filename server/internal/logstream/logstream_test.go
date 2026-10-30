@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/docker"
+	"github.com/AmoabaKelvin/logdeck/internal/health"
 	"github.com/AmoabaKelvin/logdeck/internal/models"
 )
 
@@ -100,7 +101,7 @@ func (f *fakeClient) streamEvents(ctx context.Context) <-chan docker.EngineEvent
 	return out
 }
 
-func (f *fakeClient) openTail(ctx context.Context, host, id string, opts models.LogOptions, emit func(models.LogEntry)) error {
+func (f *fakeClient) openTail(ctx context.Context, host, id string, opts models.LogOptions, attached func(), emit func(models.LogEntry)) error {
 	key := containerKey{host: host, id: id}
 	f.mu.Lock()
 	f.active[key]++
@@ -112,6 +113,7 @@ func (f *fakeClient) openTail(ctx context.Context, host, id string, opts models.
 		f.mu.Unlock()
 	}()
 
+	attached()
 	if f.tailFn != nil {
 		return f.tailFn(ctx, host, id, opts, emit)
 	}
@@ -716,5 +718,51 @@ func TestReconcileBeforeRunDoesNotBlock(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("Reconcile blocked before Run")
+	}
+}
+
+func TestHubRecordsCollectionHealth(t *testing.T) {
+	f := newFakeClient()
+	f.tailFn = func(ctx context.Context, host, id string, opts models.LogOptions, emit func(models.LogEntry)) error {
+		if id == "c2" {
+			return errors.New("read: connection reset")
+		}
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	f.set(map[string][]models.ContainerInfo{
+		"h1": {ctr("c1", "quiet", "running", nil), ctr("c2", "broken", "running", nil)},
+	}, []docker.HostError{{HostName: "h2", Err: errors.New("dial tcp: connection refused")}})
+
+	h := newHub(func() engineClient { return f })
+	h.retryBaseDelay = time.Millisecond
+	h.retryMaxDelay = 4 * time.Millisecond
+	h.resyncInterval = time.Hour
+	h.health = health.NewTracker()
+	ctx, cancel := context.WithCancel(context.Background())
+	go h.Run(ctx)
+	t.Cleanup(func() {
+		cancel()
+		waitShutdown(t, h)
+	})
+	h.Subscribe(ContainerSpec{}, models.LogOptions{Tail: "0", ShowStdout: true, ShowStderr: true}, func(Record) {})
+
+	state := func(id string) string {
+		for _, host := range h.health.Report([]string{"h1"}).Hosts {
+			for _, c := range host.Containers {
+				if c.ID == id && c.Live != nil {
+					return c.Live.State
+				}
+			}
+		}
+		return ""
+	}
+	// A quiet container that never logs is still being collected.
+	waitFor(t, "quiet tail attached", func() bool { return state("c1") == health.StateOK })
+	waitFor(t, "broken tail failing", func() bool { return state("c2") == health.StateFailing })
+
+	failures := h.health.Failures()
+	if len(failures) != 2 || failures[0].Host != "h1" || failures[1].Host != "h2" {
+		t.Fatalf("failures = %+v, want h1 (broken container) and h2 (unreachable)", failures)
 	}
 }

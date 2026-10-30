@@ -15,6 +15,7 @@ import (
 
 	"github.com/AmoabaKelvin/logdeck/internal/config"
 	"github.com/AmoabaKelvin/logdeck/internal/docker"
+	"github.com/AmoabaKelvin/logdeck/internal/health"
 	"github.com/AmoabaKelvin/logdeck/internal/logstream"
 	"github.com/AmoabaKelvin/logdeck/internal/models"
 )
@@ -760,6 +761,45 @@ func TestStoreRequestsRecoverableSubscription(t *testing.T) {
 
 	cancel()
 	store.Wait()
+}
+
+func TestBackfillOutcomesReachCollectionHealth(t *testing.T) {
+	store := newTestStore(t)
+	store.health = health.NewTracker()
+	engine := newFakeEngine(
+		containerInfo("local", "aaa", "web", baseTime),
+		containerInfo("local", "bbb", "syslogged", baseTime),
+		containerInfo("local", "ccc", "flaky", baseTime),
+	)
+	engine.tail = func(host, id string, opts models.LogOptions, emit func(models.LogEntry)) error {
+		switch id {
+		case "bbb":
+			return errors.New(`configured logging driver does not support reading`)
+		case "ccc":
+			return errors.New("read: connection reset")
+		}
+		return nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer func() {
+		cancel()
+		store.Wait()
+	}()
+	store.start(ctx, &fakeHub{}, func() Engine { return engine })
+
+	stored := func(id string) string {
+		for _, c := range store.health.Report([]string{"local"}).Hosts[0].Containers {
+			if c.ID == id && c.Stored != nil {
+				return c.Stored.State
+			}
+		}
+		return ""
+	}
+	waitFor(t, "backfill outcomes", func() bool {
+		return stored("aaa") == health.StateOK &&
+			stored("bbb") == health.StateExcluded &&
+			stored("ccc") == health.StateFailing
+	})
 }
 
 func TestRecoveryHintTriggersImmediateBackfill(t *testing.T) {

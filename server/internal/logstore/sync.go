@@ -43,12 +43,14 @@ func (s *Store) syncLoop(ctx context.Context, source func() Engine) {
 			switch {
 			case res.excluded:
 				track.done[res.key] = true
+				s.health.BackfillExcluded(res.key.host, res.key.id, "", res.err.Error())
 				log.Printf("logstore: %s/%s excluded from persistence: %v", res.key.host, short(res.key.id), res.err)
 			case res.err != nil:
 				// Only a failure costs an attempt; a success must not consume the
 				// budget that later gap healing depends on.
 				track.attempts[res.key]++
 				if ctx.Err() == nil {
+					s.health.BackfillDone(res.key.host, res.key.id, res.err, false)
 					log.Printf("logstore: backfill of %s/%s failed (attempt %d/%d): %v",
 						res.key.host, short(res.key.id), track.attempts[res.key], maxBackfillAttempts, res.err)
 				}
@@ -58,7 +60,9 @@ func (s *Store) syncLoop(ctx context.Context, source func() Engine) {
 				// finite engine read was in flight. Its version deliberately
 				// survives complete; wake a follow-up read now instead of
 				// waiting for the periodic lifecycle poll.
-				if s.gapAt(res.key) != 0 || s.refreshAt(res.key) != 0 {
+				pending := s.gapAt(res.key) != 0 || s.refreshAt(res.key) != 0
+				s.health.BackfillDone(res.key.host, res.key.id, nil, pending)
+				if pending {
 					s.requestReconcile()
 				}
 			}
@@ -167,17 +171,21 @@ func (s *Store) sync(ctx context.Context, engine Engine, track *backfillTracker,
 			key := genKey{host: host, id: info.ID}
 			live[key] = true
 
-			excluded, err := s.upsertMeta(ctx, key, info, nowMS)
+			reason, err := s.upsertMeta(ctx, key, info, nowMS)
 			if err != nil {
 				log.Printf("logstore: recording container %s/%s failed: %v", host, short(info.ID), err)
 				continue
 			}
-			if !track.schedule(s, key, excluded) {
+			if reason != "" {
+				s.health.BackfillExcluded(host, info.ID, containerName(info), reason)
+			}
+			if !track.schedule(s, key, reason != "") {
 				continue
 			}
 			if ctx.Err() != nil {
 				return
 			}
+			s.health.BackfillScheduled(host, info.ID, containerName(info))
 
 			s.producers.Add(1)
 			go s.backfill(ctx, engine, info, results)
@@ -189,12 +197,12 @@ func (s *Store) sync(ctx context.Context, engine Engine, track *backfillTracker,
 	}
 }
 
-// upsertMeta records the generation's engine metadata and reports whether the
-// generation is excluded from persistence. An empty incoming value never
-// overwrites a stored one: a listing that carries no names would otherwise
-// blank the name the logical container is keyed by, and an unnamed generation
-// is unresolvable.
-func (s *Store) upsertMeta(ctx context.Context, key genKey, info models.ContainerInfo, nowMS int64) (bool, error) {
+// upsertMeta records the generation's engine metadata and returns why the
+// generation is excluded from persistence, "" when it is not. An empty
+// incoming value never overwrites a stored one: a listing that carries no
+// names would otherwise blank the name the logical container is keyed by, and
+// an unnamed generation is unresolvable.
+func (s *Store) upsertMeta(ctx context.Context, key genKey, info models.ContainerInfo, nowMS int64) (string, error) {
 	firstSeenMS := nowMS
 	if info.Created > 0 {
 		firstSeenMS = info.Created * 1000
@@ -212,7 +220,7 @@ func (s *Store) upsertMeta(ctx context.Context, key genKey, info models.Containe
 			removed_ms = NULL`,
 		key.host, key.id, containerName(info), docker.ComposeProject(info.Labels), info.Image, firstSeenMS, nowMS,
 	); err != nil {
-		return false, err
+		return "", err
 	}
 
 	var reason string
@@ -220,7 +228,7 @@ func (s *Store) upsertMeta(ctx context.Context, key genKey, info models.Containe
 		"SELECT excluded_reason FROM containers WHERE host = ? AND container_id = ?",
 		key.host, key.id,
 	).Scan(&reason)
-	return reason != "", err
+	return reason, err
 }
 
 // markRemoved stamps removed_ms on every stored generation the engine no longer

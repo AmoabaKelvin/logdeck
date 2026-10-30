@@ -3,6 +3,7 @@ package logstore
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"sort"
 	"strings"
@@ -183,6 +184,7 @@ func (s *Store) writeLoop() {
 		// collide with stored positions, so refuse to ingest rather than corrupt
 		// the ordering. The store stays readable.
 		log.Printf("logstore: reading writer state failed, ingestion is disabled: %v", err)
+		s.health.StorageWrite(fmt.Errorf("ingestion is disabled: %w", err))
 		for range s.ingestCh { //nolint:revive // drain so producers never block
 		}
 		return
@@ -207,6 +209,7 @@ func (s *Store) writeLoop() {
 			return
 		}
 		if err := s.commit(batch, state); err != nil {
+			s.health.StorageWrite(err)
 			log.Printf("logstore: write batch failed (%d messages dropped): %v", len(batch), err)
 			// A failed transaction drops the whole batch. Mark every generation it
 			// carried, exactly like the sink's full-queue path: the next sync
@@ -216,6 +219,11 @@ func (s *Store) writeLoop() {
 			failDelay = min(max(2*failDelay, minCommitBackoff), maxCommitBackoff)
 			time.Sleep(failDelay)
 		} else {
+			// failDelay is non-zero exactly while the writer is failing, so the
+			// recovery is recorded once rather than on every batch.
+			if failDelay != 0 {
+				s.health.StorageWrite(nil)
+			}
 			failDelay = 0
 		}
 		batch = batch[:0]

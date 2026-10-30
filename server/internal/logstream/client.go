@@ -13,7 +13,8 @@ import (
 type engineClient interface {
 	listContainers(ctx context.Context) (map[string][]models.ContainerInfo, []docker.HostError, error)
 	streamEvents(ctx context.Context) <-chan docker.EngineEvent
-	openTail(ctx context.Context, host, containerID string, opts models.LogOptions, emit func(models.LogEntry)) error
+	// openTail calls attached once the engine accepts the log request.
+	openTail(ctx context.Context, host, containerID string, opts models.LogOptions, attached func(), emit func(models.LogEntry)) error
 }
 
 // dockerAdapter adapts one *docker.MultiHostClient snapshot. It is a
@@ -31,6 +32,6 @@ func (a dockerAdapter) streamEvents(ctx context.Context) <-chan docker.EngineEve
 	return a.c.StreamEngineEvents(ctx)
 }
 
-func (a dockerAdapter) openTail(ctx context.Context, host, containerID string, opts models.LogOptions, emit func(models.LogEntry)) error {
-	return a.c.TailContainerLogs(ctx, host, containerID, opts, emit)
+func (a dockerAdapter) openTail(ctx context.Context, host, containerID string, opts models.LogOptions, attached func(), emit func(models.LogEntry)) error {
+	return a.c.FollowContainerLogs(ctx, host, containerID, opts, attached, emit)
 }
