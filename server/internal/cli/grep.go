@@ -14,16 +14,28 @@ import (
 
 func newGrepCmd(a *app) *cobra.Command {
 	var since, level, host string
+	var where []string
 	var tail int
 
 	cmd := &cobra.Command{
-		Use:   "grep <regex>",
+		Use:   "grep [<regex>]",
 		Short: "Search recent logs of all running containers",
 		Long:  "Search the recent logs of every running container across all hosts,\nmerged by timestamp. Bounded to the last 15 minutes by default (--since).",
-		Args:  cobra.ExactArgs(1),
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 1 {
+				return fmt.Errorf("accepts at most one regex")
+			}
+			if len(args) == 0 && len(where) == 0 {
+				return fmt.Errorf("specify a regex, --where, or both")
+			}
+			return nil
+		},
 		RunE: a.run(func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			pattern := args[0]
+			var pattern string
+			if len(args) == 1 {
+				pattern = args[0]
+			}
 			if _, err := regexp.Compile(pattern); err != nil {
 				return fmt.Errorf("invalid regex %q: %v", pattern, err)
 			}
@@ -54,7 +66,12 @@ func newGrepCmd(a *app) *cobra.Command {
 			}
 
 			query := url.Values{}
-			query.Set("search", pattern)
+			if pattern != "" {
+				query.Set("search", pattern)
+			}
+			for _, w := range where {
+				query.Add("where", w)
+			}
 			query.Set("tail", strconv.Itoa(tail))
 			if sinceValue != "" {
 				query.Set("since", sinceValue)
@@ -79,6 +96,7 @@ func newGrepCmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&since, "since", "15m", "only logs after this time (RFC3339 or relative: 30s, 15m, 2h, 1d)")
 	cmd.Flags().StringVar(&level, "level", "", "filter by log level (TRACE, DEBUG, INFO, WARN, ERROR, FATAL, PANIC)")
 	cmd.Flags().StringVar(&host, "host", "", "only search containers on this host")
+	cmd.Flags().StringArrayVar(&where, "where", nil, whereUsage)
 	cmd.Flags().IntVar(&tail, "tail", 1000, "lines scanned per container (max 10000)")
 	return cmd
 }

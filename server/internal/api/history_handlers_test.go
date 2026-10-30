@@ -358,6 +358,7 @@ func TestHistoryLogsValidation(t *testing.T) {
 		{"invalid since", "/api/v1/history/logs?container=web&since=yesterday"},
 		{"invalid until", "/api/v1/history/logs?container=web&until=yesterday"},
 		{"invalid regex flag", "/api/v1/history/logs?container=web&regex=maybe"},
+		{"invalid field filter", "/api/v1/history/logs?container=web&where=level"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			w := doHistoryRequest(t, router, tt.path)
@@ -389,6 +390,8 @@ func TestHistoryLogsQuery(t *testing.T) {
 	seed("local", "abc123", "web", historyBase, "starting up")
 	seed("local", "abc123", "web", historyBase.Add(time.Second), "ERROR database is down")
 	seed("local", "abc123", "web", historyBase.Add(2*time.Second), "recovered")
+	seed("local", "api123", "api", historyBase, `{"level":"error","user":{"id":7}}`)
+	seed("local", "api123", "api", historyBase.Add(time.Second), `{"level":"error","user":{"id":42}}`)
 	seed("local", "xyz789", "db", historyBase, "db line")
 	router := newHistoryTestRouter(t, store)
 
@@ -432,6 +435,13 @@ func TestHistoryLogsQuery(t *testing.T) {
 		body := historyLogs(t, router, "/api/v1/history/logs?container=web&search=data(base)?&regex=true")
 		if len(body.Logs) != 1 {
 			t.Fatalf("expected one match, got %d", len(body.Logs))
+		}
+	})
+
+	t.Run("field filter", func(t *testing.T) {
+		body := historyLogs(t, router, "/api/v1/history/logs?container=api&where=level%3Derror&where=user.id%3D42")
+		if len(body.Logs) != 1 || body.Logs[0].Message != `{"level":"error","user":{"id":42}}` {
+			t.Fatalf("expected the matching JSON line, got %+v", body.Logs)
 		}
 	})
 

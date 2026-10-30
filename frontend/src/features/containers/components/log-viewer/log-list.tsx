@@ -44,6 +44,7 @@ interface LogListProps {
 		event: React.MouseEvent | React.KeyboardEvent,
 	) => void;
 	onToggleJson: (index: number) => void;
+	onAddFieldFilter?: (key: string, value: string) => void;
 	onCopyEntry: (entry: LogEntry) => void;
 	allSelectedArePinned: boolean;
 	onCopySelected: () => void;
@@ -76,6 +77,7 @@ export function LogList({
 	highlightSearchText,
 	onLogClick,
 	onToggleJson,
+	onAddFieldFilter,
 	onCopyEntry,
 	allSelectedArePinned,
 	onCopySelected,
@@ -143,6 +145,7 @@ export function LogList({
 							highlightSearchText={highlightSearchText}
 							onClick={onLogClick}
 							onToggleJson={onToggleJson}
+							onAddFieldFilter={onAddFieldFilter}
 							onCopy={onCopyEntry}
 						/>
 					);

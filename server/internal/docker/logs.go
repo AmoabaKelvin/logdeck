@@ -31,8 +31,8 @@ const (
 )
 
 // parseDockerLogs parses the Docker log stream into structured entries,
-// optionally filtering by level and/or search regex.
-func parseDockerLogs(reader io.Reader, tty bool, levelFilter string, searchRegex *regexp.Regexp, redactor *redact.Stream) ([]models.LogEntry, error) {
+// optionally filtering by level, search regex and/or fields.
+func parseDockerLogs(reader io.Reader, tty bool, levelFilter string, searchRegex *regexp.Regexp, fieldFilter models.FieldFilter, redactor *redact.Stream) ([]models.LogEntry, error) {
 	var entries []models.LogEntry
 
 	stdout := &logWriter{stream: "stdout", entries: &entries, redactor: redactor}
@@ -47,7 +47,7 @@ func parseDockerLogs(reader io.Reader, tty bool, levelFilter string, searchRegex
 	stderr.Flush()
 	entries = models.GroupRelatedLogEntries(entries)
 
-	if levelFilter == "" && searchRegex == nil {
+	if levelFilter == "" && searchRegex == nil && len(fieldFilter) == 0 {
 		return entries, nil
 	}
 
@@ -57,6 +57,9 @@ func parseDockerLogs(reader io.Reader, tty bool, levelFilter string, searchRegex
 			continue
 		}
 		if searchRegex != nil && !searchRegex.MatchString(e.Message) && !searchRegex.MatchString(e.Raw) {
+			continue
+		}
+		if !fieldFilter.Match(e.Message) {
 			continue
 		}
 		filtered = append(filtered, e)
@@ -169,6 +172,7 @@ type streamingLogWriter struct {
 	pipeWriter  *io.PipeWriter
 	levelFilter string
 	searchRegex *regexp.Regexp
+	fieldFilter models.FieldFilter
 	wroteEntry  *atomic.Bool // set on each encoded entry; monitor clears it per tick
 	head        *streamHead  // shared by the stdout and stderr writers of one stream
 	redactor    *redact.Stream
@@ -220,7 +224,10 @@ func (w *streamingLogWriter) passes(entry models.LogEntry) bool {
 	if w.levelFilter != "" && !strings.EqualFold(string(entry.Level), w.levelFilter) {
 		return false
 	}
-	return w.searchRegex == nil || w.searchRegex.MatchString(entry.Message) || w.searchRegex.MatchString(entry.Raw)
+	if w.searchRegex != nil && !w.searchRegex.MatchString(entry.Message) && !w.searchRegex.MatchString(entry.Raw) {
+		return false
+	}
+	return w.fieldFilter.Match(entry.Message)
 }
 
 func (w *streamingLogWriter) emit(line string) error {
@@ -288,8 +295,9 @@ func (c *MultiHostClient) GetContainerLogsParsed(ctx context.Context, hostName, 
 	if options.Search != "" {
 		searchRegex, _ = regexp.Compile(options.Search) // already validated by handler
 	}
+	fieldFilter, _ := models.ParseFieldFilter(options.Where) // already validated by handler
 
-	return parseDockerLogs(logs, tty, options.Level, searchRegex, redactor)
+	return parseDockerLogs(logs, tty, options.Level, searchRegex, fieldFilter, redactor)
 }
 
 // StreamContainerLogsParsed streams parsed logs. The Docker log stream is tied
@@ -329,6 +337,7 @@ func newParsedLogStream(ctx context.Context, logs io.ReadCloser, tty bool, optio
 	if options.Search != "" {
 		searchRegex, _ = regexp.Compile(options.Search) // already validated by handler
 	}
+	fieldFilter, _ := models.ParseFieldFilter(options.Where) // already validated by handler
 
 	encoder := json.NewEncoder(pipeWriter)
 	var mu sync.Mutex
@@ -342,6 +351,7 @@ func newParsedLogStream(ctx context.Context, logs io.ReadCloser, tty bool, optio
 		pipeWriter:  pipeWriter,
 		levelFilter: options.Level,
 		searchRegex: searchRegex,
+		fieldFilter: fieldFilter,
 		wroteEntry:  &wroteEntry,
 		head:        head,
 		redactor:    redactor,
@@ -353,6 +363,7 @@ func newParsedLogStream(ctx context.Context, logs io.ReadCloser, tty bool, optio
 		pipeWriter:  pipeWriter,
 		levelFilter: options.Level,
 		searchRegex: searchRegex,
+		fieldFilter: fieldFilter,
 		wroteEntry:  &wroteEntry,
 		head:        head,
 		redactor:    redactor,

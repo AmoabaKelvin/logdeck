@@ -126,6 +126,39 @@ func TestAlertRuleCreateEventPayload(t *testing.T) {
 	}
 }
 
+func TestAlertRuleCreateResourcePayload(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	var bodies []map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+		bodies = append(bodies, body)
+		w.WriteHeader(http.StatusCreated)
+		fmt.Fprint(w, `{"id":"r3"}`)
+	}))
+	defer server.Close()
+
+	for _, above := range []string{"1.5g", "90%"} {
+		code := execute(context.Background(), "test", []string{
+			"alerts", "rules", "create", "--type", "resource", "--name", "memory",
+			"--metric", "memory", "--above", above, "--window", "5m", "--url", server.URL,
+		})
+		if code != 0 {
+			t.Fatalf("--above %s: exit code = %d, want 0", above, code)
+		}
+	}
+
+	if b := bodies[0]; b["metric"] != "memory" || b["aboveBytes"] != float64(1.5*(1<<30)) || b["windowSeconds"] != float64(300) {
+		t.Errorf("bytes body = %v", b)
+	}
+	if b := bodies[1]; b["abovePercent"] != float64(90) || b["aboveBytes"] != nil {
+		t.Errorf("percent body = %v", b)
+	}
+}
+
 func TestParseSecondsFlag(t *testing.T) {
 	tests := []struct {
 		value   string
@@ -170,6 +203,11 @@ func TestAlertRuleCreateUsageErrorsBeforeHTTP(t *testing.T) {
 		{"missing type", []string{"--name", "x"}},
 		{"invalid type", []string{"--type", "bogus", "--name", "x"}},
 		{"invalid window", []string{"--type", "log", "--name", "x", "--window", "abc"}},
+		{"restart mixed with die", []string{"--type", "event", "--name", "x", "--events", "die,restart"}},
+		{"metric on log", []string{"--type", "log", "--name", "x", "--min-level", "ERROR", "--metric", "cpu"}},
+		{"resource without metric", []string{"--type", "resource", "--name", "x", "--above", "90%"}},
+		{"resource without above", []string{"--type", "resource", "--name", "x", "--metric", "cpu"}},
+		{"cpu above a size", []string{"--type", "resource", "--name", "x", "--metric", "cpu", "--above", "1g"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -458,10 +496,12 @@ func TestAlertChannelAddUsageErrorsBeforeHTTP(t *testing.T) {
 	defer server.Close()
 
 	cases := [][]string{
-		{"alerts", "channels", "add", "--url", server.URL},                                                 // missing --type
-		{"alerts", "channels", "add", "--type", "gotify", "--endpoint", "http://x", "--url", server.URL},   // missing secret
-		{"alerts", "channels", "add", "--type", "telegram", "--secret", "t", "--url", server.URL},          // missing target
-		{"alerts", "channels", "add", "--type", "pushover", "--endpoint", "http://x", "--url", server.URL}, // invalid type
+		{"alerts", "channels", "add", "--url", server.URL},                                                                     // missing --type
+		{"alerts", "channels", "add", "--type", "gotify", "--endpoint", "http://x", "--url", server.URL},                       // missing secret
+		{"alerts", "channels", "add", "--type", "telegram", "--secret", "t", "--url", server.URL},                              // missing target
+		{"alerts", "channels", "add", "--type", "pushover", "--endpoint", "http://x", "--url", server.URL},                     // invalid type
+		{"alerts", "channels", "add", "--type", "pagerduty", "--url", server.URL},                                              // missing routing key
+		{"alerts", "channels", "add", "--type", "email", "--endpoint", "smtp://x", "--target", "a@x.com", "--url", server.URL}, // missing from
 	}
 
 	for _, args := range cases {

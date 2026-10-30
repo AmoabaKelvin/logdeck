@@ -2,6 +2,31 @@
 
 All notable changes to LogDeck are documented here.
 
+## [0.10.0](https://github.com/AmoabaKelvin/logdeck/compare/v0.9.1...v0.10.0) (2026-10-30)
+
+
+### Features
+
+* **backup:** add backup and restore to Settings ([5e8853c](https://github.com/AmoabaKelvin/logdeck/commit/5e8853c24e15c7151607abe25dd1d29e25240123))
+* **backup:** add backup and restore to Settings ([0f0b5ff](https://github.com/AmoabaKelvin/logdeck/commit/0f0b5ff32e91839c2d526a465c0a957fa05440c2))
+* **containers:** say which platform recreates a managed container ([59e8bba](https://github.com/AmoabaKelvin/logdeck/commit/59e8bba34d4f60fe033c6f902ab94d57ad24c17c))
+* **containers:** say which platform recreates a managed container ([0d8ec38](https://github.com/AmoabaKelvin/logdeck/commit/0d8ec383df85ec32a6cf2c0516e00be0d9b82362))
+* **env:** show what is not deployed yet and confirm saves ([7febb37](https://github.com/AmoabaKelvin/logdeck/commit/7febb37ace4df10d7c3b170207f5c49efe49207c))
+* **env:** show what is not deployed yet and confirm saves ([610d30e](https://github.com/AmoabaKelvin/logdeck/commit/610d30ead8afecb23899e7162c28fc3a4c6c9562))
+* **health:** show collection health and alert when collection fails ([640da63](https://github.com/AmoabaKelvin/logdeck/commit/640da63b95248a26b2e1cc847887d6fa24d0198f))
+* **health:** show collection health and alert when collection fails ([a74fd2d](https://github.com/AmoabaKelvin/logdeck/commit/a74fd2d6b8a77873a7b40d07a57f9a1dbca409c5))
+* **redaction:** mask secrets in logs before storage and delivery ([7dadebc](https://github.com/AmoabaKelvin/logdeck/commit/7dadebcbaf3746c09a732993cfbb56deca11bdc1))
+* **redaction:** mask secrets in logs before storage and delivery ([4c0b700](https://github.com/AmoabaKelvin/logdeck/commit/4c0b7009dd0fbc1b93162177c736223083ffd1c1)), closes [#168](https://github.com/AmoabaKelvin/logdeck/issues/168)
+* **resources:** save managed-container limits in Coolify and Dokploy ([7298b99](https://github.com/AmoabaKelvin/logdeck/commit/7298b99b0f0429bed12d5a8dfa696bc4ea33f64a))
+* **resources:** save managed-container limits in Coolify and Dokploy ([452c82c](https://github.com/AmoabaKelvin/logdeck/commit/452c82c6c76bec8d1d2d6c7c2a15d4af74497201))
+
+
+### Bug Fixes
+
+* **alerts:** use the existing alert triangle icon ([9af28fb](https://github.com/AmoabaKelvin/logdeck/commit/9af28fbd50dcf100674eb38fd51ad185589b9607))
+* **logs:** report omitted sources and partial failures in combined logs ([bd92fca](https://github.com/AmoabaKelvin/logdeck/commit/bd92fcab967d462575e59771f365686b292c737a))
+* **logs:** report omitted sources and partial failures in combined logs ([b285f6a](https://github.com/AmoabaKelvin/logdeck/commit/b285f6ab5b5d83719103a77ef2a7d02cc4a9edcf))
+
 ## [0.9.1](https://github.com/AmoabaKelvin/logdeck/compare/v0.9.0...v0.9.1) (2026-10-17)
 
 

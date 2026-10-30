@@ -103,6 +103,8 @@ func (ar *APIRouter) GetContainers(w http.ResponseWriter, r *http.Request) {
 	for _, containers := range containersMap {
 		allContainers = append(allContainers, containers...)
 	}
+	// Cached results only; any checks due run in the background.
+	ar.registry.Docker().AnnotateImageUpdates(allContainers)
 
 	WriteJsonResponse(w, http.StatusOK, map[string]any{
 		"containers":        allContainers,
@@ -254,6 +256,10 @@ func (ar *APIRouter) GetContainerLogsParsed(w http.ResponseWriter, r *http.Reque
 			return
 		}
 	}
+	if _, err := models.ParseFieldFilter(options.Where); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	if options.Follow {
 		ar.streamParsedLogs(w, r, host, id, options)
@@ -366,6 +372,8 @@ func parseLogOptions(r *http.Request) models.LogOptions {
 	if search := query.Get("search"); search != "" {
 		options.Search = search
 	}
+
+	options.Where = strings.Join(query["where"], " ")
 
 	if level := query.Get("level"); level != "" {
 		options.Level = level

@@ -1,5 +1,6 @@
 import type React from "react";
 import { ChevronDownIcon, ChevronRightIcon } from "@/components/ui/icons";
+import { FIELD_KEY_REGEX } from "@/lib/field-filter";
 import { formatJson } from "@/lib/json-format";
 
 interface CollapsibleJsonProps {
@@ -11,11 +12,60 @@ interface CollapsibleJsonProps {
 		text: string,
 		isCurrentMatch: boolean,
 	) => React.ReactNode;
+	// Called with the dot path and value of a clicked primitive value.
+	onFieldClick?: (key: string, value: string) => void;
 }
 
-function colorizeJson(jsonStr: string): React.ReactNode {
+// A nested key that joins a dot path unambiguously.
+const NESTED_KEY_REGEX = /^[A-Za-z_@][A-Za-z0-9_@-]*$/;
+const KEYED_LINE_REGEX = /^("(?:\\.|[^"\\])*"): (.*)$/;
+
+// For each line of two-space pretty-printed JSON, the filter key of the
+// primitive value on it, or null. Values inside arrays have none.
+function fieldKeys(lines: string[]): (string | null)[] {
+	// The key path of each open object; null where values are not addressable.
+	const stack: (string[] | null)[] = [];
+	return lines.map((line) => {
+		const trimmed = line.trim().replace(/,$/, "");
+		const keyed = KEYED_LINE_REGEX.exec(trimmed);
+		const parent = stack.at(-1);
+		let path: string[] | null = null;
+		let value = trimmed;
+		if (keyed) {
+			value = keyed[2];
+			// SAFETY: the key is a JSON string token written by JSON.stringify.
+			const key = JSON.parse(keyed[1]) as string;
+			const valid =
+				parent?.length === 0
+					? FIELD_KEY_REGEX.test(key)
+					: NESTED_KEY_REGEX.test(key);
+			if (parent && valid) path = [...parent, key];
+		}
+		if (value === "{") {
+			stack.push(stack.length === 0 ? [] : path);
+			return null;
+		}
+		if (value === "[") {
+			stack.push(null);
+			return null;
+		}
+		if (value === "}" || value === "]") {
+			stack.pop();
+			return null;
+		}
+		if (value === "{}" || value === "[]") return null;
+		return path ? path.join(".") : null;
+	});
+}
+
+function colorizeJson(
+	jsonStr: string,
+	onFieldClick?: (key: string, value: string) => void,
+): React.ReactNode {
 	const lines = jsonStr.split("\n");
+	const keys = onFieldClick ? fieldKeys(lines) : [];
 	return lines.map((line, lineIdx) => {
+		const fieldKey = keys[lineIdx] ?? null;
 		const parts: React.ReactNode[] = [];
 		const remaining = line;
 		let partIdx = 0;
@@ -40,30 +90,40 @@ function colorizeJson(jsonStr: string): React.ReactNode {
 					</span>,
 				);
 				parts.push(<span key={partIdx++}>:</span>);
-			} else if (match[2]) {
-				parts.push(
-					<span key={partIdx++} className="text-green-600 dark:text-green-400">
-						{match[2]}
-					</span>,
-				);
-			} else if (match[3]) {
-				parts.push(
-					<span
-						key={partIdx++}
-						className="text-orange-600 dark:text-orange-400"
-					>
-						{match[3]}
-					</span>,
-				);
-			} else if (match[4]) {
-				parts.push(
-					<span
-						key={partIdx++}
-						className="text-purple-600 dark:text-purple-400"
-					>
-						{match[4]}
-					</span>,
-				);
+			} else {
+				const token = match[2] ?? match[3] ?? match[4];
+				const className = match[2]
+					? "text-green-600 dark:text-green-400"
+					: match[3]
+						? "text-orange-600 dark:text-orange-400"
+						: "text-purple-600 dark:text-purple-400";
+				if (fieldKey && onFieldClick) {
+					// SAFETY: a string token is JSON written by JSON.stringify.
+					const value = match[2] ? (JSON.parse(token) as string) : token;
+					parts.push(
+						<button
+							key={partIdx++}
+							type="button"
+							title={`Filter by ${fieldKey}`}
+							onClick={(event) => {
+								event.stopPropagation();
+								onFieldClick(fieldKey, value);
+							}}
+							onKeyDown={(event) => {
+								event.stopPropagation();
+							}}
+							className={`${className} cursor-pointer rounded-sm hover:underline`}
+						>
+							{token}
+						</button>,
+					);
+				} else {
+					parts.push(
+						<span key={partIdx++} className={className}>
+							{token}
+						</span>,
+					);
+				}
 			}
 
 			lastIndex = match.index + match[0].length;
@@ -88,6 +148,7 @@ export function CollapsibleJson({
 	onToggle,
 	isCurrentMatch = false,
 	highlightSearchText,
+	onFieldClick,
 }: CollapsibleJsonProps) {
 	if (!isExpanded) {
 		return (
@@ -132,7 +193,7 @@ export function CollapsibleJson({
 			<pre className="whitespace-pre font-mono leading-relaxed inline">
 				{highlightSearchText
 					? highlightSearchText(prettyJson, isCurrentMatch)
-					: colorizeJson(prettyJson)}
+					: colorizeJson(prettyJson, onFieldClick)}
 			</pre>
 		</div>
 	);

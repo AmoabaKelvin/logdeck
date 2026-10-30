@@ -68,7 +68,7 @@ func TestGroupedEntryIsRedactedInEveryRepresentation(t *testing.T) {
 	)
 
 	redactor := redact.NewStream(redact.Target{Host: "local", Name: "web"})
-	entries, err := parseDockerLogs(bytes.NewReader(raw), false, "", nil, redactor)
+	entries, err := parseDockerLogs(bytes.NewReader(raw), false, "", nil, nil, redactor)
 	if err != nil {
 		t.Fatal(err)
 	}

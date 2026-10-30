@@ -22,6 +22,15 @@ func writeProjectEntries(t *testing.T, s *Store, key genKey, name, project strin
 	}
 }
 
+func mustFieldFilter(t *testing.T, s string) models.FieldFilter {
+	t.Helper()
+	filter, err := models.ParseFieldFilter(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return filter
+}
+
 // searchPages follows cursors to the end and returns every page's entries in
 // ascending order, as a client stitching the pages together would.
 func searchPages(t *testing.T, s *Store, q LogQuery, budget int) []models.LogEntry {
@@ -93,6 +102,8 @@ func TestSearchMergesContainersKeepingEntriesWhole(t *testing.T) {
 	}{
 		{"levels", LogQuery{Levels: []string{"ERROR"}}, []string{want[2], want[3]}},
 		{"search", LogQuery{Search: "REFUSED"}, []string{want[3]}},
+		{"fields", LogQuery{Fields: mustFieldFilter(t, "level=error"), Search: "exception"}, []string{want[2]}},
+		{"negated fields", LogQuery{Fields: mustFieldFilter(t, "level!=info")}, []string{want[2], want[3]}},
 		{"project", LogQuery{Project: "other"}, []string{want[5]}},
 		{"host", LogQuery{Host: "local", Search: "info"}, []string{want[0], want[1], want[4], want[6]}},
 		{"window", LogQuery{Since: at(7), Until: at(8)}, []string{want[5], want[6]}},

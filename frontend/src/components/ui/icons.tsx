@@ -85,6 +85,10 @@ export function FileTextIcon(props: IconProps) {
   return <HugeiconsIcon icon={hugeicons.FileTextIcon} {...props} />
 }
 
+export function GaugeIcon(props: IconProps) {
+  return <HugeiconsIcon icon={hugeicons.DashboardSpeed01Icon} {...props} />
+}
+
 export function HeartPulseIcon(props: IconProps) {
   return <HugeiconsIcon icon={hugeicons.HeartPulseIcon} {...props} />
 }

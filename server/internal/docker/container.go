@@ -55,8 +55,11 @@ type SystemdManagedError struct {
 }
 
 func (e *SystemdManagedError) Error() string {
-	if e.Action == "edit" {
+	switch e.Action {
+	case "edit":
 		return fmt.Sprintf("container is managed by systemd unit %s; change its environment in the Quadlet file, then run \"systemctl restart %s\" on the host (with --user for rootless Podman)", e.Unit, e.Unit)
+	case "update":
+		return fmt.Sprintf("container is managed by systemd unit %s; pull the image on the host, then run \"systemctl restart %s\" (with --user for rootless Podman)", e.Unit, e.Unit)
 	}
 	return fmt.Sprintf("container is managed by systemd unit %s; run \"systemctl %s %s\" on the host instead (with --user for rootless Podman)", e.Unit, e.Action, e.Unit)
 }
@@ -172,7 +175,7 @@ type containerRecreateAPI interface {
 	ContainerRemove(ctx context.Context, containerID string, options container.RemoveOptions) error
 }
 
-// envEditLocks serializes concurrent env edits on the same container,
+// envEditLocks serializes env edits and image updates on the same container,
 // keyed by host+containerID. Package-level so locks survive client hot-swaps.
 var envEditLocks sync.Map
 
@@ -211,12 +214,14 @@ func (c *MultiHostClient) SetEnvVariables(ctx context.Context, hostName, id stri
 	}
 	c.stops.Store(hostName+"|"+inspect.ID, time.Now())
 
-	envs := make([]string, 0, len(envVariables))
+	// Copy the config so we don't mutate the shared InspectResponse in place.
+	config := *inspect.Config
+	config.Env = make([]string, 0, len(envVariables))
 	for key, value := range envVariables {
-		envs = append(envs, key+"="+value)
+		config.Env = append(config.Env, key+"="+value)
 	}
 
-	newID, err := recreateContainerWithEnv(ctx, apiClient, inspect, envs)
+	newID, err := recreateContainer(ctx, apiClient, inspect, &config)
 	if err != nil {
 		return "", nil, err
 	}
@@ -224,10 +229,10 @@ func (c *MultiHostClient) SetEnvVariables(ctx context.Context, hostName, id stri
 	return newID, labels, nil
 }
 
-// recreateContainerWithEnv replaces a container with an identical one whose
-// env is envs. The original is renamed aside (not removed) until the
-// replacement is running, so any failure rolls back to the original.
-func recreateContainerWithEnv(ctx context.Context, apiClient containerRecreateAPI, inspect container.InspectResponse, envs []string) (string, error) {
+// recreateContainer replaces a container with one created from config and the
+// original's host and network settings. The original is renamed aside (not
+// removed) until the replacement is running, so any failure rolls back to it.
+func recreateContainer(ctx context.Context, apiClient containerRecreateAPI, inspect container.InspectResponse, config *container.Config) (string, error) {
 	containerName := strings.TrimPrefix(inspect.Name, "/")
 	wasRunning := inspect.State != nil && inspect.State.Running
 
@@ -264,10 +269,6 @@ func recreateContainerWithEnv(ctx context.Context, apiClient containerRecreateAP
 		return "", err
 	}
 
-	// Copy the config so we don't mutate the shared InspectResponse in place.
-	newConfig := *inspect.Config
-	newConfig.Env = envs
-
 	var networking *network.NetworkingConfig
 	if inspect.NetworkSettings != nil {
 		networking = &network.NetworkingConfig{
@@ -292,7 +293,7 @@ func recreateContainerWithEnv(ctx context.Context, apiClient containerRecreateAP
 
 	resp, err := apiClient.ContainerCreate(
 		ctx,
-		&newConfig,
+		config,
 		hostConfig,
 		networking,
 		nil,
@@ -303,8 +304,8 @@ func recreateContainerWithEnv(ctx context.Context, apiClient containerRecreateAP
 		return "", err
 	}
 
-	// Only start the replacement if the original was running, so editing
-	// env vars on a stopped container leaves it stopped.
+	// Only start the replacement if the original was running, so recreating
+	// a stopped container leaves it stopped.
 	if wasRunning {
 		if err := apiClient.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
 			rollback(resp.ID)
@@ -314,7 +315,7 @@ func recreateContainerWithEnv(ctx context.Context, apiClient containerRecreateAP
 
 	// Replacement is running; removing the renamed original is best-effort.
 	if err := apiClient.ContainerRemove(cleanupCtx, inspect.ID, container.RemoveOptions{}); err != nil {
-		log.Printf("Warning: failed to remove old container %s after env update: %v", tempName, err)
+		log.Printf("Warning: failed to remove old container %s after recreating it: %v", tempName, err)
 	}
 
 	return resp.ID, nil

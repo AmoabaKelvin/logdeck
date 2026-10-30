@@ -24,6 +24,7 @@ import {
 	PanelNote,
 	PanelSection,
 } from "./container-panel-ui";
+import { ImageUpdateSection } from "./image-update-section";
 
 // Compose writes a dozen labels of its own bookkeeping. They are not what
 // anyone opens this panel for, so they wait behind a toggle.
@@ -236,7 +237,10 @@ function LabelsBand({ container }: { container: ContainerInfo }) {
 
 interface ContainerOverviewPanelProps {
 	container: ContainerInfo;
+	containerId: string;
 	inspect: ContainerInspect;
+	isReadOnly: boolean;
+	onContainerRecreated: (newContainerId: string) => void;
 }
 
 /**
@@ -246,7 +250,10 @@ interface ContainerOverviewPanelProps {
  */
 export function ContainerOverviewPanel({
 	container,
+	containerId,
 	inspect,
+	isReadOnly,
+	onContainerRecreated,
 }: ContainerOverviewPanelProps) {
 	const { State, Config } = inspect;
 	const entrypoint = joinCommand(Config.Entrypoint);
@@ -350,6 +357,14 @@ export function ContainerOverviewPanel({
 				</div>
 			</Band>
 
+			<Band>
+				<ImageUpdateSection
+					container={container}
+					containerId={containerId}
+					isReadOnly={isReadOnly}
+					onContainerRecreated={onContainerRecreated}
+				/>
+			</Band>
 			<HealthBand inspect={inspect} />
 			<CollectionBand container={container} />
 			<LabelsBand container={container} />
