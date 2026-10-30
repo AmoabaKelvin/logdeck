@@ -384,7 +384,7 @@ function SilenceEditor({
 								value={draft.at}
 								onChange={(e) => set("at", e.target.value)}
 								aria-label="Window start"
-								className="h-8 w-28"
+								className="h-8 w-36"
 							/>
 							for
 							<Input
