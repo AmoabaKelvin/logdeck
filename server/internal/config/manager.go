@@ -124,7 +124,9 @@ func NewManager() *Manager {
 		envOIDC:     oidcFromEnv(),
 	}
 	m.fileConfig = m.loadFile()
-	if m.fileConfig.Auth != nil && migrateLegacyAdmin(m.fileConfig.Auth) {
+	// Under env auth the file's old admin was ignored, and stays so: moving
+	// it into the users would let a replaced login sign in again.
+	if !envSnapshot.AuthSet && m.fileConfig.Auth != nil && migrateLegacyAdmin(m.fileConfig.Auth) {
 		if err := m.persist(); err != nil {
 			log.Printf("config: failed to persist admin user migration (will retry next start): %v", err)
 		}

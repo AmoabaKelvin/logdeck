@@ -26,7 +26,8 @@ var (
 	errLastAdmin    = errors.New("at least one admin must remain")
 	errEnvUser      = errors.New("this user is defined via environment variable and cannot be changed from the UI")
 
-	errFirstAdminRequired = errors.New("adminUsername and newPassword are required when first enabling auth")
+	errFirstAdminRequired    = errors.New("adminUsername and newPassword are required when first enabling auth")
+	errAdminPasswordRequired = errors.New("adminUsername is not a user; send newPassword to add it as an admin, or manage users under /settings/users")
 )
 
 // userErrorStatus maps user management errors to HTTP status codes.
@@ -34,7 +35,7 @@ func userErrorStatus(err error) int {
 	switch {
 	case errors.Is(err, errUserNotFound):
 		return http.StatusNotFound
-	case errors.Is(err, errFirstAdminRequired):
+	case errors.Is(err, errFirstAdminRequired), errors.Is(err, errAdminPasswordRequired):
 		return http.StatusBadRequest
 	case errors.Is(err, errUserExists), errors.Is(err, errLastAdmin), errors.Is(err, errEnvUser):
 		return http.StatusConflict

@@ -25,7 +25,16 @@ func (ar *APIRouter) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authURL, flow, err := svc.OIDCStart(r.Context(), sameSitePath(r.URL.Query().Get("redirect")))
+	// check is a random value the login page keeps in its own storage and
+	// gets back with the token. A token in a link someone else sent comes
+	// without it, so the page can refuse to sign in as somebody else.
+	q := r.URL.Query()
+	check := q.Get("check")
+	if len(check) > 128 {
+		http.Error(w, "check is too long", http.StatusBadRequest)
+		return
+	}
+	authURL, flow, err := svc.OIDCStart(r.Context(), auth.OIDCReturn{Redirect: sameSitePath(q.Get("redirect")), Check: check})
 	if err != nil {
 		log.Printf("OIDC sign-in could not start: %v", err)
 		redirectToLogin(w, r, "failed")
@@ -69,7 +78,7 @@ func (ar *APIRouter) handleOIDCCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	token, next, err := svc.OIDCFinish(r.Context(), cookie.Value, q.Get("state"), q.Get("code"))
+	token, ret, err := svc.OIDCFinish(r.Context(), cookie.Value, q.Get("state"), q.Get("code"))
 	switch {
 	case errors.Is(err, auth.ErrOIDCDenied):
 		redirectToLogin(w, r, "denied")
@@ -81,10 +90,11 @@ func (ar *APIRouter) handleOIDCCallback(w http.ResponseWriter, r *http.Request) 
 	}
 
 	target := "/login"
-	if next != "" {
-		target += "?redirect=" + url.QueryEscape(next)
+	if ret.Redirect != "" {
+		target += "?redirect=" + url.QueryEscape(ret.Redirect)
 	}
-	http.Redirect(w, r, target+"#oidc_token="+url.QueryEscape(token), http.StatusFound)
+	fragment := url.Values{"oidc_token": {token}, "check": {ret.Check}}
+	http.Redirect(w, r, target+"#"+fragment.Encode(), http.StatusFound)
 }
 
 // redirectToLogin sends the browser to the login page with an error code the

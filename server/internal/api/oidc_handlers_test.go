@@ -156,7 +156,7 @@ func newOIDCTestRouter(t *testing.T, p *fakeOIDCProvider) (http.Handler, *auth.S
 // startOIDC begins a sign-in and returns the provider URL and flow cookie.
 func startOIDC(t *testing.T, router http.Handler) (string, *http.Cookie) {
 	t.Helper()
-	w := oidcRequest(router, "/api/v1/auth/oidc/login?redirect=/containers/abc", nil)
+	w := oidcRequest(router, "/api/v1/auth/oidc/login?redirect=/containers/abc&check=page-check", nil)
 	if w.Code != http.StatusFound {
 		t.Fatalf("login: expected 302, got %d: %s", w.Code, w.Body.String())
 	}
@@ -187,11 +187,15 @@ func TestOIDCSignInMapsGroupsToRoles(t *testing.T) {
 			t.Fatalf("callback: expected 302, got %d: %s", w.Code, w.Body.String())
 		}
 		loc := w.Header().Get("Location")
-		prefix := "/login?redirect=" + url.QueryEscape("/containers/abc") + "#oidc_token="
+		prefix := "/login?redirect=" + url.QueryEscape("/containers/abc") + "#"
 		if !strings.HasPrefix(loc, prefix) {
 			t.Fatalf("callback redirected to %q, want %q...", loc, prefix)
 		}
-		token, _ := url.QueryUnescape(strings.TrimPrefix(loc, prefix))
+		fragment, _ := url.ParseQuery(strings.TrimPrefix(loc, prefix))
+		token := fragment.Get("oidc_token")
+		if fragment.Get("check") != "page-check" {
+			t.Errorf("fragment %q should carry back the check the page sent", loc)
+		}
 
 		me := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
@@ -262,7 +266,8 @@ func TestOIDCSessionEndsWhenSettingsChange(t *testing.T) {
 	authURL, cookie := startOIDC(t, router)
 	state, code := p.authorize(t, authURL, jwt.MapClaims{"preferred_username": "alice", "groups": []string{"dev"}})
 	loc := oidcRequest(router, "/api/v1/auth/oidc/callback?state="+state+"&code="+code, cookie).Header().Get("Location")
-	token, _ := url.QueryUnescape(loc[strings.Index(loc, "#oidc_token=")+len("#oidc_token="):])
+	fragment, _ := url.ParseQuery(loc[strings.Index(loc, "#")+1:])
+	token := fragment.Get("oidc_token")
 
 	claims, err := svc.VerifyToken(token)
 	if err != nil {

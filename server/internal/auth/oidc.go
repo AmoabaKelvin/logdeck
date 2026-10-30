@@ -46,11 +46,19 @@ type oidcClient struct {
 // oidcFlow is what the browser carries from the start of a sign-in to the
 // callback.
 type oidcFlow struct {
-	State    string `json:"state"`
-	Nonce    string `json:"nonce"`
-	Verifier string `json:"verifier"`
-	Redirect string `json:"redirect,omitempty"`
+	State    string     `json:"state"`
+	Nonce    string     `json:"nonce"`
+	Verifier string     `json:"verifier"`
+	Return   OIDCReturn `json:"return"`
 	jwt.RegisteredClaims
+}
+
+// OIDCReturn is what the login page asks to get back when a sign-in
+// finishes: the page to go to next, and a value it kept to recognise a
+// sign-in it started itself.
+type OIDCReturn struct {
+	Redirect string `json:"redirect,omitempty"`
+	Check    string `json:"check,omitempty"`
 }
 
 func newOIDCClient(cfg config.OIDCConfig, s *Service) *oidcClient {
@@ -108,9 +116,9 @@ func (c *oidcClient) oauthConfig(ctx context.Context) (*oauth2.Config, *oidc.Pro
 
 // OIDCStart begins a sign-in. It returns the provider URL to send the browser
 // to and a flow value for a cookie. The callback must present the flow, which
-// binds the sign-in to the browser that started it. redirect is the page to
-// return to afterwards.
-func (s *Service) OIDCStart(ctx context.Context, redirect string) (authURL, flow string, err error) {
+// binds the sign-in to the browser that started it; ret comes back from
+// OIDCFinish.
+func (s *Service) OIDCStart(ctx context.Context, ret OIDCReturn) (authURL, flow string, err error) {
 	if s.oidc == nil {
 		return "", "", ErrOIDCDisabled
 	}
@@ -123,7 +131,7 @@ func (s *Service) OIDCStart(ctx context.Context, redirect string) (authURL, flow
 		State:    rand.Text(),
 		Nonce:    rand.Text(),
 		Verifier: oauth2.GenerateVerifier(),
-		Redirect: redirect,
+		Return:   ret,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(oidcFlowTTL)),
 		},
@@ -139,56 +147,56 @@ func (s *Service) OIDCStart(ctx context.Context, redirect string) (authURL, flow
 // OIDCFinish completes a sign-in on the provider's callback. It checks the
 // state against the flow, exchanges the code with the PKCE verifier, verifies
 // the ID token and its nonce, and maps the user's groups to a role. It
-// returns a session token and the page to return to.
-func (s *Service) OIDCFinish(ctx context.Context, flow, state, code string) (token, redirect string, err error) {
+// returns a session token and what OIDCStart was given to return.
+func (s *Service) OIDCFinish(ctx context.Context, flow, state, code string) (token string, ret OIDCReturn, err error) {
 	if s.oidc == nil {
-		return "", "", ErrOIDCDisabled
+		return "", OIDCReturn{}, ErrOIDCDisabled
 	}
 	var f oidcFlow
 	_, err = jwt.ParseWithClaims(flow, &f, func(t *jwt.Token) (any, error) {
 		return s.oidc.flowKey, nil
 	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithExpirationRequired())
 	if err != nil || state == "" || subtle.ConstantTimeCompare([]byte(state), []byte(f.State)) != 1 {
-		return "", "", errors.New("OIDC sign-in expired or was started in another browser")
+		return "", OIDCReturn{}, errors.New("OIDC sign-in expired or was started in another browser")
 	}
 
 	oauthCfg, provider, err := s.oidc.oauthConfig(ctx)
 	if err != nil {
-		return "", "", err
+		return "", OIDCReturn{}, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	oauthToken, err := oauthCfg.Exchange(ctx, code, oauth2.VerifierOption(f.Verifier))
 	if err != nil {
-		return "", "", fmt.Errorf("OIDC code exchange failed: %w", err)
+		return "", OIDCReturn{}, fmt.Errorf("OIDC code exchange failed: %w", err)
 	}
 	rawIDToken, ok := oauthToken.Extra("id_token").(string)
 	if !ok {
-		return "", "", errors.New("OIDC provider returned no ID token")
+		return "", OIDCReturn{}, errors.New("OIDC provider returned no ID token")
 	}
 	idToken, err := provider.Verifier(&oidc.Config{ClientID: s.oidc.cfg.ClientID}).Verify(ctx, rawIDToken)
 	if err != nil {
-		return "", "", fmt.Errorf("OIDC ID token is invalid: %w", err)
+		return "", OIDCReturn{}, fmt.Errorf("OIDC ID token is invalid: %w", err)
 	}
 	if subtle.ConstantTimeCompare([]byte(idToken.Nonce), []byte(f.Nonce)) != 1 {
-		return "", "", errors.New("OIDC ID token nonce does not match")
+		return "", OIDCReturn{}, errors.New("OIDC ID token nonce does not match")
 	}
 
 	var claims map[string]any
 	if err := idToken.Claims(&claims); err != nil {
-		return "", "", fmt.Errorf("OIDC ID token claims: %w", err)
+		return "", OIDCReturn{}, fmt.Errorf("OIDC ID token claims: %w", err)
 	}
 	username := oidcUsername(claims, idToken.Subject)
 	role := s.oidc.role(stringList(claims[s.oidc.cfg.GroupsClaim]))
 	if role == "" {
-		return "", "", ErrOIDCDenied
+		return "", OIDCReturn{}, ErrOIDCDenied
 	}
 
 	token, err = s.signSession(Claims{Username: username, Role: role, Stamp: s.oidc.stamp, OIDC: true})
 	if err != nil {
-		return "", "", err
+		return "", OIDCReturn{}, err
 	}
-	return token, f.Redirect, nil
+	return token, f.Return, nil
 }
 
 // oidcUsername picks the name a user is shown and audited as: their preferred

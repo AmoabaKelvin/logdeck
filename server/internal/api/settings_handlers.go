@@ -403,6 +403,13 @@ func (ar *APIRouter) UpdateAuth(w http.ResponseWriter, r *http.Request) {
 			authCfg.JWTSecret = secret
 		}
 
+		// Older clients sent a new adminUsername alone to rename the admin.
+		// Renaming is gone, so refuse rather than appear to have done it.
+		if hash == "" && req.AdminUsername != "" &&
+			!slices.ContainsFunc(authCfg.Users, func(u config.User) bool { return u.Username == req.AdminUsername }) {
+			return nil, errAdminPasswordRequired
+		}
+
 		if hash != "" {
 			admin := config.User{Username: req.AdminUsername, PasswordHash: hash, Role: auth.RoleAdmin}
 			if i := slices.IndexFunc(authCfg.Users, func(u config.User) bool { return u.Username == req.AdminUsername }); i >= 0 {

@@ -52,6 +52,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 					},
 				});
 
+				// A sign-in while this check ran (the SSO callback, say) stored a
+				// new token; this answer is about the old one and must not undo it.
+				if (getAuthToken() !== tokenToVerify) {
+					return;
+				}
+
 				if (response.ok) {
 					const data = await response.json();
 					setUser(data.user);

@@ -39,6 +39,11 @@ function fragmentToken(): string | null {
 	return new URLSearchParams(window.location.hash.slice(1)).get("oidc_token");
 }
 
+// A random value kept in this tab while it signs in through the provider. The
+// callback hands it back with the token, so a token in a link someone else
+// sent, which comes without it, is refused instead of signing in as them.
+const OIDC_CHECK_KEY = "logdeck_oidc_check";
+
 export const Route = createFileRoute("/login")({
 	validateSearch: loginSearchSchema.parse,
 	component: LoginPage,
@@ -67,12 +72,24 @@ function LoginPage() {
 	useEffect(() => {
 		const token = fragmentToken();
 		if (!token) return;
+		const check = new URLSearchParams(window.location.hash.slice(1)).get(
+			"check",
+		);
+		const expected = sessionStorage.getItem(OIDC_CHECK_KEY);
+		sessionStorage.removeItem(OIDC_CHECK_KEY);
 		window.history.replaceState(
 			null,
 			"",
 			window.location.pathname + window.location.search,
 		);
 		void (async () => {
+			if (!expected || check !== expected) {
+				setError(
+					"This sign-in link was not started here. Please sign in again.",
+				);
+				setIsLoading(false);
+				return;
+			}
 			try {
 				await loginWithToken(token);
 				navigate({ href: safeRedirect(redirect) });
@@ -84,7 +101,19 @@ function LoginPage() {
 	}, [loginWithToken, navigate, redirect]);
 
 	const shownError = error || (oidcError ? oidcErrorMessage(oidcError) : "");
-	const oidcLoginUrl = `${API_BASE_URL}/api/v1/auth/oidc/login?redirect=${encodeURIComponent(safeRedirect(redirect))}`;
+
+	function startOidc() {
+		// getRandomValues, unlike randomUUID, also works over plain HTTP.
+		const check = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) =>
+			b.toString(16).padStart(2, "0"),
+		).join("");
+		sessionStorage.setItem(OIDC_CHECK_KEY, check);
+		const query = new URLSearchParams({
+			redirect: safeRedirect(redirect),
+			check,
+		});
+		window.location.assign(`${API_BASE_URL}/api/v1/auth/oidc/login?${query}`);
+	}
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -159,8 +188,14 @@ function LoginPage() {
 				</form>
 
 				{oidcEnabled && (
-					<Button variant="outline" className="w-full" asChild>
-						<a href={oidcLoginUrl}>Sign in with SSO</a>
+					<Button
+						type="button"
+						variant="outline"
+						className="w-full"
+						onClick={startOidc}
+						disabled={isLoading}
+					>
+						Sign in with SSO
 					</Button>
 				)}
 

@@ -95,6 +95,37 @@ func TestUpdateAuthFirstAdmin(t *testing.T) {
 	if kept := manager.FileConfigSnapshot().Auth.JWTSecret; kept != first {
 		t.Error("toggling auth should keep the JWT secret")
 	}
+	// Older clients renamed the admin by sending a new name alone.
+	if code := save(`{"enabled":true,"adminUsername":"renamed"}`); code != http.StatusBadRequest {
+		t.Errorf("a new adminUsername without a password: got %d, want 400", code)
+	}
+}
+
+// Env auth ignored the file's old admin before users existed, and still
+// does: an operator who moved to env vars to replace that login must not see
+// it come back.
+func TestLegacyAdminIgnoredUnderEnvAuth(t *testing.T) {
+	envHash, _ := auth.HashPassword("env-password")
+	clearEnvForAuthTest(t)
+	t.Setenv("JWT_SECRET", "env-secret")
+	t.Setenv("ADMIN_USERNAME", "ops")
+	t.Setenv("ADMIN_PASSWORD", envHash)
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("CONFIG_PATH", cfgPath)
+	oldHash, _ := auth.HashPassword("old-password")
+	legacy := `{"auth":{"enabled":true,"jwtSecret":"s","adminUsername":"admin","adminPasswordHash":"` + oldHash + `"}}`
+	if err := os.WriteFile(cfgPath, []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	manager := config.NewManager()
+	svc, err := auth.NewService(manager.FileConfigSnapshot().Auth, nil)
+	if err != nil || svc == nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	if _, err := svc.ValidateCredentials("admin", "old-password"); err == nil {
+		t.Error("the file's old admin must not sign in under env auth")
+	}
 }
 
 // A config written by a version with a single admin keeps its login: the
