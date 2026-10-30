@@ -115,6 +115,11 @@ it("confirms ownership, saves the raw Compose configuration, then requests a sep
 		target: { value: "# keep\nTOKEN=${{project.TOKEN}}\nNEW=value" },
 	});
 	fireEvent.click(screen.getByRole("button", { name: "Save in Dokploy" }));
+	expect(writes).toHaveLength(0);
+	await screen.findByText(
+		/Adds NEW\. This changes the saved configuration of the whole Compose deployment/,
+	);
+	fireEvent.click(screen.getByRole("button", { name: "Save" }));
 	await waitFor(() =>
 		expect(toast.success).toHaveBeenCalledWith(
 			"Environment saved in Dokploy",
@@ -171,6 +176,7 @@ it("keeps the draft but blocks retry and deployment after an uncertain save unti
 		target: { value: "KEY=new" },
 	});
 	fireEvent.click(screen.getByRole("button", { name: "Save in Dokploy" }));
+	fireEvent.click(await screen.findByRole("button", { name: "Save" }));
 	expect((await screen.findByRole("alert")).textContent).toContain(
 		"Save could not be confirmed; reload",
 	);

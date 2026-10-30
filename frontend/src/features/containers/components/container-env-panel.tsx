@@ -43,6 +43,8 @@ interface ContainerEnvPanelProps {
 	isReadOnly?: boolean;
 	systemdUnit?: string;
 	owner?: DeploymentOwner;
+	/** The running container's environment, to show what is not deployed yet. */
+	runningEnv?: string[];
 	onContainerIdChange?: (newContainerId: string) => void;
 }
 
@@ -64,6 +66,7 @@ export function ContainerEnvPanel({
 	isReadOnly: isReadOnlyMode = false,
 	systemdUnit,
 	owner,
+	runningEnv,
 	onContainerIdChange,
 }: ContainerEnvPanelProps) {
 	const isReadOnly = isReadOnlyMode || Boolean(systemdUnit);
@@ -266,6 +269,7 @@ export function ContainerEnvPanel({
 				containerId={containerId}
 				containerHost={containerHost}
 				configuration={configuration}
+				runningEnv={runningEnv}
 				onPlainCompose={() => {
 					writeDokployMapping(containerHost, containerId, PLAIN_COMPOSE);
 					setPlainCompose(true);
@@ -282,6 +286,7 @@ export function ContainerEnvPanel({
 				containerId={containerId}
 				containerHost={containerHost}
 				configuration={configuration}
+				runningEnv={runningEnv}
 				isReadOnly={isReadOnly}
 			/>
 		);

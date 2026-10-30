@@ -79,6 +79,7 @@ function PanelBody({
 			isReadOnly={isReadOnly}
 			systemdUnit={getSystemdUnit(container.labels)}
 			owner={owner}
+			runningEnv={inspect?.Config.Env ?? undefined}
 			onContainerIdChange={onContainerRecreated}
 		/>
 	) : (
