@@ -60,13 +60,15 @@ type alertInfo struct {
 // alertChannel doubles as the create request body: omitempty keeps fields the
 // user didn't set out of the payload, so the server applies its defaults.
 type alertChannel struct {
-	ID      string `json:"id,omitempty"`
-	Type    string `json:"type"`
-	Name    string `json:"name,omitempty"`
-	Enabled bool   `json:"enabled"`
-	URL     string `json:"url,omitempty"`
-	Token   string `json:"token,omitempty"`
-	Target  string `json:"target,omitempty"`
+	ID       string `json:"id,omitempty"`
+	Type     string `json:"type"`
+	Name     string `json:"name,omitempty"`
+	Enabled  bool   `json:"enabled"`
+	URL      string `json:"url,omitempty"`
+	Token    string `json:"token,omitempty"`
+	Target   string `json:"target,omitempty"`
+	Username string `json:"username,omitempty"`
+	From     string `json:"from,omitempty"`
 }
 
 func newAlertsCmd(a *app) *cobra.Command {
@@ -466,7 +468,7 @@ func newAlertHistoryClearCmd(a *app) *cobra.Command {
 func newAlertChannelsCmd(a *app) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "channels",
-		Short: "Manage notification channels (webhook, ntfy, gotify, telegram)",
+		Short: "Manage notification channels (webhook, ntfy, gotify, telegram, slack, discord, email, pagerduty, opsgenie)",
 	}
 	cmd.AddCommand(
 		newAlertChannelsListCmd(a),
@@ -483,6 +485,9 @@ func channelDest(c alertChannel) string {
 			return "-"
 		}
 		return "chat " + c.Target
+	}
+	if c.Type == "email" && c.Target != "" {
+		return c.Target
 	}
 	if c.URL == "" {
 		return "-"
@@ -540,20 +545,20 @@ func newAlertChannelsListCmd(a *app) *cobra.Command {
 
 func newAlertChannelAddCmd(a *app) *cobra.Command {
 	var (
-		channelType, name, channelURL, token, target string
-		disabled                                     bool
-		req                                          alertChannel
+		channelType, name, channelURL, token, target, username, from string
+		disabled                                                     bool
+		req                                                          alertChannel
 	)
 
 	cmd := &cobra.Command{
-		Use:   "add --type <webhook|ntfy|gotify|telegram>",
+		Use:   "add --type <webhook|ntfy|gotify|telegram|slack|discord|email|pagerduty|opsgenie>",
 		Short: "Add a notification channel",
 		Args:  cobra.NoArgs,
 		// Flag validation runs in PreRunE so bad combinations are usage errors
 		// (exit 2) and never reach the server.
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			switch channelType {
-			case "webhook", "ntfy":
+			case "webhook", "ntfy", "slack", "discord":
 				if channelURL == "" {
 					return fmt.Errorf("--endpoint is required for --type %s", channelType)
 				}
@@ -571,19 +576,39 @@ func newAlertChannelAddCmd(a *app) *cobra.Command {
 				if target == "" {
 					return fmt.Errorf("--target is required for --type telegram (the chat id)")
 				}
+			case "email":
+				if channelURL == "" {
+					return fmt.Errorf("--endpoint is required for --type email (smtp://host:587 or smtps://host:465)")
+				}
+				if from == "" {
+					return fmt.Errorf("--from is required for --type email")
+				}
+				if target == "" {
+					return fmt.Errorf("--target is required for --type email (the recipients)")
+				}
+			case "pagerduty":
+				if token == "" {
+					return fmt.Errorf("--secret is required for --type pagerduty (the routing key)")
+				}
+			case "opsgenie":
+				if token == "" {
+					return fmt.Errorf("--secret is required for --type opsgenie (the API key)")
+				}
 			case "":
-				return fmt.Errorf("--type is required (webhook, ntfy, gotify, or telegram)")
+				return fmt.Errorf("--type is required (webhook, ntfy, gotify, telegram, slack, discord, email, pagerduty, or opsgenie)")
 			default:
-				return fmt.Errorf("invalid --type %q (must be webhook, ntfy, gotify, or telegram)", channelType)
+				return fmt.Errorf("invalid --type %q (must be webhook, ntfy, gotify, telegram, slack, discord, email, pagerduty, or opsgenie)", channelType)
 			}
 
 			req = alertChannel{
-				Type:    channelType,
-				Name:    name,
-				Enabled: !disabled,
-				URL:     channelURL,
-				Token:   token,
-				Target:  target,
+				Type:     channelType,
+				Name:     name,
+				Enabled:  !disabled,
+				URL:      channelURL,
+				Token:    token,
+				Target:   target,
+				Username: username,
+				From:     from,
 			}
 			return nil
 		},
@@ -602,11 +627,13 @@ func newAlertChannelAddCmd(a *app) *cobra.Command {
 		}),
 	}
 
-	cmd.Flags().StringVar(&channelType, "type", "", "channel type: webhook, ntfy, gotify, or telegram")
+	cmd.Flags().StringVar(&channelType, "type", "", "channel type: webhook, ntfy, gotify, telegram, slack, discord, email, pagerduty, or opsgenie")
 	cmd.Flags().StringVar(&name, "name", "", "display name for the channel")
-	cmd.Flags().StringVar(&channelURL, "endpoint", "", "webhook/ntfy: full destination URL; gotify: server base URL")
-	cmd.Flags().StringVar(&token, "secret", "", "gotify app token or telegram bot token")
-	cmd.Flags().StringVar(&target, "target", "", "telegram chat id")
+	cmd.Flags().StringVar(&channelURL, "endpoint", "", "webhook/ntfy/slack/discord: full destination URL; gotify: server base URL; email: smtp:// or smtps:// server URL; pagerduty/opsgenie: optional API URL for an EU account")
+	cmd.Flags().StringVar(&token, "secret", "", "gotify app token, telegram bot token, email SMTP password, pagerduty routing key, or opsgenie API key")
+	cmd.Flags().StringVar(&target, "target", "", "telegram chat id, or email recipients (comma-separated)")
+	cmd.Flags().StringVar(&username, "username", "", "email: SMTP username")
+	cmd.Flags().StringVar(&from, "from", "", "email: sender address")
 	cmd.Flags().BoolVar(&disabled, "disabled", false, "add the channel disabled")
 	return cmd
 }

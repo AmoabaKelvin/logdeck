@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -349,19 +350,26 @@ func (ar *APIRouter) DeleteAlertRule(w http.ResponseWriter, r *http.Request) {
 // alertChannelRequest is the client-supplied portion of a channel. Enabled is
 // a pointer so an omitted value can default to true.
 type alertChannelRequest struct {
-	Type    string `json:"type"`
-	Name    string `json:"name"`
-	Enabled *bool  `json:"enabled"`
-	URL     string `json:"url"`
-	Token   string `json:"token"`
-	Target  string `json:"target"`
+	Type     string `json:"type"`
+	Name     string `json:"name"`
+	Enabled  *bool  `json:"enabled"`
+	URL      string `json:"url"`
+	Token    string `json:"token"`
+	Target   string `json:"target"`
+	Username string `json:"username"`
+	From     string `json:"from"`
 }
 
 var validAlertChannelTypes = map[string]bool{
-	"webhook":  true,
-	"ntfy":     true,
-	"gotify":   true,
-	"telegram": true,
+	"webhook":   true,
+	"ntfy":      true,
+	"gotify":    true,
+	"telegram":  true,
+	"slack":     true,
+	"discord":   true,
+	"email":     true,
+	"pagerduty": true,
+	"opsgenie":  true,
 }
 
 // validateHTTPURL rejects empty or non-http(s) URLs with a field-named error.
@@ -381,26 +389,33 @@ func validateHTTPURL(raw string) error {
 // chosen type are cleared so stored channels stay minimal.
 func buildAlertChannel(req alertChannelRequest) (config.AlertChannel, error) {
 	ch := config.AlertChannel{
-		Type:    strings.TrimSpace(req.Type),
-		Name:    strings.TrimSpace(req.Name),
-		Enabled: true,
-		URL:     strings.TrimSpace(req.URL),
-		Token:   strings.TrimSpace(req.Token),
-		Target:  strings.TrimSpace(req.Target),
+		Type:     strings.TrimSpace(req.Type),
+		Name:     strings.TrimSpace(req.Name),
+		Enabled:  true,
+		URL:      strings.TrimSpace(req.URL),
+		Token:    strings.TrimSpace(req.Token),
+		Target:   strings.TrimSpace(req.Target),
+		Username: strings.TrimSpace(req.Username),
+		From:     strings.TrimSpace(req.From),
 	}
 	if req.Enabled != nil {
 		ch.Enabled = *req.Enabled
 	}
 
 	if !validAlertChannelTypes[ch.Type] {
-		return ch, fmt.Errorf("type %q is invalid (must be \"webhook\", \"ntfy\", \"gotify\", or \"telegram\")", ch.Type)
+		return ch, fmt.Errorf("type %q is invalid (must be \"webhook\", \"ntfy\", \"gotify\", \"telegram\", \"slack\", \"discord\", \"email\", \"pagerduty\", or \"opsgenie\")", ch.Type)
 	}
 	if len(ch.Name) > maxAlertChannelNameLen {
 		return ch, fmt.Errorf("name must be at most %d characters", maxAlertChannelNameLen)
 	}
 
+	if ch.Type != "email" {
+		ch.Username = ""
+		ch.From = ""
+	}
+
 	switch ch.Type {
-	case "webhook", "ntfy":
+	case "webhook", "ntfy", "slack", "discord":
 		if err := validateHTTPURL(ch.URL); err != nil {
 			return ch, err
 		}
@@ -422,6 +437,32 @@ func buildAlertChannel(req alertChannelRequest) (config.AlertChannel, error) {
 			return ch, errors.New("target is required for a telegram channel (the chat id)")
 		}
 		ch.URL = ""
+	case "pagerduty", "opsgenie":
+		// The URL is optional and only needed for an EU-hosted account.
+		if ch.URL != "" {
+			if err := validateHTTPURL(ch.URL); err != nil {
+				return ch, err
+			}
+		}
+		if ch.Token == "" {
+			name := "routing key"
+			if ch.Type == "opsgenie" {
+				name = "API key"
+			}
+			return ch, fmt.Errorf("token is required for a %s channel (the %s)", ch.Type, name)
+		}
+		ch.Target = ""
+	case "email":
+		parsed, err := url.Parse(ch.URL)
+		if err != nil || (parsed.Scheme != "smtp" && parsed.Scheme != "smtps") || parsed.Hostname() == "" {
+			return ch, errors.New("url must be an smtp:// or smtps:// server URL for an email channel")
+		}
+		if _, err := mail.ParseAddress(ch.From); err != nil {
+			return ch, errors.New("from must be a valid email address")
+		}
+		if _, err := mail.ParseAddressList(ch.Target); err != nil {
+			return ch, errors.New("target must be one or more comma-separated email addresses")
+		}
 	}
 
 	return ch, nil

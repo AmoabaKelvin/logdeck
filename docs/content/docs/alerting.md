@@ -54,12 +54,19 @@ LogDeck keeps threshold and cooldown state in memory, so it resets when LogDeck 
 
 ## Channels
 
-A channel is one notification destination. LogDeck delivers every fired alert to **every enabled channel**. Add channels under **Settings > Alerts**, or with `logdeck alerts channels add`. Four types are supported:
+A channel is one notification destination. LogDeck delivers every fired alert to **every enabled channel**. Add channels under **Settings > Alerts**, or with `logdeck alerts channels add`. These types are supported:
 
 - **Webhook.** POSTs the JSON payload below to a URL. Slack and Discord incoming webhooks accept this shape unchanged, and so does anything else that takes a JSON POST.
+- **Slack.** POSTs a Block Kit message to a Slack incoming-webhook URL: the rule and reason, then the host, container, sample line and time as fields.
+- **Discord.** POSTs an embed to a Discord webhook URL, with the same fields. Recovery alerts are green, others red.
+- **Email.** Sends a plain-text email over SMTP. The server URL is `smtp://host:port` (port 587 by default; LogDeck upgrades with STARTTLS when the server offers it) or `smtps://host:port` (TLS from the start, port 465 by default). Username and password are optional, and LogDeck only sends a password over TLS or to localhost. `From` is one address and `To` takes a comma-separated list.
+- **PagerDuty.** Sends an Events API v2 `trigger` with a routing key (the integration key of an Events API v2 integration). When a collection rule recovers, LogDeck sends a `resolve` for the same incident. For an EU account, set the URL to `https://events.eu.pagerduty.com/v2/enqueue`.
+- **Opsgenie.** Creates an alert with an API key from an API integration, and closes it when a collection rule recovers. For an EU account, set the URL to `https://api.eu.opsgenie.com`.
 - **ntfy.** POSTs the alert text as a plain-text body to a topic URL (for example `https://ntfy.sh/mytopic`), with a `Title` header.
 - **Gotify.** POSTs `{title, message, priority}` to `<server URL>/message` using the channel's app token.
 - **Telegram.** Calls the Bot API `sendMessage` with the alert text, using a bot token and a chat id.
+
+PagerDuty and Opsgenie group alerts into one incident per rule, host and container: LogDeck uses `logdeck:<rule id>:<host>:<container>` as the PagerDuty dedup key and the Opsgenie alias. Event and log rules have no recovery, so their incidents stay open until you resolve them.
 
 The webhook payload:
 
@@ -88,7 +95,7 @@ The webhook payload:
 
 > **Why it works with Slack and Discord unchanged.** LogDeck sends the same human-readable summary twice, as `text` and as `content`. Slack (and Mattermost) render `text`. Discord renders `content`. So a Slack or Discord incoming-webhook URL works as-is, with no proxy or template in between. Receivers that want to parse the alert get the full alert object in the body.
 
-Each delivery has a 10-second timeout. LogDeck retries network errors and 5xx responses once after 5 seconds, and treats other statuses as permanent. The alert history records one summary result per fired alert. It succeeds only if every enabled channel accepted the alert, and otherwise names the channel that failed.
+Each delivery has a 10-second timeout. LogDeck retries network errors and 5xx responses once after 5 seconds, and treats other statuses as permanent. For email, a 4xx SMTP reply is retried and a 5xx reply is permanent. The alert history records one summary result per fired alert. It succeeds only if every enabled channel accepted the alert, and otherwise names the channel that failed.
 
 Use **Test** next to a channel in Settings, or `logdeck alerts channels test <id>`, to verify it. With no channels configured, rules still evaluate and fire. LogDeck records the alerts in history and delivers them nowhere.
 
@@ -107,6 +114,10 @@ The CLI covers everything in the Alerts settings card, so you can script the sam
 logdeck alerts channels add --type webhook --name slack \
   --endpoint https://hooks.slack.com/services/...
 logdeck alerts channels add --type telegram --secret "$TELEGRAM_BOT_TOKEN" --target "$CHAT_ID"
+logdeck alerts channels add --type email --endpoint smtp://smtp.example.com:587 \
+  --username alerts --secret "$SMTP_PASSWORD" \
+  --from alerts@example.com --target "oncall@example.com, ops@example.com"
+logdeck alerts channels add --type pagerduty --secret "$PAGERDUTY_ROUTING_KEY"
 logdeck alerts channels list
 logdeck alerts channels test <channel-id>
 

@@ -19,15 +19,19 @@ type AlertsConfig struct {
 }
 
 // AlertChannel is one notification destination. A fired alert is delivered to
-// every enabled channel.
+// every enabled channel. Type is "webhook", "ntfy", "gotify", "telegram",
+// "slack", "discord", "email", "pagerduty" or "opsgenie". URL and Token hold
+// every type's secrets, which backups without credentials strip.
 type AlertChannel struct {
-	ID      string `json:"id"`
-	Type    string `json:"type"` // "webhook" | "ntfy" | "gotify" | "telegram"
-	Name    string `json:"name,omitempty"`
-	Enabled bool   `json:"enabled"`
-	URL     string `json:"url,omitempty"`    // webhook: full URL; ntfy: topic URL; gotify: server base URL
-	Token   string `json:"token,omitempty"`  // gotify: app token; telegram: bot token
-	Target  string `json:"target,omitempty"` // telegram: chat_id
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Name     string `json:"name,omitempty"`
+	Enabled  bool   `json:"enabled"`
+	URL      string `json:"url,omitempty"`      // webhook/slack/discord: webhook URL; ntfy: topic URL; gotify: server base URL; email: smtp:// or smtps:// server; pagerduty/opsgenie: optional API URL
+	Token    string `json:"token,omitempty"`    // gotify: app token; telegram: bot token; email: SMTP password; pagerduty: routing key; opsgenie: API key
+	Target   string `json:"target,omitempty"`   // telegram: chat_id; email: comma-separated recipients
+	Username string `json:"username,omitempty"` // email: SMTP username
+	From     string `json:"from,omitempty"`     // email: sender address
 }
 
 type AlertRule struct {

@@ -3,7 +3,16 @@ import { API_BASE_URL } from "@/types/api";
 
 const ENDPOINT = `${API_BASE_URL}/api/v1/alerts/channels`;
 
-export type AlertChannelType = "webhook" | "ntfy" | "gotify" | "telegram";
+export type AlertChannelType =
+	| "webhook"
+	| "ntfy"
+	| "gotify"
+	| "telegram"
+	| "slack"
+	| "discord"
+	| "email"
+	| "pagerduty"
+	| "opsgenie";
 
 export interface AlertChannel {
 	id: string;
@@ -13,6 +22,8 @@ export interface AlertChannel {
 	url?: string;
 	token?: string;
 	target?: string;
+	username?: string;
+	from?: string;
 }
 
 export interface AlertChannelsResponse {

@@ -25,7 +25,8 @@ func LevelSeverity(level LogLevel) int {
 	}
 }
 
-// Alert is one fired-alert history entry.
+// Alert is one fired-alert history entry. Recovered marks the notice sent
+// when a fired condition clears.
 type Alert struct {
 	ID            string          `json:"id"`
 	RuleID        string          `json:"ruleId"`
@@ -38,6 +39,7 @@ type Alert struct {
 	Sample        string          `json:"sample,omitempty"`
 	Count         int             `json:"count"`
 	Suppressed    int             `json:"suppressed"`
+	Recovered     bool            `json:"recovered,omitempty"`
 	FiredAt       string          `json:"firedAt"`
 	Delivery      *DeliveryResult `json:"delivery,omitempty"`
 }
