@@ -743,7 +743,7 @@ function RuleEditor({
 									}))
 								}
 							>
-								<SelectTrigger size="sm" className="w-24" aria-label="Metric">
+								<SelectTrigger size="sm" className="w-28" aria-label="Metric">
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
@@ -759,7 +759,7 @@ function RuleEditor({
 								value={form.aboveValue}
 								onChange={(e) => set("aboveValue", e.target.value)}
 								aria-label="Limit"
-								className="h-8 w-20 text-center tabular-nums"
+								className="h-8 w-16 text-center tabular-nums"
 							/>
 							{form.metric === "memory" ? (
 								<Select
