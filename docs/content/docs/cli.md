@@ -186,7 +186,7 @@ logdeck env web
 
 ### `resources`
 
-Show or update a container's resource limits and restart policy. Memory accepts human units (`512m`, `1.5g`). CPUs accept fractions.
+Show or update a container's resource limits and restart policy. Memory accepts human units (`512m`, `1.5g`). CPUs accept fractions. For a Coolify application, `set` saves the limits in Coolify without applying them; deploy from the container page.
 
 ```bash
 logdeck resources web
