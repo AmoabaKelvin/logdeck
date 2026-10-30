@@ -68,6 +68,8 @@ export function AuditLogSection() {
 	const total = data?.total ?? 0;
 	const totalPages = Math.max(1, Math.ceil(total / pageSize));
 	const startIndex = (page - 1) * pageSize;
+	// A refresh can shrink the results and leave the page past the end.
+	if (data && page > totalPages) setPage(totalPages);
 	const filtered =
 		text.actor !== "" ||
 		text.action !== "" ||
