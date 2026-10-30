@@ -101,6 +101,7 @@ func registerMCPTools(s *mcp.Server, a *app) []string {
 		Tail      int    `json:"tail,omitempty" jsonschema:"lines from the end of the logs (default 100, max 500)"`
 		Level     string `json:"level,omitempty" jsonschema:"filter by level: TRACE, DEBUG, INFO, WARN, ERROR, FATAL, PANIC"`
 		Search    string `json:"search,omitempty" jsonschema:"filter by regular expression"`
+		Where     string `json:"where,omitempty" jsonschema:"filter JSON or logfmt lines by field: space-separated key=value or key!=value terms that must all match; nested keys as a.b; double-quote values with spaces"`
 		Since     string `json:"since,omitempty" jsonschema:"only logs after this time (RFC3339 or relative: 30s, 15m, 2h, 1d)"`
 		Until     string `json:"until,omitempty" jsonschema:"only logs before this time (RFC3339 or relative)"`
 	}
@@ -111,6 +112,9 @@ func registerMCPTools(s *mcp.Server, a *app) []string {
 			return nil, nil, err
 		}
 		f := logFlags{tail: clampTail(in.Tail), level: in.Level, search: in.Search, since: in.Since, until: in.Until}
+		if in.Where != "" {
+			f.where = []string{in.Where}
+		}
 		query, err := f.query(time.Now())
 		if err != nil {
 			return nil, nil, err
@@ -128,7 +132,8 @@ func registerMCPTools(s *mcp.Server, a *app) []string {
 	register(tool)
 
 	type searchLogsInput struct {
-		Search string `json:"search" jsonschema:"regular expression to search for across containers"`
+		Search string `json:"search,omitempty" jsonschema:"regular expression to search for across containers"`
+		Where  string `json:"where,omitempty" jsonschema:"filter JSON or logfmt lines by field: space-separated key=value or key!=value terms that must all match; nested keys as a.b; double-quote values with spaces"`
 		Host   string `json:"host,omitempty" jsonschema:"only search containers on this host"`
 		Level  string `json:"level,omitempty" jsonschema:"filter by level: TRACE, DEBUG, INFO, WARN, ERROR, FATAL, PANIC"`
 		Since  string `json:"since,omitempty" jsonschema:"only logs after this time (RFC3339 or relative; default 15m)"`
@@ -136,6 +141,9 @@ func registerMCPTools(s *mcp.Server, a *app) []string {
 	}
 	tool = &mcp.Tool{Name: "search_logs", Description: "Search recent logs of every running container, merged by timestamp. sources reports each container as ok, no_matches, removed or failed; incomplete is true when any container could not be searched.", Annotations: readOnlyAnnot()}
 	mcp.AddTool(s, tool, func(ctx context.Context, _ *mcp.CallToolRequest, in searchLogsInput) (*mcp.CallToolResult, any, error) {
+		if in.Search == "" && in.Where == "" {
+			return nil, nil, fmt.Errorf("specify search, where, or both")
+		}
 		if _, err := regexp.Compile(in.Search); err != nil {
 			return nil, nil, fmt.Errorf("invalid regex %q: %v", in.Search, err)
 		}
@@ -165,7 +173,12 @@ func registerMCPTools(s *mcp.Server, a *app) []string {
 			return mcpJSON(map[string]any{"logs": []logEntry{}, "count": 0})
 		}
 		query := url.Values{}
-		query.Set("search", in.Search)
+		if in.Search != "" {
+			query.Set("search", in.Search)
+		}
+		if in.Where != "" {
+			query.Set("where", in.Where)
+		}
 		query.Set("tail", strconv.Itoa(clampTail(in.Tail)))
 		if sinceValue != "" {
 			query.Set("since", sinceValue)
@@ -288,6 +301,7 @@ func registerMCPTools(s *mcp.Server, a *app) []string {
 		Project   string `json:"project,omitempty" jsonschema:"Compose project name"`
 		Search    string `json:"search,omitempty" jsonschema:"text or regex to match"`
 		Regex     bool   `json:"regex,omitempty" jsonschema:"treat search as a regular expression"`
+		Where     string `json:"where,omitempty" jsonschema:"filter JSON or logfmt lines by field: space-separated key=value or key!=value terms that must all match; nested keys as a.b; double-quote values with spaces"`
 		Levels    string `json:"levels,omitempty" jsonschema:"comma-separated levels (e.g. ERROR,WARN)"`
 		Since     string `json:"since,omitempty" jsonschema:"only logs after this time (RFC3339 or relative)"`
 		Until     string `json:"until,omitempty" jsonschema:"only logs before this time (RFC3339 or relative)"`
@@ -311,6 +325,9 @@ func registerMCPTools(s *mcp.Server, a *app) []string {
 		}
 		if in.Regex {
 			query.Set("regex", "true")
+		}
+		if in.Where != "" {
+			query.Set("where", in.Where)
 		}
 		if in.Levels != "" {
 			query.Set("levels", strings.ToUpper(in.Levels))

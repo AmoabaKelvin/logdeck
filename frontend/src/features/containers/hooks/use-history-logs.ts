@@ -51,6 +51,7 @@ interface UseHistoryLogsOptions {
 	levels: Set<LogLevel>;
 	search: string;
 	regex: boolean;
+	where: string;
 }
 
 export function useHistoryLogs({
@@ -62,6 +63,7 @@ export function useHistoryLogs({
 	levels,
 	search,
 	regex,
+	where,
 }: UseHistoryLogsOptions) {
 	const levelList = useMemo(() => Array.from(levels).sort(), [levels]);
 
@@ -77,6 +79,7 @@ export function useHistoryLogs({
 			levelList.join(","),
 			search,
 			regex,
+			where,
 		],
 		queryFn: async ({ pageParam }) => {
 			const page = await getHistoryLogs({
@@ -87,6 +90,7 @@ export function useHistoryLogs({
 				levels: levelList,
 				search: search || undefined,
 				regex,
+				where: where || undefined,
 				limit: HISTORY_PAGE_SIZE,
 				cursor: pageParam || undefined,
 			});

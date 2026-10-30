@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/AmoabaKelvin/logdeck/internal/docker"
+	"github.com/AmoabaKelvin/logdeck/internal/models"
 )
 
 // maxAggregateTargets bounds how many container streams one aggregate
@@ -33,6 +34,10 @@ func (ar *APIRouter) GetAggregatedLogs(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("invalid search pattern: %v", err), http.StatusBadRequest)
 			return
 		}
+	}
+	if _, err := models.ParseFieldFilter(options.Where); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	if options.Follow {

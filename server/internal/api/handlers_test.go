@@ -51,7 +51,7 @@ func TestParseLogOptionsLevel(t *testing.T) {
 // booleans, the string passthroughs, and the tail clamp.
 func TestParseLogOptions(t *testing.T) {
 	r := httptest.NewRequest("GET",
-		"/api/v1/containers/abc/logs/parsed?follow=true&timestamps=1&details=true&stdout=false&stderr=true&since=2026-01-01T00:00:00Z&until=2026-01-02T00:00:00Z&search=oops&tail=50", nil)
+		"/api/v1/containers/abc/logs/parsed?follow=true&timestamps=1&details=true&stdout=false&stderr=true&since=2026-01-01T00:00:00Z&until=2026-01-02T00:00:00Z&search=oops&where=a%3D1&where=b!%3D2&tail=50", nil)
 	opts := parseLogOptions(r)
 
 	if !opts.Follow {
@@ -74,6 +74,9 @@ func TestParseLogOptions(t *testing.T) {
 	}
 	if opts.Search != "oops" {
 		t.Errorf("Search = %q, want oops", opts.Search)
+	}
+	if opts.Where != "a=1 b!=2" {
+		t.Errorf("Where = %q, want the where params joined", opts.Where)
 	}
 	if opts.Tail != "50" {
 		t.Errorf("Tail = %q, want 50", opts.Tail)
@@ -129,6 +132,16 @@ func TestGetContainerLogsParsedInvalidSearch(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "invalid search pattern") {
 		t.Fatalf("expected an invalid-search message, got %q", w.Body.String())
+	}
+}
+
+func TestGetContainerLogsParsedInvalidFieldFilter(t *testing.T) {
+	ar := &APIRouter{}
+	w := httptest.NewRecorder()
+	ar.GetContainerLogsParsed(w, httptest.NewRequest(http.MethodGet,
+		"/api/v1/containers/abc/logs/parsed?host=prod&where=level", nil))
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "invalid field filter") {
+		t.Fatalf("expected 400 for a bad field filter, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

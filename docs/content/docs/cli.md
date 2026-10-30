@@ -130,7 +130,10 @@ Read or follow the parsed logs of a container, or of a whole Compose stack with 
 logdeck logs web --tail 200 --level ERROR --since 1h
 logdeck logs web --follow
 logdeck logs --stack myapp --search "timeout" --since 30m
+logdeck logs api --where level=error --where user_id=42
 ```
+
+`--where` filters JSON and logfmt lines by field: `key=value` or `key!=value`, with nested JSON keys as `a.b`. Repeat it to add terms; every term must match. See [field filters](/docs/features#field-filters).
 
 ### `grep`
 
@@ -138,7 +141,10 @@ Search the recent logs of every running container across all hosts, merged by ti
 
 ```bash
 logdeck grep "connection refused" --since 1h --level ERROR
+logdeck grep --where http.status=500 --since 1h
 ```
+
+`grep` takes the same `--where` as `logs`. With `--where`, the regex is optional.
 
 An empty result still exits 0. Stdout stays empty, so pipelines stay clean, and a one-line hint goes to stderr: `no running containers to search` or `no matches in <N> containers since <time>`. `<N>` counts only the containers that were actually searched.
 

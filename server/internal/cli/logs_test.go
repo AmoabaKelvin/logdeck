@@ -9,7 +9,7 @@ func TestLogFlagsQuery(t *testing.T) {
 	now := time.Date(2026, 1, 2, 12, 0, 0, 0, time.UTC)
 
 	t.Run("defaults and normalization", func(t *testing.T) {
-		f := logFlags{tail: 100, level: "error", search: "boom", since: "15m"}
+		f := logFlags{tail: 100, level: "error", search: "boom", where: []string{"level=error", "user.id=42"}, since: "15m"}
 		q, err := f.query(now)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -23,6 +23,9 @@ func TestLogFlagsQuery(t *testing.T) {
 		if q.Get("search") != "boom" {
 			t.Errorf("search = %q, want boom", q.Get("search"))
 		}
+		if where := q["where"]; len(where) != 2 || where[0] != "level=error" || where[1] != "user.id=42" {
+			t.Errorf("where = %q, want each --where passed on", where)
+		}
 		if q.Get("since") != "2026-01-02T11:45:00Z" {
 			t.Errorf("since = %q, want the resolved relative time", q.Get("since"))
 		}
@@ -34,7 +37,7 @@ func TestLogFlagsQuery(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		for _, key := range []string{"level", "search", "since", "until"} {
+		for _, key := range []string{"level", "search", "where", "since", "until"} {
 			if _, ok := q[key]; ok {
 				t.Errorf("expected %q to be omitted, got %q", key, q.Get(key))
 			}

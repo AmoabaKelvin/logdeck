@@ -225,6 +225,30 @@ describe("LogViewer streaming lifecycle", () => {
 	});
 });
 
+describe("LogViewer live field filter", () => {
+	it("hides live lines whose fields do not match", async () => {
+		server.logs.mockReturnValue([
+			{ level: "ERROR", message: '{"user":{"id":42}}' },
+			{ level: "ERROR", message: '{"user":{"id":7}}' },
+			{ level: "INFO", message: "user.id=42 logged in" },
+		]);
+		await act(async () => {
+			render(<Harness />);
+			await drainMicrotasks();
+		});
+
+		await act(async () => {
+			fireEvent.change(screen.getByRole("searchbox", { name: "Search logs" }), {
+				target: { value: "user.id=42" },
+			});
+		});
+
+		expect(screen.getByText("2 of 3")).toBeTruthy();
+		// Field terms filter; they are not text to step through.
+		expect(screen.queryByText("No matches")).toBeNull();
+	});
+});
+
 describe("LogViewer shortcut help overlay", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
@@ -484,6 +508,43 @@ describe("LogViewer history mode", () => {
 		expect(server.historySearch.mock.calls[1][0].get("cursor")).toBe(
 			"cursor-1",
 		);
+	});
+
+	it("filters by a clicked JSON value on the server", async () => {
+		server.historySearch.mockReturnValue({
+			logs: [
+				{
+					level: "ERROR",
+					message: '{"msg":"checkout failed","user":{"id":42},"tags":["a"]}',
+					containerName: "api",
+				},
+			],
+			count: 1,
+		});
+
+		await renderSearch({ history: {}, historyOnly: true });
+		await act(async () => {
+			fireEvent.click(screen.getByRole("button", { name: "Expand JSON" }));
+		});
+		// Array items have no dot path, so only scalar object values are offered.
+		expect(screen.queryByRole("button", { name: '"a"' })).toBeNull();
+		await act(async () => {
+			fireEvent.click(screen.getByRole("button", { name: "42" }));
+		});
+
+		const search = screen.getByRole("searchbox", { name: "Search logs" });
+		expect(search).toHaveProperty("value", "user.id=42");
+		await act(async () => {
+			fireEvent.change(search, {
+				target: { value: 'user.id=42 msg="checkout failed" timeout' },
+			});
+			vi.advanceTimersByTime(300);
+		});
+		await settleQueries();
+
+		const params = server.historySearch.mock.calls.at(-1)?.[0];
+		expect(params?.get("where")).toBe('user.id=42 msg="checkout failed"');
+		expect(params?.get("search")).toBe("timeout");
 	});
 });
 

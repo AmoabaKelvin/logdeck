@@ -43,6 +43,9 @@ import { LOG_SOURCES, type LogViewState } from "./use-log-view-state";
 interface StreamControls {
 	viewState: LogViewState;
 	searchParsed: SearchParsed;
+	// The search box minus its key=value terms: what match navigation and
+	// "Hide matching lines" act on.
+	freeText: string;
 	searchInputRef: React.RefObject<HTMLInputElement | null>;
 	excludeMatches: boolean;
 	setExcludeMatches: (value: boolean) => void;
@@ -140,6 +143,7 @@ function StepNav({
 export function LogToolbar({
 	viewState,
 	searchParsed,
+	freeText,
 	searchInputRef,
 	excludeMatches,
 	setExcludeMatches,
@@ -195,7 +199,7 @@ export function LogToolbar({
 
 	// History searches server-side: the non-matching lines were never sent, so
 	// there is nothing to step through.
-	const showMatchNav = !isHistory && Boolean(searchText) && !excludeMatches;
+	const showMatchNav = !isHistory && Boolean(freeText) && !excludeMatches;
 
 	return (
 		<div className="flex flex-wrap items-center gap-2">
@@ -229,7 +233,9 @@ export function LogToolbar({
 					type="search"
 					name="log-search"
 					aria-label="Search logs"
-					placeholder={useRegex ? "Search by regex…" : "Search logs…"}
+					placeholder={
+						useRegex ? "Search by regex…" : "Search logs or key=value…"
+					}
 					value={searchText}
 					onChange={(e) => setSearchText(e.target.value)}
 					className={`pr-11 pl-8 ${
@@ -443,7 +449,7 @@ export function LogToolbar({
 								</Button>
 							</div>
 						</DropdownMenuItem>
-						{!isHistory && searchText && (
+						{!isHistory && freeText && (
 							<DropdownMenuItem
 								onClick={() => setExcludeMatches(!excludeMatches)}
 							>

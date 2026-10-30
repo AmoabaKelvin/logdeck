@@ -230,3 +230,49 @@ func BenchmarkSearchUnderIngest(b *testing.B) {
 		b.Fatal(err)
 	}
 }
+
+// A field filter against the plain text search for the same value. The
+// fixture's cache lines are logfmt and its slow-query lines JSON.
+func BenchmarkSearchFields(b *testing.B) {
+	s := benchStore(b)
+	fields := func(filter string) models.FieldFilter {
+		parsed, err := models.ParseFieldFilter(filter)
+		if err != nil {
+			b.Fatal(err)
+		}
+		return parsed
+	}
+	for _, bench := range []struct {
+		name string
+		q    LogQuery
+		walk bool // follow cursors to the end of history
+	}{
+		{"first-page/text", LogQuery{Container: "svc-7", Search: "orders"}, false},
+		{"first-page/field", LogQuery{Container: "svc-7", Fields: fields("table=orders")}, false},
+		{"all-history/text", LogQuery{Search: "user:1531"}, true},
+		{"all-history/field", LogQuery{Fields: fields("key=user:1531")}, true},
+		{"all-history/field-number", LogQuery{Fields: fields("ms=1532")}, true},
+	} {
+		b.Run(bench.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				q, found := bench.q, 0
+				for {
+					page, err := s.Query(context.Background(), q)
+					if err != nil {
+						b.Fatal(err)
+					}
+					found += len(page.Entries)
+					if !bench.walk || page.NextCursor == "" {
+						break
+					}
+					q.Cursor = page.NextCursor
+				}
+				if found == 0 {
+					b.Fatal("no matches")
+				}
+				b.ReportMetric(float64(found), "matches")
+			}
+		})
+	}
+}

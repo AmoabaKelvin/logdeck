@@ -36,6 +36,11 @@ import { useDebouncedValue } from "@/features/containers/hooks/use-debounced-val
 import type { HistoryScope } from "@/features/containers/api/get-history";
 import { useHistoryLogs } from "@/features/containers/hooks/use-history-logs";
 import { useHistoryStatus } from "@/features/containers/hooks/use-history-status";
+import {
+	type FieldTerm,
+	formatFieldTerm,
+	splitFieldTerms,
+} from "@/lib/field-filter";
 import { mapRawRangeToGroupedRange } from "./animated-range";
 import {
 	downloadLogs,
@@ -55,6 +60,10 @@ import { LOG_LEVELS, type LogViewState } from "./use-log-view-state";
 // Typing in the search box changes a server query key in history mode; wait
 // for the user to pause before spending a round-trip.
 const HISTORY_SEARCH_DEBOUNCE_MS = 300;
+
+// History filters fields server-side; a stable empty list keeps the live
+// filter memo from rerunning there.
+const NO_FIELD_TERMS: FieldTerm[] = [];
 
 function sourceKey(source: { host: string; containerId: string }): string {
 	return `${source.host}~${source.containerId}`;
@@ -120,6 +129,7 @@ export function LogViewer({
 	const {
 		source,
 		searchText,
+		setSearchText,
 		useRegex,
 		selectedLevels,
 		showTimestamps,
@@ -149,8 +159,18 @@ export function LogViewer({
 	const historyScrollAnchorRef = useRef<number | null>(null);
 	const previousHistoryCountRef = useRef(0);
 
+	// key=value terms filter by field; the rest of the box searches as before.
+	// A regex is taken whole.
+	const { terms: fieldTerms, text: freeText } = useMemo(
+		() =>
+			useRegex
+				? { terms: NO_FIELD_TERMS, text: searchText }
+				: splitFieldTerms(searchText),
+		[searchText, useRegex],
+	);
+
 	const { searchParsed, highlightSearchText } = useLogSearch(
-		searchText,
+		freeText,
 		useRegex,
 	);
 
@@ -290,9 +310,13 @@ export function LogViewer({
 	// stay client-side instead: "exclude matches" needs the non-matching lines
 	// the server would drop, and an invalid regex has nothing to send.
 	const historySearch =
-		excludeMatches || (useRegex && searchParsed.error) ? "" : searchText;
+		excludeMatches || (useRegex && searchParsed.error) ? "" : freeText;
 	const debouncedHistorySearch = useDebouncedValue(
 		historySearch,
+		HISTORY_SEARCH_DEBOUNCE_MS,
+	);
+	const debouncedHistoryWhere = useDebouncedValue(
+		fieldTerms.map((term) => term.raw).join(" "),
 		HISTORY_SEARCH_DEBOUNCE_MS,
 	);
 
@@ -314,6 +338,7 @@ export function LogViewer({
 		levels: selectedLevels,
 		search: debouncedHistorySearch,
 		regex: useRegex,
+		where: debouncedHistoryWhere,
 	});
 
 	// A failure with nothing on screen already explains itself through the empty
@@ -391,9 +416,10 @@ export function LogViewer({
 		logs,
 		selectedLevels,
 		excludeMatches,
-		searchText,
+		searchText: freeText,
 		useRegex,
 		searchParsed,
+		fieldTerms: isHistory ? NO_FIELD_TERMS : fieldTerms,
 	});
 
 	// History filters by level server-side, so the loaded entries only ever show
@@ -437,7 +463,12 @@ export function LogViewer({
 		searchMatchSet,
 		currentMatchIndex,
 		setCurrentMatchIndex,
-	} = useSearchMatches({ filteredLogs, searchText, useRegex, searchParsed });
+	} = useSearchMatches({
+		filteredLogs,
+		searchText: freeText,
+		useRegex,
+		searchParsed,
+	});
 
 	const handleRefresh = () => {
 		// A new since changes the fetch inputs, which refetches on its own.
@@ -514,6 +545,18 @@ export function LogViewer({
 				toast.error("Failed to copy to clipboard");
 			});
 	};
+
+	// Clicking a value in an expanded JSON line filters by it. Regex mode takes
+	// the box whole, so it offers no clickable values.
+	const addFieldFilter = useCallback(
+		(key: string, value: string) => {
+			const term = formatFieldTerm(key, value);
+			const current = searchText.trim();
+			if (splitFieldTerms(current).terms.some((t) => t.raw === term)) return;
+			setSearchText(current ? `${current} ${term}` : term);
+		},
+		[searchText, setSearchText],
+	);
 
 	const toggleJsonExpanded = useCallback((index: number) => {
 		setExpandedJsonRows((prev) => {
@@ -979,6 +1022,7 @@ export function LogViewer({
 		<LogToolbar
 			viewState={viewState}
 			searchParsed={searchParsed}
+			freeText={freeText}
 			searchInputRef={searchInputRef}
 			excludeMatches={excludeMatches}
 			setExcludeMatches={setExcludeMatches}
@@ -1073,6 +1117,7 @@ export function LogViewer({
 			highlightSearchText={highlightSearchText}
 			onLogClick={handleLogClick}
 			onToggleJson={toggleJsonExpanded}
+			onAddFieldFilter={useRegex ? undefined : addFieldFilter}
 			onCopyEntry={handleCopyLog}
 			allSelectedArePinned={allSelectedArePinned}
 			onCopySelected={handleCopySelected}
