@@ -458,7 +458,7 @@ volumes:
   logdeck-data:
 ```
 
-The server exposes `GET /api/v1/healthz` for an external health check. The runtime image is minimal and ships no `curl` or `wget`, so a compose `healthcheck` has to come from outside the container.
+The server exposes `GET /api/v1/healthz` for an external health check. The runtime image is minimal and ships no `curl` or `wget`, so a compose `healthcheck` has to come from outside the container. The endpoint answers 200 while the server runs; `GET /api/v1/healthz?strict=1` answers 503 while collection is degraded (a host, a container or log storage is failing), see [Collection health](/docs/alerting#collection-health).
 
 ## Read-only mode
 

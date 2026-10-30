@@ -34,9 +34,10 @@ type AlertRule struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Enabled bool   `json:"enabled"`
-	Type    string `json:"type"` // "event" | "log"
+	Type    string `json:"type"` // "event" | "log" | "collection"
 
 	// Targeting: all optional, empty = match-all in that dimension, ANDed.
+	// Collection rules target hosts only.
 	Hosts      []string `json:"hosts,omitempty"`
 	Containers []string `json:"containers,omitempty"` // exact container names
 	Projects   []string `json:"projects,omitempty"`   // compose projects
@@ -48,7 +49,8 @@ type AlertRule struct {
 	MinLevel string `json:"minLevel,omitempty"`
 	Pattern  string `json:"pattern,omitempty"` // RE2
 
-	// Rate + cooldown (both rule types).
+	// Rate + cooldown (event and log rules). A collection rule uses
+	// WindowSeconds as how long a failure must last before it fires.
 	Threshold       int    `json:"threshold"`
 	WindowSeconds   int    `json:"windowSeconds,omitempty"`
 	CooldownSeconds int    `json:"cooldownSeconds,omitempty"`

@@ -1,4 +1,4 @@
-LogDeck alerts you when a container dies, gets OOM-killed, fails its health check, or starts logging errors.
+LogDeck alerts you when a container dies, gets OOM-killed, fails its health check, or starts logging errors, and when LogDeck itself can no longer collect logs.
 
 LogDeck already watches every container's events and log stream. Alert rules match on what it sees and deliver each fired alert to every enabled notification channel. Manage rules and channels under **Settings > Alerts** in the UI, or with `logdeck alerts` from the terminal.
 
@@ -23,9 +23,25 @@ Log rules match lines as they stream. A rule can set a minimum level, a regex pa
 
 Log rules always see the original line, even with [log redaction](/docs/log-redaction) on, so redaction never changes which alerts fire. The sample line an alert records and sends is redacted.
 
+### Collection rules
+
+Collection rules tell you when LogDeck itself stops seeing what happens, so a quiet dashboard is not mistaken for a quiet system. A collection rule fires when one of these has lasted for the rule's delay (`windowSeconds`, at least 60 seconds, 60 by default):
+
+- LogDeck can't list a host's containers.
+- A container's logs can't be tailed, or the log store can't read them back from the engine.
+- Log storage writes fail, or the disk under the database has less free space than the store may still grow to.
+
+LogDeck sends one alert per host, however many of its containers are affected, and a single alert for log storage. When the failure clears it sends a recovery alert ("collection recovered"). The cooldown is the least time between two failure alerts for the same host. LogDeck checks once a minute, so a failure is reported up to a minute after its delay has passed.
+
+A container whose logging driver can't be read (`syslog`, `awslogs`, `none`, ...) and a container excluded from storage are deliberate gaps, not failures, and never fire. A container that is attached but writes nothing is also fine: it is quiet, not broken.
+
+LogDeck can't send anything while it is stopped. To catch that, point an external monitor at `GET /api/v1/healthz?strict=1`; see [Collection health](#collection-health).
+
 ## Targeting
 
 You can narrow every rule by **hosts**, **container names** (exact match), and **Compose projects**. LogDeck combines the dimensions with AND, and a dimension you leave empty matches everything. A rule with no targeting at all watches every container on every host.
+
+Collection rules take hosts only. Log storage failures reach every collection rule, whatever hosts it names.
 
 ## Rate thresholds and cooldowns
 
@@ -109,6 +125,9 @@ logdeck alerts rules create --type log --name error-spike \
 logdeck alerts rules create --type log --name upstream-timeouts \
   --pattern "upstream (timed out|timeout)" --project checkout
 
+# Tell me when LogDeck has been unable to collect from prod for 5 minutes
+logdeck alerts rules create --type collection --name collection --host prod --window 5m
+
 # Inspect and manage
 logdeck alerts rules                  # list, with targets and triggers
 logdeck alerts rules disable <id>     # or enable / delete
@@ -116,6 +135,19 @@ logdeck alerts history --limit 20
 ```
 
 `--host`, `--container`, and `--project` are repeatable and narrow the rule. `--window` and `--cooldown` accept durations (`60s`, `5m`) or bare seconds. See the [CLI reference](/docs/cli#alerts) for every flag.
+
+## Collection health
+
+**Settings > Collection health** shows, per host, whether LogDeck can list it, and every container whose logs are not being collected normally, with the reason and since when. Each container's overview has a **Log collection** section too. Two paths are reported separately:
+
+- **Live** is the background tail that feeds log alerts and stored logs. "Collecting" means LogDeck is attached; a container can be collecting and still write nothing. LogDeck only tails in the background for stored logs and log alert rules, so with both off there is no live state to show.
+- **Stored** is the log store reading history back from the engine, after a restart or to fill a gap. "Catching up" means a read is pending, and the stored history has a gap until it finishes.
+
+The page also shows log storage: whether writes succeed, free disk space, lines dropped when the writer fell behind (each one is re-read from the engine), the write queue, and how many containers still have a gap to re-read.
+
+For automation, `GET /api/v1/health/collection` returns the same report as JSON, and `GET /api/v1/healthz` carries `"collection": "ok"` or `"degraded"`. `/api/v1/healthz` always answers 200 while the server runs, so a container liveness check never restarts LogDeck over an unreachable host. Add `?strict=1` to get a 503 while collection is degraded, for an uptime monitor that only reads status codes. LogDeck can't alert while it is stopped, so an external monitor on this endpoint is the only way to learn that it is.
+
+Collection state lives in memory and starts empty on every restart.
 
 ## Storage
 

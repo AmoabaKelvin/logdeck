@@ -22,6 +22,7 @@ import (
 
 	"github.com/AmoabaKelvin/logdeck/internal/config"
 	"github.com/AmoabaKelvin/logdeck/internal/docker"
+	"github.com/AmoabaKelvin/logdeck/internal/health"
 	"github.com/AmoabaKelvin/logdeck/internal/logstream"
 	"github.com/AmoabaKelvin/logdeck/internal/models"
 
@@ -153,6 +154,10 @@ type Store struct {
 	// lifecycle pass. The periodic sync remains the safety net, but recoverable
 	// gaps should not sit pending until its next tick.
 	reconcileCh chan struct{}
+
+	// health records backfill, write and disk outcomes; nil records nothing.
+	// Set by Start before any goroutine reads it.
+	health *health.Tracker
 }
 
 // DBPath returns the log database path that sits next to the config file
@@ -262,9 +267,25 @@ func Open(path string, limits Limits) (*Store, error) {
 }
 
 // Start runs the ingestion, lifecycle, and retention loops until ctx is
-// cancelled. Use Wait to block until everything has drained.
-func (s *Store) Start(ctx context.Context, hub Hub, provider DockerProvider) {
+// cancelled, recording collection health into tracker. Use Wait to block
+// until everything has drained.
+func (s *Store) Start(ctx context.Context, hub Hub, provider DockerProvider, tracker *health.Tracker) {
+	s.health = tracker
 	s.start(ctx, hub, func() Engine { return provider.Docker() })
+}
+
+// Health returns the store's recorded write and disk state plus the queue
+// counters read now: lines dropped since startup, the writer's backlog, and
+// how many generations still have a dropped-line gap to re-read.
+func (s *Store) Health() health.StorageHealth {
+	h := s.health.Storage()
+	h.DroppedLines = s.drops.Load()
+	h.Backlog = len(s.ingestCh)
+	h.BacklogCap = cap(s.ingestCh)
+	s.mu.Lock()
+	h.Recovering = len(s.gaps)
+	s.mu.Unlock()
+	return h
 }
 
 // start is the injectable form of Start; tests supply fakes.

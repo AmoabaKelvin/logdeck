@@ -29,6 +29,7 @@ func (h *Hub) spawnTail(sub *subscription, key containerKey, name string, labels
 	ctx, cancel := context.WithCancel(h.runCtx)
 	t := &tail{cancel: cancel}
 	sub.tails[key] = t
+	h.health.TailStarted(key.host, key.id, name)
 
 	h.tailWg.Add(1)
 	go func() {
@@ -66,6 +67,8 @@ func (h *Hub) runTail(
 		})
 	}
 
+	attached := func() { h.health.TailAttached(key.host, key.id) }
+
 	delay := h.retryBaseDelay
 	for attempt := 1; ; attempt++ {
 		var attachment sync.Once
@@ -85,9 +88,12 @@ func (h *Hub) runTail(
 			})
 			emit(entry)
 		}
-		err := client.openTail(ctx, key.host, key.id, sub.opts, attemptEmit)
+		err := client.openTail(ctx, key.host, key.id, sub.opts, attached, attemptEmit)
 		if ctx.Err() != nil {
 			return
+		}
+		if err != nil {
+			h.health.TailFailed(key.host, key.id, err)
 		}
 		// A clean EOF after die/destroy means Docker drained the followed
 		// response. Without a lifecycle boundary, preserve the existing retry

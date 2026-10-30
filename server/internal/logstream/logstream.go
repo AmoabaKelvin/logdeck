@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/docker"
+	"github.com/AmoabaKelvin/logdeck/internal/health"
 	"github.com/AmoabaKelvin/logdeck/internal/models"
 )
 
@@ -118,6 +119,9 @@ type Hub struct {
 	retryBaseDelay time.Duration
 	retryMaxDelay  time.Duration
 
+	// health records host listings and tail outcomes; nil records nothing.
+	health *health.Tracker
+
 	// State below is owned exclusively by the run loop goroutine.
 	runCtx       context.Context
 	subs         map[*subscription]struct{}
@@ -130,9 +134,11 @@ type Hub struct {
 }
 
 // New creates a hub that tails containers through the provider's current
-// Docker client set.
-func New(provider DockerProvider) *Hub {
-	return newHub(func() engineClient { return dockerAdapter{c: provider.Docker()} })
+// Docker client set, recording what it observes into tracker.
+func New(provider DockerProvider, tracker *health.Tracker) *Hub {
+	h := newHub(func() engineClient { return dockerAdapter{c: provider.Docker()} })
+	h.health = tracker
+	return h
 }
 
 // newHub builds a hub over an arbitrary client source; tests inject fakes
@@ -362,6 +368,9 @@ func (h *Hub) handleEvent(ev docker.EngineEvent) {
 		}
 	case "die", "destroy":
 		key := containerKey{host: ev.Host, id: ev.ContainerID}
+		if base == "destroy" {
+			h.health.ContainerRemoved(key.host, key.id)
+		}
 		for sub := range h.subs {
 			if current, ok := sub.tails[key]; ok {
 				current.draining.Store(true)
@@ -411,6 +420,7 @@ func (h *Hub) handleList(res listResult) {
 		log.Printf("logstream: container listing failed: %v", res.err)
 		return
 	}
+	h.health.ObserveListing(res.snapshot, res.hostErrs)
 	failedHosts := make(map[string]bool, len(res.hostErrs))
 	for _, hostErr := range res.hostErrs {
 		log.Printf("logstream: listing containers on host %s failed: %v", hostErr.HostName, hostErr.Err)

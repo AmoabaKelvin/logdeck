@@ -69,7 +69,7 @@ export function AlertsSection() {
 	return (
 		<SettingsSection
 			title="Alerts"
-			description="Get told when a container dies, runs out of memory, turns unhealthy or logs errors. Every enabled channel receives each alert, and the history keeps a record."
+			description="Get told when a container dies, runs out of memory, turns unhealthy or logs errors, or when LogDeck itself can't collect logs. Every enabled channel receives each alert, and the history keeps a record."
 		>
 			<div className="space-y-8">
 				<ChannelsBlock />
@@ -433,7 +433,8 @@ function renderTarget(rule: AlertRule): string {
 	if (rule.projects?.length) {
 		parts.push(`projects: ${rule.projects.join(", ")}`);
 	}
-	return parts.length > 0 ? parts.join(" · ") : "all containers";
+	if (parts.length > 0) return parts.join(" · ");
+	return rule.type === "collection" ? "all hosts" : "all containers";
 }
 
 function renderTrigger(rule: AlertRule): string {
@@ -441,6 +442,8 @@ function renderTrigger(rule: AlertRule): string {
 	if (rule.type === "log") {
 		if (rule.minLevel) parts.push(`level >= ${rule.minLevel}`);
 		if (rule.pattern) parts.push(`pattern /${rule.pattern}/`);
+	} else if (rule.type === "collection") {
+		parts.push(`failing for ${(rule.windowSeconds ?? 60) / 60} min`);
 	} else {
 		parts.push((rule.events ?? []).join(", "));
 	}
@@ -630,6 +633,12 @@ function DeliveryStatus({ entry }: { entry: AlertHistoryEntry }) {
 	);
 }
 
+// Collection alerts belong to a host, or to the log store when they have none.
+function alertTarget(entry: AlertHistoryEntry): string {
+	if (entry.containerName) return `${entry.containerName}@${entry.host}`;
+	return entry.host || "log storage";
+}
+
 function HistoryBlock() {
 	const { data, isLoading, error } = useAlertHistory(HISTORY_LIMIT);
 	const clearMutation = useClearAlertHistory();
@@ -674,7 +683,7 @@ function HistoryBlock() {
 							<THead>
 								<Th>Time</Th>
 								<Th>Rule</Th>
-								<Th>Container</Th>
+								<Th>Target</Th>
 								<Th>Reason</Th>
 								<Th>Delivery</Th>
 							</THead>
@@ -686,9 +695,9 @@ function HistoryBlock() {
 										</Td>
 										<Td className="font-medium">{entry.ruleName}</Td>
 										<Td className="font-mono text-muted-foreground">
-											{entry.containerName}@{entry.host}
+											{alertTarget(entry)}
 										</Td>
-										<Td className="text-muted-foreground">
+										<Td className="text-muted-foreground" title={entry.sample}>
 											{entry.reason}
 											{entry.suppressed > 0 && (
 												<span className="text-muted-foreground/70">
