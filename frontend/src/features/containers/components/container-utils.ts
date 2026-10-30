@@ -483,6 +483,39 @@ export function isCoolifyManaged(labels?: Record<string, string>): boolean {
 	return labels?.["coolify.managed"] === "true";
 }
 
+export interface DeploymentOwner {
+	name: "Coolify" | "Dokploy" | "Swarm" | "Compose";
+	/** Where a change has to be made to outlive the container. */
+	source: string;
+}
+
+/**
+ * What recreates this container from its own configuration, so a change made
+ * to the container alone is lost on the next deployment. Standalone
+ * containers have none.
+ */
+export function getDeploymentOwner(
+	container: Pick<ContainerInfo, "labels" | "platform">,
+): DeploymentOwner | undefined {
+	const labels = container.labels;
+	if (isCoolifyManaged(labels)) return { name: "Coolify", source: "Coolify" };
+	if (container.platform === "dokploy") {
+		return { name: "Dokploy", source: "Dokploy" };
+	}
+	if (labels?.["com.docker.swarm.service.name"]) {
+		return { name: "Swarm", source: "the service definition" };
+	}
+	// Not getComposeProject: pods and hand-set stacks are not recreated by
+	// Compose.
+	if (
+		labels?.["com.docker.compose.project"] ||
+		labels?.["io.podman.compose.project"]
+	) {
+		return { name: "Compose", source: "the Compose file" };
+	}
+	return undefined;
+}
+
 /** One decimal only where it carries something: "7.8 GB" earns it, "800.0 KB" does not. */
 export function formatBytes(bytes: number): string {
 	// An em dash is for a reading we do not have; zero is a reading. Returning

@@ -24,6 +24,7 @@ import {
 import { getContainerEnvVariables } from "../api/get-container-env-variables";
 import { updateContainerEnvVariables } from "../api/update-container-env-variables";
 import { PanelError, PanelLoading, PanelNote } from "./container-panel-ui";
+import type { DeploymentOwner } from "./container-utils";
 import { isSecretKey, parseEnvFile } from "./env-file";
 import { EnvUpdateConfirmDialog } from "./env-update-confirm-dialog";
 import { EnvUploadPreviewDialog } from "./env-upload-preview-dialog";
@@ -41,6 +42,9 @@ interface ContainerEnvPanelProps {
 	containerHost: string;
 	isReadOnly?: boolean;
 	systemdUnit?: string;
+	owner?: DeploymentOwner;
+	/** The running container's environment, to show what is not deployed yet. */
+	runningEnv?: string[];
 	onContainerIdChange?: (newContainerId: string) => void;
 }
 
@@ -61,6 +65,8 @@ export function ContainerEnvPanel({
 	containerHost,
 	isReadOnly: isReadOnlyMode = false,
 	systemdUnit,
+	owner,
+	runningEnv,
 	onContainerIdChange,
 }: ContainerEnvPanelProps) {
 	const isReadOnly = isReadOnlyMode || Boolean(systemdUnit);
@@ -263,6 +269,7 @@ export function ContainerEnvPanel({
 				containerId={containerId}
 				containerHost={containerHost}
 				configuration={configuration}
+				runningEnv={runningEnv}
 				onPlainCompose={() => {
 					writeDokployMapping(containerHost, containerId, PLAIN_COMPOSE);
 					setPlainCompose(true);
@@ -279,6 +286,7 @@ export function ContainerEnvPanel({
 				containerId={containerId}
 				containerHost={containerHost}
 				configuration={configuration}
+				runningEnv={runningEnv}
 				isReadOnly={isReadOnly}
 			/>
 		);
@@ -302,6 +310,17 @@ export function ContainerEnvPanel({
 				className="hidden"
 			/>
 
+			{/* Coolify and Dokploy containers get their platform's editor, so
+			    the owner here is Compose. */}
+			{owner && !isReadOnly && !configuration?.plain_compose && (
+				<div className="mb-3">
+					<PanelNote>
+						Saving recreates this container directly. {owner.name} recreates it
+						from {owner.source} on the next deployment, so persist the change
+						there too.
+					</PanelNote>
+				</div>
+			)}
 			{configuration?.plain_compose && (
 				<div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
 					<PanelNote>

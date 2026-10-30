@@ -34,6 +34,8 @@ The confirmed deployment is remembered in the browser for the workload (its Swar
 
 The editor works with raw environment text, retaining comments, quoted multiline values, and shared or vault references. Values are initially hidden. Editing changes service-level configuration, not shared project/environment variables or the Compose definition.
 
+Saving first shows which variables it adds, changes and removes. For an application, the editor also compares the saved values with the running container and lists those that are not deployed yet. Shared references and multiline values are not compared. Compose deployments are not compared, because a variable reaches a container only where the Compose file references it.
+
 | Resource         | Save operation                | Settings retained                                                             | Apply operation                          |
 | ---------------- | ----------------------------- | ----------------------------------------------------------------------------- | ---------------------------------------- |
 | Application      | `application.saveEnvironment` | `buildArgs`, `buildSecrets`, `createEnvFile`, including nullable build fields | `application.deploy`                     |
