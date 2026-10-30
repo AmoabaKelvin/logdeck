@@ -335,6 +335,13 @@ func parseHistoryQuery(w http.ResponseWriter, r *http.Request) (logstore.LogQuer
 		}
 	}
 
+	fields, err := models.ParseFieldFilter(strings.Join(params["where"], " "))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return logstore.LogQuery{}, false
+	}
+	query.Fields = fields
+
 	if regex := params.Get("regex"); regex != "" {
 		parsed, err := strconv.ParseBool(regex)
 		if err != nil {

@@ -25,6 +25,7 @@ type logFlags struct {
 	tail   int
 	level  string
 	search string
+	where  []string
 	since  string
 	until  string
 	follow bool
@@ -34,10 +35,13 @@ func (f *logFlags) register(cmd *cobra.Command) {
 	cmd.Flags().IntVar(&f.tail, "tail", 100, "number of lines from the end of the logs (max 10000)")
 	cmd.Flags().StringVar(&f.level, "level", "", "filter by log level (TRACE, DEBUG, INFO, WARN, ERROR, FATAL, PANIC)")
 	cmd.Flags().StringVar(&f.search, "search", "", "filter by regex")
+	cmd.Flags().StringArrayVar(&f.where, "where", nil, whereUsage)
 	cmd.Flags().StringVar(&f.since, "since", "", "only logs after this time (RFC3339 or relative: 30s, 15m, 2h, 1d)")
 	cmd.Flags().StringVar(&f.until, "until", "", "only logs before this time (RFC3339 or relative: 30s, 15m, 2h, 1d)")
 	cmd.Flags().BoolVarP(&f.follow, "follow", "f", false, "stream new logs continuously")
 }
+
+const whereUsage = "filter JSON or logfmt lines by field: key=value or key!=value, nested keys as a.b (repeatable, all must match)"
 
 // query converts flags to log endpoint query params, resolving relative times.
 func (f *logFlags) query(now time.Time) (url.Values, error) {
@@ -62,6 +66,9 @@ func (f *logFlags) query(now time.Time) (url.Values, error) {
 	}
 	if f.search != "" {
 		query.Set("search", f.search)
+	}
+	for _, where := range f.where {
+		query.Add("where", where)
 	}
 	return query, nil
 }

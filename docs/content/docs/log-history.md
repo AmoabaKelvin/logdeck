@@ -45,7 +45,7 @@ On a container's log page, the toolbar shows a **Live | History** toggle wheneve
 
 In History mode:
 
-- **The server applies search, level filter, and time range** across everything stored for that container, not just the lines loaded in the browser. Search accepts plain text or a regex.
+- **The server applies search, field filters, level filter, and time range** across everything stored for that container, not just the lines loaded in the browser. Search accepts plain text or a regex, and `key=value` [field filters](/docs/features#field-filters).
 - Results page backwards from the newest line. A **Load older** button fetches the previous page (500 lines) until you reach the start of stored history.
 - Timestamps, wrapping, line selection, pinning, copying, and downloading (JSON or TXT) work the same as in Live mode.
 - Streaming controls (Stream, Pause, tail size, auto-scroll) are hidden, since there is nothing to stream.
@@ -137,6 +137,7 @@ curl -H "Authorization: Bearer ldk_..." \
 | `host`      | Only containers on this host.                 |
 | `search`    | Text to search for.                           |
 | `regex`     | Boolean. Treat `search` as a regex.           |
+| `where`     | Field filter, e.g. `level=error user.id=42`.  |
 | `levels`    | Comma-separated levels, including `UNKNOWN`.  |
 | `since`     | Start time, RFC3339.                          |
 | `until`     | End time, RFC3339.                            |

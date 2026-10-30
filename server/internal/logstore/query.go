@@ -54,7 +54,7 @@ type StoredContainer struct {
 
 // LogQuery selects stored lines. Every field is optional: Container, Host,
 // and Project narrow which containers are read (none reads them all), and
-// Since/Until, Levels, and Search filter their lines.
+// Since/Until, Levels, Search, and Fields filter their lines.
 type LogQuery struct {
 	Host      string
 	Container string // logical container name
@@ -66,6 +66,7 @@ type LogQuery struct {
 	Regex     bool // Search is an RE2 pattern rather than a substring
 	Limit     int  // clamped to [1, MaxQueryLimit]; 0 means DefaultQueryLimit
 	Cursor    string
+	Fields    models.FieldFilter // key=value terms on structured lines
 }
 
 // LogPage is one page of stored lines. Entries are ascending by timestamp;
@@ -361,18 +362,19 @@ func generations(ctx context.Context, conn *sql.Conn, host, name, project string
 	return generations, rows.Err()
 }
 
-// matcher applies the level and search filters to grouped entries, with the
-// same semantics as the live view: case-insensitive, over the parsed message
-// rather than the raw line, so History finds what Live finds and a search for a
-// timestamp-like string cannot match the engine's timestamp prefix.
+// matcher applies the level, search and field filters to grouped entries, with
+// the same semantics as the live view: case-insensitive, over the parsed
+// message rather than the raw line, so History finds what Live finds and a
+// search for a timestamp-like string cannot match the engine's timestamp prefix.
 type matcher struct {
 	levels []int
 	needle string         // lowercased substring search
 	regex  *regexp.Regexp // case-insensitive pattern search
+	fields models.FieldFilter
 }
 
 func newMatcher(q LogQuery) (matcher, error) {
-	m := matcher{levels: levelSeverities(q.Levels)}
+	m := matcher{levels: levelSeverities(q.Levels), fields: q.Fields}
 	switch {
 	case q.Search == "":
 	case q.Regex:
@@ -388,7 +390,7 @@ func newMatcher(q LogQuery) (matcher, error) {
 }
 
 func (m matcher) active() bool {
-	return len(m.levels) > 0 || m.needle != "" || m.regex != nil
+	return len(m.levels) > 0 || m.needle != "" || m.regex != nil || len(m.fields) > 0
 }
 
 func (m matcher) matches(entry models.LogEntry) bool {
@@ -397,11 +399,15 @@ func (m matcher) matches(entry models.LogEntry) bool {
 	}
 	switch {
 	case m.regex != nil:
-		return m.regex.MatchString(entry.Message)
+		if !m.regex.MatchString(entry.Message) {
+			return false
+		}
 	case m.needle != "":
-		return strings.Contains(strings.ToLower(entry.Message), m.needle)
+		if !strings.Contains(strings.ToLower(entry.Message), m.needle) {
+			return false
+		}
 	}
-	return true
+	return m.fields.Match(entry.Message)
 }
 
 // levelSeverities maps level names to the severities stored on each row,

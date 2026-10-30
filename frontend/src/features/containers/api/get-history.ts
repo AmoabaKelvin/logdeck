@@ -53,6 +53,8 @@ export interface HistoryLogsParams extends HistoryScope {
 	levels?: LogLevel[];
 	search?: string;
 	regex?: boolean;
+	// Field terms (key=value), filtered server-side.
+	where?: string;
 	limit?: number;
 	cursor?: string;
 }
@@ -181,6 +183,7 @@ export async function getHistoryLogs({
 	levels,
 	search,
 	regex,
+	where,
 	limit,
 	cursor,
 }: HistoryLogsParams): Promise<HistoryLogsPage> {
@@ -195,6 +198,7 @@ export async function getHistoryLogs({
 		query.set("search", search);
 		if (regex) query.set("regex", "true");
 	}
+	if (where) query.set("where", where);
 	if (limit !== undefined) query.set("limit", String(limit));
 	if (cursor) query.set("cursor", cursor);
 

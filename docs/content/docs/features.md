@@ -63,10 +63,27 @@ LogDeck can mask secrets in log lines before it stores them or serves them anywh
 Search and filters narrow a log view down to the lines you need.
 
 - Full-text search with match navigation, in highlight or exclude mode
+- Field filters on JSON and logfmt lines, such as `level=error user_id=42`
 - Log level filter: TRACE, DEBUG, INFO, WARN, ERROR, FATAL, PANIC, and unclassified lines
 - Regex matching
 - Time range presets and a custom calendar range
 - Color-coded log levels, collapsible JSON lines, and line pinning
+
+### Field filters
+
+A `key=value` term in the search box keeps only the lines whose field has that value. `key!=value` keeps the lines where it doesn't, including lines without the field. Terms are separated by spaces and must all match. Anything in the box that isn't a term is searched as text, as before.
+
+```text
+level=error user_id=42 path=/checkout
+http.status=500 msg="payment declined"
+```
+
+- A JSON line is looked up by key, or by dot path for nested objects (`http.status`). A key that itself contains dots, such as `log.level`, is matched first.
+- Any other line is read as logfmt: its `key=value` and `key="quoted value"` pairs count, even inside a sentence.
+- Values compare case-insensitively. A number matches a JSON number by value, so `42` matches `42.0`. Quote a value that contains spaces.
+- In an expanded JSON line, click a value to add it as a filter.
+- Live view filters in the browser. History, stack history, and the Search page filter on the server.
+- Regex mode takes the whole box as a pattern, so field terms work in plain-text mode only.
 
 ## Log export
 
