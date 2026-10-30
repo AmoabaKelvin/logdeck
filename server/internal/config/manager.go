@@ -22,6 +22,7 @@ type FileConfig struct {
 	APITokens    []APIToken          `json:"apiTokens,omitempty"`
 	Alerts       *AlertsConfig       `json:"alerts,omitempty"`
 	LogStore     *LogStoreConfig     `json:"logStore,omitempty"`
+	Backup       *BackupConfig       `json:"backup,omitempty"`
 }
 
 // APIToken represents a stored API access token. Only the SHA256 hash of the
@@ -86,12 +87,18 @@ type ConfigSources struct {
 	Auth         Source `json:"auth"`
 }
 
+// FilePath returns the config file path: CONFIG_PATH, or /data/config.json.
+// Everything else LogDeck keeps on disk lives in the same directory.
+func FilePath() string {
+	if p := os.Getenv("CONFIG_PATH"); p != "" {
+		return p
+	}
+	return "/data/config.json"
+}
+
 // NewManager creates a config manager that loads from env vars and an optional file.
 func NewManager() *Manager {
-	filePath := os.Getenv("CONFIG_PATH")
-	if filePath == "" {
-		filePath = "/data/config.json"
-	}
+	filePath := FilePath()
 
 	envSnapshot := EnvSnapshot{
 		DockerHostsSet: os.Getenv("DOCKER_HOSTS") != "",

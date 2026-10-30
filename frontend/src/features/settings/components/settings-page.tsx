@@ -6,6 +6,7 @@ import { useSettings } from "../hooks/use-settings";
 import { AlertsSection } from "./alerts-section";
 import { ApiTokensSection } from "./api-tokens-section";
 import { AuthSection } from "./auth-section";
+import { BackupsSection } from "./backups-section";
 import { DokployHostsSection } from "./dokploy-hosts-section";
 import { CoolifyHostsSection } from "./coolify-hosts-section";
 import { DockerHostsSection } from "./docker-hosts-section";
@@ -13,7 +14,13 @@ import { LogStorageSection } from "./log-storage-section";
 import { ReadOnlySection } from "./read-only-section";
 import { ErrorNote } from "./settings-ui";
 
-const SETTINGS_TABS = ["connections", "access", "alerts", "storage"] as const;
+const SETTINGS_TABS = [
+	"connections",
+	"access",
+	"alerts",
+	"storage",
+	"backups",
+] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number];
 
 const TAB_LABELS = {
@@ -21,6 +28,7 @@ const TAB_LABELS = {
 	access: "Access",
 	alerts: "Alerts",
 	storage: "Log storage",
+	backups: "Backups",
 } satisfies Record<SettingsTab, string>;
 
 const parseAsSettingsTab = parseAsStringLiteral(SETTINGS_TABS)
@@ -40,8 +48,8 @@ export function SettingsPage() {
 			<div>
 				<h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
 				<p className="mt-1 max-w-prose text-pretty text-base/6 text-muted-foreground sm:text-sm/6">
-					Hosts, access, alerts and storage. Anything set via environment
-					variable is shown here but changes only with a restart.
+					Hosts, access, alerts, storage and backups. Anything set via
+					environment variable is shown here but changes only with a restart.
 				</p>
 			</div>
 
@@ -117,6 +125,9 @@ export function SettingsPage() {
 									config={data.logStore}
 									readOnly={data.readOnly.value}
 								/>
+							)}
+							{tab === "backups" && (
+								<BackupsSection readOnly={data.readOnly.value} />
 							)}
 						</div>
 					)}

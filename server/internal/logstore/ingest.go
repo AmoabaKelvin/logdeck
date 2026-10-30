@@ -240,7 +240,12 @@ func (s *Store) writeLoop() {
 		// file near its cap. A store under its cap evicts nothing and must not pay
 		// for a checkpoint here — that is what preserves the flood throughput
 		// ceiling. SQLite's automatic checkpoint keeps the WAL bounded otherwise.
-		if s.evictions.Load() != before {
+		// A running snapshot would make the checkpoint wait it out, so it is
+		// put off until the snapshot ends, which then asks for one: the WAL
+		// cannot wrap while the snapshot reads, and grows by everything ingested
+		// meanwhile.
+		evicted := s.evictions.Load() != before
+		if s.snapshots.Load() == 0 && (s.walGrew.Swap(false) || evicted) {
 			s.checkpoint()
 		}
 	}

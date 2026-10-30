@@ -99,3 +99,74 @@ export interface TestConnectionResult {
 	engine?: string;
 	engineVersion?: string;
 }
+
+/** Counts of what a backup, or this instance, holds. */
+export interface BackupContents {
+	dockerHosts: number;
+	coolifyHosts: number;
+	dokployHosts: number;
+	alertRules: number;
+	alertChannels: number;
+	alertHistory: number;
+	apiTokens: number;
+	logsBytes: number;
+}
+
+export interface BackupManifest {
+	format: number;
+	logdeckVersion: string;
+	createdAt: string;
+	includesLogs: boolean;
+	includesSecrets: boolean;
+	contents: BackupContents;
+}
+
+export interface BackupEntry {
+	name: string;
+	sizeBytes: number;
+	createdAt: string;
+	scheduled: boolean;
+	encrypted: boolean;
+	/** Only unencrypted backups reveal their manifest without the passphrase. */
+	manifest?: BackupManifest;
+}
+
+export interface BackupSchedule {
+	/** 0 turns scheduled backups off. */
+	intervalHours: number;
+	keep: number;
+	includeLogs: boolean;
+	includeSecrets: boolean;
+}
+
+export interface BackupResult {
+	name?: string;
+	at: string;
+	sizeBytes?: number;
+	scheduled: boolean;
+	error?: string;
+}
+
+/** What restoring a checked backup would replace. */
+export interface RestorePreview {
+	manifest: BackupManifest;
+	encrypted: boolean;
+	current: BackupContents;
+	missingCredentials: number;
+	warnings: string[];
+}
+
+export interface BackupStatus {
+	dir: string;
+	running: boolean;
+	last?: BackupResult;
+	schedule: BackupSchedule;
+	nextRunAt?: string;
+	/** Scheduled backups are encrypted when BACKUP_PASSPHRASE is set. */
+	scheduleEncrypted: boolean;
+	logsAvailable: boolean;
+	backups: BackupEntry[];
+	listError?: string;
+	/** A confirmed restore waiting for the next start. */
+	pendingRestore?: RestorePreview;
+}

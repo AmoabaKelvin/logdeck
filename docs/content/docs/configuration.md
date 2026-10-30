@@ -13,6 +13,7 @@ Everything LogDeck persists lives in one directory, the directory of its config 
 - `config.json`: hosts, Coolify and Dokploy connections, read-only mode, auth, API tokens, alert rules, and log-store settings
 - `logs.db`: the SQLite [log store](/docs/log-history)
 - `alerts-history.json`: recently fired [alerts](/docs/alerting)
+- `backups/`: [backups](/docs/backups), unless `BACKUP_DIR` points elsewhere
 
 > **Mount it as a volume.** Without one, all of the above is written inside the container and destroyed the next time you recreate it. You would lose your API tokens, your alert rules, and all stored log history.
 
@@ -114,6 +115,12 @@ Every key is optional. This example sets all of them:
     "enabled": true,
     "perContainerMB": 50,
     "totalMB": 1024
+  },
+  "backup": {
+    "intervalHours": 24,
+    "keep": 7,
+    "includeLogs": false,
+    "includeSecrets": false
   }
 }
 ```
@@ -189,6 +196,10 @@ Rules and channels, as described on the [alerting](/docs/alerting) page. IDs are
 
 `enabled`, `perContainerMB`, and `totalMB`, with the defaults shown in the example. Each one is overridden independently by its [environment variable](#log-persistence). Zero or negative sizes fall back to the default.
 
+### `backup`
+
+The [backup schedule](/docs/backups#scheduled-backups). `intervalHours` of 0 or a missing section turns scheduled backups off. `keep` is how many scheduled backups to keep, default 7.
+
 ## Server
 
 ### `DOCKER_HOSTS`
@@ -262,6 +273,20 @@ LOG_STORE_PER_CONTAINER_MB=50
 LOG_STORE_TOTAL_MB=1024
 LOG_STORE_REMOVED_DAYS=30
 ```
+
+## Backups
+
+Backups are made, scheduled, and restored from Settings. [Backups](/docs/backups) explains what they hold and how restoring works.
+
+### `BACKUP_DIR`
+
+Optional. Folder backups are written to and listed from. Point it at a mounted network share or synced folder to keep backups off the host.
+
+Default: `backups/` in the data directory
+
+### `BACKUP_PASSPHRASE`
+
+Optional. Encrypts scheduled backups with this passphrase. Backups made by hand use the passphrase entered in Settings instead.
 
 ## Proxies and CORS
 

@@ -9,6 +9,7 @@ import (
 	"github.com/AmoabaKelvin/logdeck/internal/alerts"
 	"github.com/AmoabaKelvin/logdeck/internal/api/middleware"
 	"github.com/AmoabaKelvin/logdeck/internal/auth"
+	"github.com/AmoabaKelvin/logdeck/internal/backup"
 	"github.com/AmoabaKelvin/logdeck/internal/config"
 	"github.com/AmoabaKelvin/logdeck/internal/logstore"
 	"github.com/AmoabaKelvin/logdeck/internal/services"
@@ -25,20 +26,23 @@ type APIRouter struct {
 	engine   *alerts.Engine
 	// logStore is nil when log persistence is disabled or unusable.
 	logStore *logstore.Store
-	version  string
+	// backups is nil when the router is built without backup support (tests).
+	backups *backup.Service
+	version string
 
 	// machineHostname caches the engine-reported hostname; see GetSystemStats.
 	machineHostnameMu sync.Mutex
 	machineHostname   string
 }
 
-func NewRouter(registry *services.Registry, manager *config.Manager, engine *alerts.Engine, logStore *logstore.Store, version string) *chi.Mux {
+func NewRouter(registry *services.Registry, manager *config.Manager, engine *alerts.Engine, logStore *logstore.Store, backups *backup.Service, version string) *chi.Mux {
 	r := &APIRouter{
 		router:   chi.NewRouter(),
 		registry: registry,
 		manager:  manager,
 		engine:   engine,
 		logStore: logStore,
+		backups:  backups,
 		version:  version,
 	}
 
@@ -198,6 +202,7 @@ func (ar *APIRouter) registerSettingsRoutes(r chi.Router) {
 		r.Post("/test/docker-host", ar.TestDockerHost)
 		r.Post("/test/coolify-host", ar.TestCoolifyHost)
 		r.Post("/test/dokploy-host", ar.TestDokployHost)
+		ar.registerBackupRoutes(r)
 	})
 }
 

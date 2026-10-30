@@ -1,5 +1,6 @@
 import dozzle from "@/content/compare/dozzle.md";
 import alerting from "@/content/docs/alerting.md";
+import backups from "@/content/docs/backups.md";
 import cli from "@/content/docs/cli.md";
 import configuration from "@/content/docs/configuration.md";
 import features from "@/content/docs/features.md";
@@ -19,6 +20,7 @@ const bodies = new Map([
   ["/docs/features", features],
   ["/docs/log-history", logHistory],
   ["/docs/alerting", alerting],
+  ["/docs/backups", backups],
   ["/docs/cli", cli],
   ["/docs/mcp", mcp],
   ["/docs/configuration", configuration],

@@ -24,7 +24,7 @@ export const docsNav = [
       {
         title: "Features",
         href: "/docs/features",
-        updated: "2026-09-13",
+        updated: "2026-10-30",
         description:
           "Every LogDeck feature: live and stored container logs, alerting, stats, multi-host, Compose stack actions, a web terminal, the CLI, and MCP.",
       },
@@ -48,6 +48,13 @@ export const docsNav = [
           "Alert on container deaths, OOM kills, failing health checks, and log patterns, with thresholds and cooldowns, to webhooks, ntfy, Gotify, or Telegram.",
       },
       {
+        title: "Backups",
+        href: "/docs/backups",
+        updated: "2026-10-30",
+        description:
+          "Back up LogDeck's settings, alert rules, alert history, and stored logs, encrypt them, schedule them to an off-host folder, and restore safely.",
+      },
+      {
         title: "CLI reference",
         href: "/docs/cli",
         updated: "2026-09-13",
@@ -69,7 +76,7 @@ export const docsNav = [
       {
         title: "Configuration",
         href: "/docs/configuration",
-        updated: "2026-09-13",
+        updated: "2026-10-30",
         description:
           "Every LogDeck setting: the /data directory, DOCKER_HOSTS, authentication, API token scopes, log retention, Coolify sync, read-only mode, and reverse proxies.",
       },
