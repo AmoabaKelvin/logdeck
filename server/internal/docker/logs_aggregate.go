@@ -11,7 +11,7 @@ import (
 	"sync"
 
 	"github.com/AmoabaKelvin/logdeck/internal/models"
-	"github.com/docker/docker/client"
+	cerrdefs "github.com/containerd/errdefs"
 )
 
 // LogTarget identifies one container in an aggregated log request.
@@ -60,7 +60,7 @@ func newSourceCoverage(target LogTarget, status SourceStatus, err error) SourceC
 // readFailure classifies a target whose logs could not be read. A container
 // that no longer exists is expected, not a failure.
 func readFailure(target LogTarget, err error) SourceCoverage {
-	if client.IsErrNotFound(err) {
+	if cerrdefs.IsNotFound(err) {
 		return newSourceCoverage(target, SourceRemoved, nil)
 	}
 	return newSourceCoverage(target, SourceFailed, err)
