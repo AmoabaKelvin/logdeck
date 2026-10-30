@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -26,12 +26,20 @@ import { getContainerEnvVariables } from "../api/get-container-env-variables";
 import { PanelError, PanelLoading, PanelNote } from "./container-panel-ui";
 import { readDokployMapping, writeDokployMapping } from "./dokploy-mapping";
 import { type EnvConfirmCopy, EnvConfirmDialog } from "./env-confirm-dialog";
+import { parseEnvFile } from "./env-file";
+import {
+	compareWithRunning,
+	describeEnvChanges,
+	diffEnv,
+	RunningEnvSummary,
+} from "./running-env";
 
 interface DokployEnvPanelProps {
 	containerId: string;
 	containerHost: string;
 	configuration: DokployEnvResponse;
 	isReadOnly: boolean;
+	runningEnv?: string[];
 	onPlainCompose?: () => void;
 }
 
@@ -238,6 +246,7 @@ function DokployEditor({
 	containerHost,
 	configuration,
 	isReadOnly,
+	runningEnv,
 	owner,
 	onUnmap,
 }: DokployEnvPanelProps & { owner: DokployResource; onUnmap: () => void }) {
@@ -261,7 +270,7 @@ function DokployEditor({
 	// the change, so nothing more is sent until the saved state is re-read.
 	const [failure, setFailure] = useState<string>();
 	const [confirming, setConfirming] = useState<
-		"deploy" | "reload" | "unmap" | null
+		"save" | "deploy" | "reload" | "unmap" | null
 	>(null);
 
 	const original = saved ?? query.data?.configuration;
@@ -271,6 +280,28 @@ function DokployEditor({
 		owner.type === "compose"
 			? "the whole Compose deployment"
 			: "the application";
+	// Memoized: the editor re-renders on every keystroke.
+	const savedEnv = useMemo(
+		() => parseEnvFile(original?.text ?? ""),
+		[original?.text],
+	);
+	// Shared references resolve in Dokploy, and a value still opening a quote
+	// is the first line of a multiline value; neither compares as written.
+	const comparison = useMemo(
+		() =>
+			owner.type === "application" && runningEnv
+				? compareWithRunning(
+						Object.fromEntries(
+							Object.entries(savedEnv).map(([key, value]) => [
+								key,
+								value.includes("${{") || /^["']/.test(value) ? null : value,
+							]),
+						),
+						runningEnv,
+					)
+				: undefined,
+		[owner.type, runningEnv, savedEnv],
+	);
 
 	const save = useMutation({
 		mutationFn: () =>
@@ -319,11 +350,25 @@ function DokployEditor({
 		}
 	}
 
+	// Parsed only while the save is being confirmed, not on every keystroke.
+	const saveSummary =
+		confirming === "save"
+			? describeEnvChanges(diffEnv(savedEnv, parseEnvFile(text))) ||
+				"Changes only comments or formatting."
+			: "";
 	const confirmations = {
+		save: {
+			copy: {
+				title: `Save ${owner.name} in Dokploy?`,
+				description: `${saveSummary} This changes the saved configuration of ${scope}; project and environment variables are not changed. Nothing restarts until you deploy.`,
+				confirmLabel: "Save",
+			},
+			run: () => save.mutate(),
+		},
 		deploy: {
 			copy: {
 				title: `Deploy ${owner.name}?`,
-				description: `This deploys the saved configuration through Dokploy. It can restart ${scope} and cause downtime.`,
+				description: `This runs a full Dokploy deployment of the saved configuration${owner.type === "application" ? ", including the build" : ""}. It can restart ${scope} and cause downtime.`,
 				confirmLabel: "Deploy",
 			},
 			run: () => deploy.mutate(),
@@ -394,6 +439,10 @@ function DokployEditor({
 				{original.createEnvFile ? "enabled" : "disabled"}.
 			</PanelNote>
 
+			{comparison && (
+				<RunningEnvSummary comparison={comparison} platform="Dokploy" />
+			)}
+
 			{query.error && <PanelError>{query.error.message}</PanelError>}
 
 			<div>
@@ -455,7 +504,7 @@ function DokployEditor({
 					<>
 						<Button
 							disabled={busy || !dirty || Boolean(failure)}
-							onClick={() => save.mutate()}
+							onClick={() => setConfirming("save")}
 						>
 							{save.isPending ? "Saving…" : "Save in Dokploy"}
 						</Button>
