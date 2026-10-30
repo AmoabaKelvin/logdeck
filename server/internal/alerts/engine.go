@@ -1,6 +1,7 @@
 // Package alerts contains the alerting engine: it watches container events,
-// log streams and collection health, matches them against the configured
-// rules, and delivers notifications to the configured channels.
+// log streams, collection health and container resource use, matches them
+// against the configured rules, and delivers notifications to the configured
+// channels.
 //
 // Concurrency model: a single run goroutine owns all mutable state (compiled
 // rules, subscription handles, rate/cooldown windows, the event-stream child
@@ -8,7 +9,8 @@
 // non-blocking match messages onto firedCh. A single dispatcher goroutine
 // consumes fired alerts, appends them to history, delivers them to the
 // configured channels, and records each delivery outcome on the history entry.
-// Helper goroutines exist only for single container-inspect lookups.
+// Helper goroutines exist only for single container-inspect lookups and the
+// resource-rule stats sample taken on each resync tick.
 package alerts
 
 import (
@@ -19,6 +21,7 @@ import (
 	"log"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,6 +43,12 @@ const (
 
 	defaultResyncInterval = 60 * time.Second
 	inspectTimeout        = 5 * time.Second
+	// sampleTimeout bounds one resource-rule stats sample across every host.
+	sampleTimeout = 30 * time.Second
+	// sampleJitter absorbs the scheduling delay between resync ticks, so a
+	// condition held for exactly a rule's window fires on that tick rather
+	// than the next one.
+	sampleJitter = 5 * time.Second
 	// deliverBudget bounds one delivery cycle (attempt + retry wait +
 	// attempt).
 	deliverBudget = 30 * time.Second
@@ -82,6 +91,9 @@ type eventClient interface {
 	inspectExit(ctx context.Context, host, containerID string) (exitCode string, oomKilled bool, err error)
 	inspectHealth(ctx context.Context, host, containerID string) (status string, err error)
 	stoppedByUser(ctx context.Context, host, containerID string) bool
+	// sampleStats reads stats for the running containers any of rules
+	// targets. listed holds the hosts whose containers could be listed.
+	sampleStats(ctx context.Context, rules []*compiledRule) (containers []sampledContainer, listed map[string]bool)
 }
 
 // dockerEventAdapter adapts *docker.MultiHostClient to eventClient. It is a
@@ -125,6 +137,61 @@ func (a dockerEventAdapter) inspectHealth(ctx context.Context, host, containerID
 	return resp.State.Health.Status, nil
 }
 
+// sampleStats lists the running containers once per host the rules can
+// target, then reads stats only for the containers they target. The stats
+// reads go through the same short-lived cache the dashboard uses.
+func (a dockerEventAdapter) sampleStats(ctx context.Context, rules []*compiledRule) ([]sampledContainer, map[string]bool) {
+	byHost := a.c.RunningContainers(ctx, func(host string) bool {
+		return slices.ContainsFunc(rules, func(r *compiledRule) bool {
+			return len(r.spec.Hosts) == 0 || slices.Contains(r.spec.Hosts, host)
+		})
+	})
+	listed := make(map[string]bool, len(byHost))
+	var containers []sampledContainer
+	var ids []docker.ContainerIdentifier
+	for host, infos := range byHost {
+		listed[host] = true
+		for _, info := range infos {
+			name := ""
+			if len(info.Names) > 0 {
+				name = strings.TrimPrefix(info.Names[0], "/")
+			}
+			if !slices.ContainsFunc(rules, func(r *compiledRule) bool { return r.spec.Matches(host, name, info.Labels) }) {
+				continue
+			}
+			containers = append(containers, sampledContainer{host: host, id: info.ID, name: name, labels: info.Labels})
+			ids = append(ids, docker.ContainerIdentifier{ID: info.ID, Host: host})
+		}
+	}
+	if len(ids) == 0 {
+		return nil, listed
+	}
+	stats := a.c.GetBulkContainerStats(ctx, ids)
+	byID := make(map[string]*models.ContainerStats, len(stats))
+	for i := range stats {
+		byID[stats[i].Host+"|"+stats[i].ID] = &stats[i]
+	}
+	for i := range containers {
+		containers[i].stats = byID[containers[i].host+"|"+containers[i].id]
+	}
+	return containers, listed
+}
+
+// sampledContainer is one running container a resource rule targets, with
+// its stats; stats is nil when the read failed.
+type sampledContainer struct {
+	host, id, name string
+	labels         map[string]string
+	stats          *models.ContainerStats
+}
+
+// statsSample is one resource-rule sample posted back to the run loop.
+type statsSample struct {
+	at         time.Time
+	containers []sampledContainer
+	listed     map[string]bool
+}
+
 // matchMsg is one log-rule match pushed from a sink to the run loop.
 type matchMsg struct {
 	gen           uint64
@@ -158,6 +225,7 @@ type Engine struct {
 	reconcileCh chan struct{}
 	firedCh     chan matchMsg
 	inspectCh   chan inspectResult
+	statsCh     chan statsSample
 	dispatchCh  chan models.Alert
 	flushStop   chan struct{}
 
@@ -212,6 +280,7 @@ func newEngine(hub engineHub, source func() eventClient, alertsFn func() config.
 		reconcileCh:    make(chan struct{}, 1),
 		firedCh:        make(chan matchMsg, firedBuffer),
 		inspectCh:      make(chan inspectResult, inspectBuffer),
+		statsCh:        make(chan statsSample, 1),
 		dispatchCh:     make(chan models.Alert, dispatchBuffer),
 		flushStop:      make(chan struct{}),
 		resyncInterval: defaultResyncInterval,
@@ -317,14 +386,21 @@ type runState struct {
 	gen uint64
 
 	subs map[string]*activeSub // live log-rule subscriptions by rule ID
-	// eventRules holds every rule that is not a log rule: event rules and
-	// collection rules.
+	// eventRules holds every rule that is not a log rule: event, collection
+	// and resource rules.
 	eventRules []*compiledRule
 	windows    map[string]*ruleWindow // by ruleID|host|containerName
 	incidents  map[string]*incident   // collection failures by ruleID|host
+	resources  map[string]*incident   // resource rule state by ruleID|host|containerName
+	loops      map[string]*incident   // fired restart loops by ruleID|host|containerName
 	lastOOM    map[string]time.Time   // last oom event by host|containerID
 	stopping   map[string]time.Time   // last kill or restart event by host|containerID
 	lifecycle  map[string]time.Time   // last die or start event by host|containerID
+	// crashed holds containers whose last die was not a stop, by
+	// host|containerID; their next start is a restart.
+	crashed map[string]bool
+	// sampling is set while a resource-rule stats sample is in flight.
+	sampling bool
 
 	events       <-chan docker.EngineEvent
 	eventsCancel context.CancelFunc
@@ -339,9 +415,12 @@ func (e *Engine) run(ctx context.Context) {
 		subs:      make(map[string]*activeSub),
 		windows:   make(map[string]*ruleWindow),
 		incidents: make(map[string]*incident),
+		resources: make(map[string]*incident),
+		loops:     make(map[string]*incident),
 		lastOOM:   make(map[string]time.Time),
 		stopping:  make(map[string]time.Time),
 		lifecycle: make(map[string]time.Time),
+		crashed:   make(map[string]bool),
 	}
 	e.openEvents(st, e.source())
 	e.reconcile(st)
@@ -362,6 +441,11 @@ func (e *Engine) run(ctx context.Context) {
 			e.pruneWindows(st)
 			e.logDrops()
 			e.checkCollection(st)
+			e.settleRestarts(st)
+			e.sampleResources(st)
+		case s := <-e.statsCh:
+			st.sampling = false
+			e.checkResources(st, s)
 		case m := <-e.firedCh:
 			e.handleMatch(st, m)
 		case ev, ok := <-st.events:
@@ -452,23 +536,30 @@ func (e *Engine) reconcile(st *runState) {
 				delete(st.windows, key)
 			}
 		}
-		for key := range st.incidents {
-			if id, _, _ := strings.Cut(key, "|"); stale[id] {
-				delete(st.incidents, key)
+		for _, m := range []map[string]*incident{st.incidents, st.resources, st.loops} {
+			for key := range m {
+				if id, _, _ := strings.Cut(key, "|"); stale[id] {
+					delete(m, key)
+				}
 			}
 		}
 	}
 }
 
-// incident is one collection rule's state for one host ("" for the log
-// store). It outlives the failure until the cooldown has passed, so a
-// flapping host does not notify on every flap.
+// incident is the state of a condition that sends a recovery when it clears:
+// a collection rule's failure on one host ("" for the log store), a resource
+// rule's container, or a fired restart loop. It outlives the condition until
+// the cooldown has passed, so a flapping host or container does not notify on
+// every flap.
 type incident struct {
-	rule      *compiledRule
-	host      string
-	reason    string // what the last fire reported
-	fired     bool   // a failure was sent and its recovery has not been
-	lastFired time.Time
+	rule          *compiledRule
+	host          string
+	containerID   string
+	containerName string
+	reason        string    // what the last fire reported
+	since         time.Time // resource rules: first sample over the limit, zero when under
+	fired         bool      // a failure was sent and its recovery has not been
+	lastFired     time.Time
 }
 
 // checkCollection fires a collection rule for every host (and the log store)
@@ -518,11 +609,125 @@ func (e *Engine) checkCollection(st *runState) {
 		}
 		if inc.fired {
 			inc.fired = false
-			e.emit(inc.rule, inc.host, "", "", "collection recovered", inc.reason, 0)
+			e.emitRecovery(inc.rule, inc.host, "", "", "collection recovered", inc.reason)
 		}
 		if now.Sub(inc.lastFired) >= inc.rule.cooldown {
 			delete(st.incidents, key)
 		}
+	}
+}
+
+// sampleResources reads stats for the containers that enabled resource rules
+// target, off the run loop, and posts the sample back on statsCh. With no
+// enabled resource rule nothing is read; a sample still in flight skips the
+// tick.
+func (e *Engine) sampleResources(st *runState) {
+	var rules []*compiledRule
+	for _, rule := range st.eventRules {
+		if rule.typ == "resource" {
+			rules = append(rules, rule)
+		}
+	}
+	if len(rules) == 0 || st.sampling {
+		return
+	}
+	st.sampling = true
+	client := st.eventsClient
+	runCtx := st.ctx
+	at := e.now()
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		ctx, cancel := context.WithTimeout(runCtx, sampleTimeout)
+		defer cancel()
+		containers, listed := client.sampleStats(ctx, rules)
+		select {
+		case e.statsCh <- statsSample{at: at, containers: containers, listed: listed}:
+		case <-runCtx.Done():
+		}
+	}()
+}
+
+// checkResources fires a resource rule for every container whose usage has
+// stayed over the limit for the rule's window, and sends a recovery once a
+// fired container is back under it or has stopped. A container whose stats
+// could not be read, or whose host could not be listed, keeps its state.
+func (e *Engine) checkResources(st *runState, s statsSample) {
+	seen := make(map[string]bool)
+	for _, rule := range st.eventRules {
+		if rule.typ != "resource" {
+			continue
+		}
+		for _, c := range s.containers {
+			if !rule.spec.Matches(c.host, c.name, c.labels) {
+				continue
+			}
+			key := rule.id + "|" + c.host + "|" + c.name
+			seen[key] = true
+			if c.stats == nil {
+				continue
+			}
+			value, over := rule.usage(c.stats)
+			metric, limit := rule.limit()
+			inc := st.resources[key]
+			if !over {
+				if inc != nil {
+					e.settleResource(st, key, inc, s.at, fmt.Sprintf("%s back under %s (now %s)", metric, limit, value))
+				}
+				continue
+			}
+			if inc == nil {
+				inc = &incident{rule: rule, host: c.host, containerName: c.name}
+				st.resources[key] = inc
+			}
+			inc.containerID = c.id
+			if inc.since.IsZero() {
+				inc.since = s.at
+			}
+			if inc.fired || s.at.Sub(inc.since) < rule.window-sampleJitter {
+				continue
+			}
+			if !inc.lastFired.IsZero() && s.at.Sub(inc.lastFired) < rule.cooldown {
+				continue
+			}
+			inc.fired, inc.lastFired = true, s.at
+			inc.reason = fmt.Sprintf("%s above %s for %ds (now %s)", metric, limit, int(rule.window.Seconds()), value)
+			e.emit(rule, c.host, c.id, c.name, inc.reason, "", 0)
+		}
+	}
+
+	for key, inc := range st.resources {
+		if !seen[key] && s.listed[inc.host] {
+			e.settleResource(st, key, inc, s.at, "container stopped")
+		}
+	}
+}
+
+// settleResource records that a resource rule's container is no longer over
+// the limit: a fired incident sends its recovery, and the state is dropped
+// once the cooldown since the last fire has passed.
+func (e *Engine) settleResource(st *runState, key string, inc *incident, now time.Time, reason string) {
+	inc.since = time.Time{}
+	if inc.fired {
+		inc.fired = false
+		e.emitRecovery(inc.rule, inc.host, inc.containerID, inc.containerName, reason, inc.reason)
+	}
+	if now.Sub(inc.lastFired) >= inc.rule.cooldown {
+		delete(st.resources, key)
+	}
+}
+
+// settleRestarts sends a recovery for every fired restart loop whose
+// container has since gone a full window without restarting.
+func (e *Engine) settleRestarts(st *runState) {
+	now := e.now()
+	for key, inc := range st.loops {
+		if w := st.windows[key]; w != nil && w.idleSince(now) < inc.rule.window {
+			continue
+		}
+		delete(st.loops, key)
+		e.emitRecovery(inc.rule, inc.host, inc.containerID, inc.containerName,
+			fmt.Sprintf("no restart for %ds", int(inc.rule.window.Seconds())), inc.reason)
 	}
 }
 
@@ -597,9 +802,16 @@ func (e *Engine) handleEvent(st *runState, ev docker.EngineEvent) {
 		}
 	case "start":
 		st.lifecycle[key] = e.now()
+		// A start after a die that was not a stop is a restart: a restart
+		// policy, or someone, bringing a crashed container back.
+		if st.crashed[key] {
+			delete(st.crashed, key)
+			e.recordEventMatch(st, ev, "restart", "")
+		}
 	case "destroy":
 		delete(st.stopping, key)
 		delete(st.lifecycle, key)
+		delete(st.crashed, key)
 	case "die":
 		st.lifecycle[key] = e.now()
 		if at, ok := st.stopping[key]; ok {
@@ -608,6 +820,7 @@ func (e *Engine) handleEvent(st *runState, ev docker.EngineEvent) {
 				return
 			}
 		}
+		st.crashed[key] = true
 		switch ev.ExitCode {
 		case "":
 			e.spawnInspect(st, ev)
@@ -713,8 +926,8 @@ func (e *Engine) handleInspect(st *runState, r inspectResult) {
 	e.recordEventMatch(st, r.ev, r.action, r.exitCode)
 }
 
-// recordEventMatch runs one die/oom occurrence through every matching event
-// rule's window.
+// recordEventMatch runs one die/oom/unhealthy/restart occurrence through every
+// matching event rule's window.
 func (e *Engine) recordEventMatch(st *runState, ev docker.EngineEvent, action, exitCode string) {
 	name := strings.TrimPrefix(ev.ContainerName, "/")
 	oomKey := ev.Host + "|" + ev.ContainerID
@@ -739,7 +952,11 @@ func (e *Engine) recordEventMatch(st *runState, ev docker.EngineEvent, action, e
 		if !res.fire {
 			continue
 		}
-		e.emit(rule, ev.Host, ev.ContainerID, name, eventReason(rule, action, exitCode), eventSample(action, exitCode), res.suppressed)
+		reason := eventReason(rule, action, exitCode)
+		if action == "restart" {
+			st.loops[key] = &incident{rule: rule, host: ev.Host, containerID: ev.ContainerID, containerName: name, reason: reason}
+		}
+		e.emit(rule, ev.Host, ev.ContainerID, name, reason, eventSample(action, exitCode), res.suppressed)
 	}
 }
 
@@ -754,10 +971,20 @@ func (e *Engine) window(st *runState, key string, rule *compiledRule) *ruleWindo
 	return w
 }
 
-// emit builds the alert and hands it to the dispatcher without blocking the
-// run loop; a full dispatch queue drops the alert with a log line.
+// emit builds the alert and hands it to the dispatcher.
 func (e *Engine) emit(rule *compiledRule, host, containerID, containerName, reason, sample string, suppressed int) {
-	alert := models.Alert{
+	e.send(e.newAlert(rule, host, containerID, containerName, reason, sample, suppressed))
+}
+
+// emitRecovery sends the notice that a fired condition has cleared.
+func (e *Engine) emitRecovery(rule *compiledRule, host, containerID, containerName, reason, sample string) {
+	alert := e.newAlert(rule, host, containerID, containerName, reason, sample, 0)
+	alert.Recovered = true
+	e.send(alert)
+}
+
+func (e *Engine) newAlert(rule *compiledRule, host, containerID, containerName, reason, sample string, suppressed int) models.Alert {
+	return models.Alert{
 		ID:            newAlertID(),
 		RuleID:        rule.id,
 		RuleName:      rule.name,
@@ -771,10 +998,15 @@ func (e *Engine) emit(rule *compiledRule, host, containerID, containerName, reas
 		Suppressed:    suppressed,
 		FiredAt:       e.now().UTC().Format(time.RFC3339),
 	}
+}
+
+// send hands an alert to the dispatcher without blocking the run loop; a
+// full dispatch queue drops the alert with a log line.
+func (e *Engine) send(alert models.Alert) {
 	select {
 	case e.dispatchCh <- alert:
 	default:
-		log.Printf("alerts: dispatch queue full, dropping alert %s (rule %q)", alert.ID, rule.name)
+		log.Printf("alerts: dispatch queue full, dropping alert %s (rule %q)", alert.ID, alert.RuleName)
 	}
 }
 
@@ -818,6 +1050,7 @@ func (e *Engine) shutdownRun(st *runState) {
 			// Discarded: window state is in-memory and dies with the process,
 			// so partial matches at shutdown cannot fire later anyway.
 		case <-e.inspectCh:
+		case <-e.statsCh:
 		default:
 			close(e.dispatchCh)
 			return
@@ -884,6 +1117,9 @@ func eventReason(rule *compiledRule, action, exitCode string) string {
 		if action == "unhealthy" {
 			return "container became unhealthy"
 		}
+		if action == "restart" {
+			return "container restarted"
+		}
 		return fmt.Sprintf("container died (exit %s)", exitCode)
 	}
 	if action == "oom" {
@@ -892,6 +1128,9 @@ func eventReason(rule *compiledRule, action, exitCode string) string {
 	if action == "unhealthy" {
 		return fmt.Sprintf("%d unhealthy transitions within %ds", rule.threshold, int(rule.window.Seconds()))
 	}
+	if action == "restart" {
+		return fmt.Sprintf("%d restarts within %ds", rule.threshold, int(rule.window.Seconds()))
+	}
 	return fmt.Sprintf("%d container deaths within %ds (last exit %s)", rule.threshold, int(rule.window.Seconds()), exitCode)
 }
 
@@ -899,8 +1138,8 @@ func eventSample(action, exitCode string) string {
 	if action == "oom" {
 		return "oom"
 	}
-	if action == "unhealthy" {
-		return "unhealthy"
+	if action == "unhealthy" || action == "restart" {
+		return action
 	}
 	return "die (exit " + exitCode + ")"
 }

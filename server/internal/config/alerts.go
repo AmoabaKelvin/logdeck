@@ -34,7 +34,7 @@ type AlertRule struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Enabled bool   `json:"enabled"`
-	Type    string `json:"type"` // "event" | "log" | "collection"
+	Type    string `json:"type"` // "event" | "log" | "collection" | "resource"
 
 	// Targeting: all optional, empty = match-all in that dimension, ANDed.
 	// Collection rules target hosts only.
@@ -43,14 +43,22 @@ type AlertRule struct {
 	Projects   []string `json:"projects,omitempty"`   // compose projects
 
 	// Event rules.
-	Events []string `json:"events,omitempty"` // "die" | "oom" | "unhealthy"
+	Events []string `json:"events,omitempty"` // "die" | "oom" | "unhealthy" | "restart"
 
 	// Log rules.
 	MinLevel string `json:"minLevel,omitempty"`
 	Pattern  string `json:"pattern,omitempty"` // RE2
 
-	// Rate + cooldown (event and log rules). A collection rule uses
-	// WindowSeconds as how long a failure must last before it fires.
+	// Resource rules: the metric must stay above the limit for WindowSeconds.
+	// AbovePercent is CPU as docker stats shows it (100 = one core), or memory
+	// as a share of the container's memory limit. Memory can set AboveBytes
+	// instead.
+	Metric       string  `json:"metric,omitempty"` // "cpu" | "memory"
+	AbovePercent float64 `json:"abovePercent,omitempty"`
+	AboveBytes   int64   `json:"aboveBytes,omitempty"`
+
+	// Rate + cooldown (event and log rules). Collection and resource rules use
+	// WindowSeconds as how long the condition must last before it fires.
 	Threshold       int    `json:"threshold"`
 	WindowSeconds   int    `json:"windowSeconds,omitempty"`
 	CooldownSeconds int    `json:"cooldownSeconds,omitempty"`

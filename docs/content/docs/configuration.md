@@ -202,12 +202,13 @@ Rules and channels, as described on the [alerting](/docs/alerting) page. IDs are
 
 `rules` entries:
 
-- `id`, `name`, `enabled`, and `type`, which is `event` or `log`. Rules with any other type are skipped with a log line.
+- `id`, `name`, `enabled`, and `type`, which is `event`, `log`, `collection`, or `resource`. Rules with any other type are skipped with a log line.
 - `hosts`, `containers`, `projects`: optional targeting lists, combined with AND. Empty means all.
-- `events`: for event rules, any of `die`, `oom`, `unhealthy`.
+- `events`: for event rules, any of `die`, `oom`, `unhealthy`, or `restart` on its own.
+- `metric`, `abovePercent`, `aboveBytes`: for resource rules, `cpu` or `memory` and the limit. CPU takes `abovePercent` (100 is one core). Memory takes `abovePercent` of its memory limit or `aboveBytes`.
 - `minLevel`, `pattern`: for log rules, a level name and an RE2 regex. Set either or both. A rule with an invalid pattern is skipped with a log line.
 - `threshold`: matches needed before the rule fires. 0 or 1 fires on every match.
-- `windowSeconds`: the threshold window. Default 60.
+- `windowSeconds`: the threshold window, or for collection and resource rules how long the condition must last. Default 60.
 - `cooldownSeconds`: minimum seconds between alerts for the same rule and container. Default 300.
 
 `webhookUrl` is a legacy key from before channels existed. LogDeck turns it into a webhook channel on the next start and rewrites the file.
