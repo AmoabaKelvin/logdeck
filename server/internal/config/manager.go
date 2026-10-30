@@ -43,7 +43,8 @@ type APIToken struct {
 type FileAuthConfig struct {
 	Enabled   bool   `json:"enabled"`
 	JWTSecret string `json:"jwtSecret,omitempty"`
-	// The single admin of older versions. Read only to migrate it into Users.
+	// The single admin older versions read. Migrated into Users once, then
+	// kept as a copy of the first admin user so a rollback still needs login.
 	AdminUsername     string      `json:"adminUsername,omitempty"`
 	AdminPasswordHash string      `json:"adminPasswordHash,omitempty"`
 	AdminPasswordSalt string      `json:"adminPasswordSalt,omitempty"`
@@ -379,6 +380,11 @@ func (m *Manager) updateAuthLocked(mutate func(current *FileAuthConfig) (*FileAu
 	if err != nil {
 		m.mu.Unlock()
 		return err
+	}
+	// Under env auth the file's admin fields are ignored by every version,
+	// so they are left as they are.
+	if updated != nil && !m.envSnapshot.AuthSet {
+		mirrorLegacyAdmin(updated)
 	}
 
 	m.fileConfig.Auth = updated

@@ -184,7 +184,7 @@ A list of `{ "hostName", "apiURL", "apiToken", "serverId" }` objects. The host n
 - `jwtSecret`: signs sessions. Any long random string. Changing it ends every session.
 - `users`: the [local users](#users-and-roles), each `{ "username", "passwordHash", "role" }`. `passwordHash` is a [bcrypt hash](#password-hashing); JSON has no `$` escaping, so paste it as is. `role` is `admin` or `read`, and any other value is treated as `read`.
 - `oidc`: [single sign-on](#single-sign-on-oidc) settings. Ignored when `OIDC_ISSUER` is set.
-- `adminUsername`, `adminPasswordHash`, `adminPasswordSalt`: the single admin of older versions. LogDeck moves it into `users` as an admin on startup and rewrites the file. With `adminPasswordSalt`, the hash is hex SHA256(password + salt) instead of bcrypt; it keeps working until the password is changed.
+- `adminUsername`, `adminPasswordHash`, `adminPasswordSalt`: the single admin of older versions. With no `users` yet, LogDeck makes it the first admin user on startup. After that, LogDeck keeps these fields a copy of the first admin user, so an older version you roll back to still requires that login. With `adminPasswordSalt`, the hash is hex SHA256(password + salt) instead of bcrypt; it keeps working until the password is changed.
 
 ### `apiTokens`
 

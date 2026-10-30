@@ -35,22 +35,35 @@ type OIDCConfig struct {
 	DefaultRole string `json:"defaultRole,omitempty"`
 }
 
-// migrateLegacyAdmin folds the single admin of older versions into the user
-// list as its first admin, so existing settings-configured logins keep
-// working with zero user action.
+// migrateLegacyAdmin makes the single admin of older versions the first user,
+// so existing settings-configured logins keep working with zero user action.
+// Once there are users, the legacy fields only mirror one of them (see
+// mirrorLegacyAdmin) and are not read again.
 func migrateLegacyAdmin(a *FileAuthConfig) bool {
-	if a.AdminUsername == "" || a.AdminPasswordHash == "" {
+	if len(a.Users) > 0 || a.AdminUsername == "" || a.AdminPasswordHash == "" {
 		return false
 	}
-	a.Users = append([]User{{
+	a.Users = []User{{
 		Username:     a.AdminUsername,
 		PasswordHash: a.AdminPasswordHash,
 		PasswordSalt: a.AdminPasswordSalt,
 		Role:         "admin",
 		CreatedAt:    time.Now().UTC().Format(time.RFC3339),
-	}}, a.Users...)
-	a.AdminUsername, a.AdminPasswordHash, a.AdminPasswordSalt = "", "", ""
+	}}
 	return true
+}
+
+// mirrorLegacyAdmin copies the first admin user into the single-admin fields
+// older versions read, so rolling back to one keeps requiring a login rather
+// than finding no admin and running open.
+func mirrorLegacyAdmin(a *FileAuthConfig) {
+	a.AdminUsername, a.AdminPasswordHash, a.AdminPasswordSalt = "", "", ""
+	for _, u := range a.Users {
+		if u.Role == "admin" {
+			a.AdminUsername, a.AdminPasswordHash, a.AdminPasswordSalt = u.Username, u.PasswordHash, u.PasswordSalt
+			return
+		}
+	}
 }
 
 // oidcFromEnv reads OIDC settings from OIDC_* env vars. It returns nil when

@@ -101,6 +101,57 @@ func TestUpdateAuthFirstAdmin(t *testing.T) {
 	}
 }
 
+func readFileAuth(t *testing.T, path string) config.FileAuthConfig {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var file struct {
+		Auth config.FileAuthConfig `json:"auth"`
+	}
+	if err := json.Unmarshal(raw, &file); err != nil {
+		t.Fatal(err)
+	}
+	return file.Auth
+}
+
+// The saved config keeps a legacy admin in step with the users, so an older
+// version rolled back to still requires login.
+func TestLegacyAdminMirrorsFirstAdmin(t *testing.T) {
+	router := newUsersTestRouter(t)
+	cfgPath := os.Getenv("CONFIG_PATH")
+	admin := login(t, router, "admin", "admin-password")
+
+	do(t, router, "POST", "/api/v1/settings/users", admin, `{"username":"viewer","password":"viewer-password","role":"read"}`)
+	do(t, router, "POST", "/api/v1/settings/users", admin, `{"username":"second","password":"second-password","role":"admin"}`)
+	if saved := readFileAuth(t, cfgPath); saved.AdminUsername != "admin" || saved.AdminPasswordHash != saved.Users[0].PasswordHash {
+		t.Fatalf("legacy admin should mirror the first admin, got %+v", saved)
+	}
+
+	if w := do(t, router, "PUT", "/api/v1/settings/users/admin", admin, `{"password":"changed-password"}`); w.Code != http.StatusOK {
+		t.Fatalf("reset: %d %s", w.Code, w.Body.String())
+	}
+	if saved := readFileAuth(t, cfgPath); saved.AdminPasswordHash != saved.Users[0].PasswordHash {
+		t.Error("a password reset should reach the legacy admin")
+	}
+
+	second := login(t, router, "second", "second-password")
+	if w := do(t, router, "DELETE", "/api/v1/settings/users/admin", second, ""); w.Code != http.StatusOK {
+		t.Fatalf("delete: %d %s", w.Code, w.Body.String())
+	}
+	saved := readFileAuth(t, cfgPath)
+	var secondHash string
+	for _, u := range saved.Users {
+		if u.Username == "second" {
+			secondHash = u.PasswordHash
+		}
+	}
+	if saved.AdminUsername != "second" || saved.AdminPasswordHash != secondHash || secondHash == "" {
+		t.Errorf("after deleting the first admin the legacy admin should be the next admin, got %+v", saved)
+	}
+}
+
 // Env auth ignored the file's old admin before users existed, and still
 // does: an operator who moved to env vars to replace that login must not see
 // it come back.
@@ -142,12 +193,16 @@ func TestLegacyAdminMigratesToFirstUser(t *testing.T) {
 
 	manager := config.NewManager()
 	fa := manager.FileConfigSnapshot().Auth
-	if fa.AdminUsername != "" || len(fa.Users) != 1 || fa.Users[0].Username != "admin" || fa.Users[0].Role != auth.RoleAdmin {
-		t.Fatalf("expected the admin moved into users, got %+v", fa)
+	if len(fa.Users) != 1 || fa.Users[0].Username != "admin" || fa.Users[0].Role != auth.RoleAdmin {
+		t.Fatalf("expected the admin copied into users, got %+v", fa)
 	}
-	raw, _ := os.ReadFile(cfgPath)
-	if strings.Contains(string(raw), "adminUsername") {
-		t.Errorf("the migration should be persisted, file is %s", raw)
+	saved := readFileAuth(t, cfgPath)
+	if len(saved.Users) != 1 || saved.AdminUsername != "admin" || saved.AdminPasswordSalt != "salt" {
+		t.Errorf("the saved config should hold the user and still the legacy admin older versions read, got %+v", saved)
+	}
+	// The kept legacy fields are not migrated a second time.
+	if again := config.NewManager().FileConfigSnapshot().Auth; len(again.Users) != 1 {
+		t.Errorf("restart duplicated the admin: %+v", again.Users)
 	}
 
 	svc, err := auth.NewService(fa, nil)
