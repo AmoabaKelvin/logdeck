@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,16 +12,27 @@ import type { ContainerEnvResponse } from "../api/get-container-env-variables";
 import { isSecretKey } from "./env-file";
 import { PanelNote } from "./container-panel-ui";
 import { EnvConfirmDialog } from "./env-confirm-dialog";
+import {
+	compareWithRunning,
+	describeEnvChanges,
+	RunningEnvSummary,
+} from "./running-env";
+
+// Coolify injects these at deploy time; the server refuses to save them.
+const isCoolifyGenerated = (key: string) =>
+	key.startsWith("COOLIFY_") || key === "SOURCE_COMMIT";
 
 export function CoolifyEnvPanel({
 	containerId,
 	containerHost,
 	configuration,
+	runningEnv,
 	isReadOnly,
 }: {
 	containerId: string;
 	containerHost: string;
 	configuration: ContainerEnvResponse;
+	runningEnv?: string[];
 	isReadOnly: boolean;
 }) {
 	const queryClient = useQueryClient();
@@ -31,9 +42,38 @@ export function CoolifyEnvPanel({
 	const [saved, setSaved] = useState(false);
 	const [revealed, setRevealed] = useState<ReadonlySet<string>>(new Set());
 	const [needsReload, setNeedsReload] = useState(false);
-	const [confirmDeploy, setConfirmDeploy] = useState(false);
+	const [confirming, setConfirming] = useState<"save" | "deploy" | null>(null);
 	const variables = configuration.variables ?? [];
 	const isApplication = configuration.resource_type === "application";
+	// The running container is production. Build-only variables never reach
+	// it, and shared references resolve to values LogDeck does not read.
+	// Memoized: every keystroke in a value re-renders the panel.
+	const comparison = useMemo(
+		() =>
+			isApplication && runningEnv
+				? compareWithRunning(
+						Object.fromEntries(
+							(configuration.variables ?? [])
+								.filter((v) => !v.is_preview && v.is_runtime !== false)
+								.map((v) => [
+									v.key,
+									v.is_shared || v.value?.includes("{{") ? null : v.value,
+								]),
+						),
+						runningEnv,
+					)
+				: undefined,
+		[isApplication, runningEnv, configuration.variables],
+	);
+	const pendingDeploy = (comparison?.pending.length ?? 0) > 0;
+	const scoped = (change: CoolifyEnvChange) =>
+		change.is_preview ? `${change.key} (preview)` : change.key;
+	const pendingChanges = Object.values(changes);
+	const saveSummary = describeEnvChanges({
+		added: pendingChanges.filter((c) => !c.uuid).map(scoped),
+		changed: pendingChanges.filter((c) => c.uuid && !c.remove).map(scoped),
+		removed: pendingChanges.filter((c) => c.remove).map(scoped),
+	});
 	const refresh = () =>
 		queryClient.invalidateQueries({
 			queryKey: ["container-env", containerId, containerHost],
@@ -107,6 +147,13 @@ export function CoolifyEnvPanel({
 				and does not restart the container. Service changes apply to the whole
 				service. Hidden values stay unknown until explicitly replaced.
 			</PanelNote>
+			{comparison && (
+				<RunningEnvSummary
+					comparison={comparison}
+					platform="Coolify"
+					isGenerated={isCoolifyGenerated}
+				/>
+			)}
 			{variables.map((variable) => {
 				const change = changes[variable.uuid];
 				const removed = change?.remove;
@@ -306,7 +353,7 @@ export function CoolifyEnvPanel({
 					<div className="flex flex-wrap gap-2">
 						<Button
 							disabled={locked || Object.keys(changes).length === 0}
-							onClick={() => save.mutate()}
+							onClick={() => setConfirming("save")}
 						>
 							{save.isPending ? "Saving…" : "Save in Coolify"}
 						</Button>
@@ -320,10 +367,12 @@ export function CoolifyEnvPanel({
 						>
 							Discard
 						</Button>
-						{saved && (
+						{(saved || pendingDeploy) && (
 							<Button
-								disabled={busy || Object.keys(changes).length > 0}
-								onClick={() => setConfirmDeploy(true)}
+								disabled={
+									busy || needsReload || Object.keys(changes).length > 0
+								}
+								onClick={() => setConfirming("deploy")}
 							>
 								{deploy.isPending
 									? "Requesting deployment…"
@@ -337,18 +386,30 @@ export function CoolifyEnvPanel({
 			)}
 			<EnvConfirmDialog
 				copy={
-					confirmDeploy
+					confirming === "save"
 						? {
-								title: isApplication
-									? "Deploy through Coolify?"
-									: "Restart service through Coolify?",
-								description: `This applies the saved configuration. It can restart ${isApplication ? "the application" : "the whole service"} and cause downtime.`,
-								confirmLabel: isApplication ? "Deploy" : "Restart",
+								title: "Save in Coolify?",
+								description: `${saveSummary} ${isApplication ? "This changes the application's saved configuration." : "Service variables apply to every container in the service."} Shared variables themselves are not changed. Nothing restarts until you deploy.`,
+								confirmLabel: "Save",
 							}
-						: null
+						: confirming === "deploy"
+							? {
+									title: isApplication
+										? "Deploy through Coolify?"
+										: "Restart service through Coolify?",
+									description: isApplication
+										? "Coolify runs a full deployment with the saved configuration, including the build, so build variables apply too. It can restart the application and cause downtime."
+										: "This restarts the whole service with the saved configuration and can cause downtime.",
+									confirmLabel: isApplication ? "Deploy" : "Restart",
+								}
+							: null
 				}
-				onOpenChange={setConfirmDeploy}
-				onConfirm={() => deploy.mutate()}
+				onOpenChange={(open) => {
+					if (!open) setConfirming(null);
+				}}
+				onConfirm={() =>
+					confirming === "save" ? save.mutate() : deploy.mutate()
+				}
 			/>
 		</div>
 	);

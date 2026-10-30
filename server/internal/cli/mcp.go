@@ -134,7 +134,7 @@ func registerMCPTools(s *mcp.Server, a *app) []string {
 		Since  string `json:"since,omitempty" jsonschema:"only logs after this time (RFC3339 or relative; default 15m)"`
 		Tail   int    `json:"tail,omitempty" jsonschema:"lines scanned per container (default 100, max 500)"`
 	}
-	tool = &mcp.Tool{Name: "search_logs", Description: "Search recent logs of every running container, merged by timestamp.", Annotations: readOnlyAnnot()}
+	tool = &mcp.Tool{Name: "search_logs", Description: "Search recent logs of every running container, merged by timestamp. sources reports each container as ok, no_matches, removed or failed; incomplete is true when any container could not be searched.", Annotations: readOnlyAnnot()}
 	mcp.AddTool(s, tool, func(ctx context.Context, _ *mcp.CallToolRequest, in searchLogsInput) (*mcp.CallToolResult, any, error) {
 		if _, err := regexp.Compile(in.Search); err != nil {
 			return nil, nil, fmt.Errorf("invalid regex %q: %v", in.Search, err)
@@ -173,14 +173,16 @@ func registerMCPTools(s *mcp.Server, a *app) []string {
 		if in.Level != "" {
 			query.Set("level", strings.ToUpper(in.Level))
 		}
-		logs, err := a.aggregatedLogs(ctx, buildTargets(running), query)
+		logs, sources, err := a.aggregatedLogs(ctx, buildTargets(running), query)
 		if err != nil {
 			return nil, nil, err
 		}
 		if logs == nil {
 			logs = []logEntry{}
 		}
-		return mcpJSON(map[string]any{"logs": logs, "count": len(logs)})
+		// Sources say which containers were searched; incomplete means some
+		// could not be read, so an empty result is not "no matches".
+		return mcpJSON(map[string]any{"logs": logs, "count": len(logs), "sources": sources, "incomplete": len(missingSources(sources)) > 0})
 	})
 	register(tool)
 

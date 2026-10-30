@@ -65,6 +65,16 @@ type logEntry struct {
 	ContainerName     string            `json:"containerName,omitempty"`
 }
 
+// logSource is one target's outcome in an aggregated log read (see
+// docker.SourceCoverage). Status is ok, no_matches, stopped, removed or failed.
+type logSource struct {
+	Host          string `json:"host"`
+	ContainerID   string `json:"containerId"`
+	ContainerName string `json:"containerName,omitempty"`
+	Status        string `json:"status"`
+	Error         string `json:"error,omitempty"`
+}
+
 type containerEvent struct {
 	Host          string `json:"host"`
 	ContainerID   string `json:"containerId"`

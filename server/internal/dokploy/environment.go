@@ -55,6 +55,8 @@ type record struct {
 	BuildArgs          json.RawMessage `json:"buildArgs"`
 	BuildSecrets       json.RawMessage `json:"buildSecrets"`
 	CreateEnvFile      json.RawMessage `json:"createEnvFile"`
+	MemoryLimit        *string         `json:"memoryLimit"`
+	CPULimit           *string         `json:"cpuLimit"`
 	PreviewDeployments []struct {
 		AppName string `json:"appName"`
 	} `json:"previewDeployments"`
@@ -288,8 +290,8 @@ func (c *Client) Deploy(ctx context.Context, r Resource) error {
 	if _, err := c.readRecord(ctx, r); err != nil {
 		return err
 	}
-	// freshVolumes is deliberately omitted: applying environment must retain volumes.
-	return c.request(ctx, http.MethodPost, string(r.Type)+".deploy", map[string]string{string(r.Type) + "Id": r.ID, "title": "Apply environment saved from LogDeck"}, nil)
+	// freshVolumes is deliberately omitted: applying saved settings must retain volumes.
+	return c.request(ctx, http.MethodPost, string(r.Type)+".deploy", map[string]string{string(r.Type) + "Id": r.ID, "title": "Apply configuration saved from LogDeck"}, nil)
 }
 
 func (c *Client) mappingRevision(r Resource, appName string) string {
