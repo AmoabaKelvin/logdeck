@@ -139,7 +139,7 @@ function LoginPage() {
 			<div className="absolute top-4 right-4">
 				<ThemeToggle />
 			</div>
-			<Card className="w-full max-w-md p-8 space-y-6 shadow-xl">
+			<Card className="w-full max-w-md p-8 shadow-xl">
 				<div className="text-center space-y-2">
 					<h1 className="text-4xl font-bold tracking-tight">LogDeck</h1>
 					<p className="text-sm text-muted-foreground">
@@ -147,57 +147,59 @@ function LoginPage() {
 					</p>
 				</div>
 
-				<form onSubmit={handleSubmit} className="space-y-4">
-					<div className="space-y-2">
-						<Label htmlFor="username">Username</Label>
-						<Input
-							id="username"
-							type="text"
-							value={username}
-							onChange={(e) => setUsername(e.target.value)}
-							placeholder="Enter your username"
-							required
-							autoComplete="username"
-							disabled={isLoading}
-						/>
-					</div>
-
-					<div className="space-y-2">
-						<Label htmlFor="password">Password</Label>
-						<Input
-							id="password"
-							type="password"
-							value={password}
-							onChange={(e) => setPassword(e.target.value)}
-							placeholder="Enter your password"
-							required
-							autoComplete="current-password"
-							disabled={isLoading}
-						/>
-					</div>
-
-					{shownError && (
-						<div className="p-3 text-sm text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 rounded-md border border-red-200 dark:border-red-800">
-							{shownError}
+				<div className="space-y-3">
+					<form onSubmit={handleSubmit} className="space-y-4">
+						<div className="space-y-2">
+							<Label htmlFor="username">Username</Label>
+							<Input
+								id="username"
+								type="text"
+								value={username}
+								onChange={(e) => setUsername(e.target.value)}
+								placeholder="Enter your username"
+								required
+								autoComplete="username"
+								disabled={isLoading}
+							/>
 						</div>
+
+						<div className="space-y-2">
+							<Label htmlFor="password">Password</Label>
+							<Input
+								id="password"
+								type="password"
+								value={password}
+								onChange={(e) => setPassword(e.target.value)}
+								placeholder="Enter your password"
+								required
+								autoComplete="current-password"
+								disabled={isLoading}
+							/>
+						</div>
+
+						{shownError && (
+							<div className="p-3 text-sm text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 rounded-md border border-red-200 dark:border-red-800">
+								{shownError}
+							</div>
+						)}
+
+						<Button type="submit" className="w-full" disabled={isLoading}>
+							{isLoading ? "Signing in..." : "Sign in"}
+						</Button>
+					</form>
+
+					{oidcEnabled && (
+						<Button
+							type="button"
+							variant="outline"
+							className="w-full"
+							onClick={startOidc}
+							disabled={isLoading}
+						>
+							Sign in with SSO
+						</Button>
 					)}
-
-					<Button type="submit" className="w-full" disabled={isLoading}>
-						{isLoading ? "Signing in..." : "Sign in"}
-					</Button>
-				</form>
-
-				{oidcEnabled && (
-					<Button
-						type="button"
-						variant="outline"
-						className="w-full"
-						onClick={startOidc}
-						disabled={isLoading}
-					>
-						Sign in with SSO
-					</Button>
-				)}
+				</div>
 
 				<div className="text-center text-xs text-muted-foreground">
 					<p>How hard can it be?</p>

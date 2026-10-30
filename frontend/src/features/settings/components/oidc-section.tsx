@@ -16,7 +16,12 @@ import type { UpdateOIDCPayload } from "../api/update-oidc";
 import { useUpdateOIDC } from "../hooks/use-settings";
 import type { OIDCConfig } from "../types";
 import { SaveButton } from "./save-button";
-import { EnvBadge, Field, SettingsSection } from "./settings-ui";
+import {
+	EnvBadge,
+	Field,
+	SettingsSection,
+	SettingsSubsection,
+} from "./settings-ui";
 
 const splitGroups = (value: string) =>
 	value
@@ -99,111 +104,131 @@ export function OidcSection({
 			{(form.enabled || hasChanges) && (
 				<div className="space-y-4">
 					{form.enabled && (
-						<div className="grid max-w-2xl gap-4 sm:grid-cols-2">
-							<Field id="oidc-issuer" label="Issuer URL">
-								<Input
-									id="oidc-issuer"
-									value={form.issuer}
-									onChange={(e) => set({ issuer: e.target.value })}
-									placeholder="https://auth.example.com"
-									disabled={isEnv}
-								/>
-							</Field>
-							<Field
-								id="oidc-redirect"
-								label="Redirect URL"
-								hint="Register this URL with the provider."
-							>
-								<Input
-									id="oidc-redirect"
-									value={form.redirectUrl}
-									onChange={(e) => set({ redirectUrl: e.target.value })}
-									disabled={isEnv}
-								/>
-							</Field>
-							<Field id="oidc-client-id" label="Client ID">
-								<Input
-									id="oidc-client-id"
-									value={form.clientId}
-									onChange={(e) => set({ clientId: e.target.value })}
-									disabled={isEnv}
-								/>
-							</Field>
-							<Field
-								id="oidc-client-secret"
-								label="Client secret"
-								hint="Leave blank for a public client."
-							>
-								<Input
-									id="oidc-client-secret"
-									type="password"
-									autoComplete="off"
-									value={form.clientSecret}
-									onChange={(e) => set({ clientSecret: e.target.value })}
-									disabled={isEnv}
-								/>
-							</Field>
-							<Field
-								id="oidc-admin-groups"
-								label="Admin groups"
-								hint="Comma-separated. Members get full access."
-							>
-								<Input
-									id="oidc-admin-groups"
-									value={adminGroups}
-									onChange={(e) => setAdminGroups(e.target.value)}
-									placeholder="logdeck-admins"
-									disabled={isEnv}
-								/>
-							</Field>
-							<Field
-								id="oidc-read-groups"
-								label="Read-only groups"
-								hint="Comma-separated. Members can look but not change."
-							>
-								<Input
-									id="oidc-read-groups"
-									value={readGroups}
-									onChange={(e) => setReadGroups(e.target.value)}
-									placeholder="developers"
-									disabled={isEnv}
-								/>
-							</Field>
-							<Field
-								id="oidc-groups-claim"
-								label="Groups claim"
-								hint='The ID token claim listing groups. Defaults to "groups".'
-							>
-								<Input
-									id="oidc-groups-claim"
-									value={form.groupsClaim}
-									onChange={(e) => set({ groupsClaim: e.target.value })}
-									placeholder="groups"
-									disabled={isEnv}
-								/>
-							</Field>
-							<Field
-								id="oidc-default-role"
-								label="Everyone else"
-								hint="Users in none of the groups above."
-							>
-								<Select
-									value={form.defaultRole || "none"}
-									onValueChange={(v) =>
-										set({ defaultRole: v === "admin" || v === "read" ? v : "" })
-									}
-									disabled={isEnv}
-								>
-									<SelectTrigger id="oidc-default-role" className="w-full">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="none">Can't sign in</SelectItem>
-										<SelectItem value="read">Read-only</SelectItem>
-										<SelectItem value="admin">Admin</SelectItem>
-									</SelectContent>
-								</Select>
-							</Field>
+						<div className="max-w-2xl space-y-6">
+							<SettingsSubsection title="Provider">
+								<div className="grid gap-4 sm:grid-cols-2">
+									<div className="sm:col-span-2">
+										<Field id="oidc-issuer" label="Issuer URL">
+											<Input
+												id="oidc-issuer"
+												value={form.issuer}
+												onChange={(e) => set({ issuer: e.target.value })}
+												placeholder="https://auth.example.com"
+												disabled={isEnv}
+											/>
+										</Field>
+									</div>
+									<div className="sm:col-span-2">
+										<Field
+											id="oidc-redirect"
+											label="Redirect URL"
+											hint="Register this URL with the provider."
+										>
+											<Input
+												id="oidc-redirect"
+												value={form.redirectUrl}
+												onChange={(e) => set({ redirectUrl: e.target.value })}
+												disabled={isEnv}
+											/>
+										</Field>
+									</div>
+									<Field id="oidc-client-id" label="Client ID">
+										<Input
+											id="oidc-client-id"
+											value={form.clientId}
+											onChange={(e) => set({ clientId: e.target.value })}
+											disabled={isEnv}
+										/>
+									</Field>
+									<Field
+										id="oidc-client-secret"
+										label="Client secret"
+										hint="Leave blank for a public client."
+									>
+										<Input
+											id="oidc-client-secret"
+											type="password"
+											autoComplete="off"
+											value={form.clientSecret}
+											onChange={(e) => set({ clientSecret: e.target.value })}
+											disabled={isEnv}
+										/>
+									</Field>
+								</div>
+							</SettingsSubsection>
+
+							<div className="border-t border-border/60 pt-6">
+								<SettingsSubsection title="Roles">
+									<div className="grid gap-4 sm:grid-cols-2">
+										<Field
+											id="oidc-admin-groups"
+											label="Admin groups"
+											hint="Comma-separated. Full access."
+										>
+											<Input
+												id="oidc-admin-groups"
+												value={adminGroups}
+												onChange={(e) => setAdminGroups(e.target.value)}
+												placeholder="logdeck-admins"
+												disabled={isEnv}
+											/>
+										</Field>
+										<Field
+											id="oidc-read-groups"
+											label="Read-only groups"
+											hint="Comma-separated. Can look, not change."
+										>
+											<Input
+												id="oidc-read-groups"
+												value={readGroups}
+												onChange={(e) => setReadGroups(e.target.value)}
+												placeholder="developers"
+												disabled={isEnv}
+											/>
+										</Field>
+										<Field
+											id="oidc-default-role"
+											label="Everyone else"
+											hint="Users in none of these groups."
+										>
+											<Select
+												value={form.defaultRole || "none"}
+												onValueChange={(v) =>
+													set({
+														defaultRole: v === "admin" || v === "read" ? v : "",
+													})
+												}
+												disabled={isEnv}
+											>
+												<SelectTrigger
+													id="oidc-default-role"
+													className="w-full"
+												>
+													<SelectValue />
+												</SelectTrigger>
+												<SelectContent>
+													<SelectItem value="none">Can't sign in</SelectItem>
+													<SelectItem value="read">Read-only</SelectItem>
+													<SelectItem value="admin">Admin</SelectItem>
+												</SelectContent>
+											</Select>
+										</Field>
+										<Field
+											id="oidc-groups-claim"
+											label="Groups claim"
+											hint="ID token claim listing the groups."
+										>
+											<Input
+												id="oidc-groups-claim"
+												value={form.groupsClaim}
+												onChange={(e) => set({ groupsClaim: e.target.value })}
+												placeholder="groups"
+												disabled={isEnv}
+											/>
+										</Field>
+									</div>
+								</SettingsSubsection>
+							</div>
 						</div>
 					)}
 
