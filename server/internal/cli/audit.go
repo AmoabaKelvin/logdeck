@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"os"
 	"strconv"
@@ -24,7 +25,7 @@ func newAuditCmd(a *app) *cobra.Command {
 	var (
 		actor, action, target, host, since string
 		failed                             bool
-		limit                              int
+		limit, offset                      int
 	)
 
 	cmd := &cobra.Command{
@@ -37,6 +38,9 @@ func newAuditCmd(a *app) *cobra.Command {
 				if value != "" {
 					query.Set(key, value)
 				}
+			}
+			if offset != 0 {
+				query.Set("offset", strconv.Itoa(offset))
 			}
 			if failed {
 				query.Set("result", "failure")
@@ -96,6 +100,9 @@ func newAuditCmd(a *app) *cobra.Command {
 				})
 			}
 			renderTable(os.Stdout, []string{"TIME", "WHO", "ACTION", "TARGET", "STATUS"}, rows)
+			if end := offset + len(entries); end < resp.Total {
+				fmt.Fprintf(os.Stderr, "\nhint: showing %d-%d of %d, use --offset %d for older changes\n", offset+1, end, resp.Total, end)
+			}
 			return nil
 		}),
 	}
@@ -107,5 +114,6 @@ func newAuditCmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&since, "since", "", "only changes after this time (RFC3339 or relative: 30m, 2h, 1d)")
 	cmd.Flags().BoolVar(&failed, "failed", false, "only changes that failed or were refused")
 	cmd.Flags().IntVar(&limit, "limit", 50, "maximum number of entries to return (at most 500)")
+	cmd.Flags().IntVar(&offset, "offset", 0, "entries to skip, for the next page")
 	return cmd
 }
