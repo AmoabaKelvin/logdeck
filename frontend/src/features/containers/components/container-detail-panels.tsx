@@ -86,7 +86,6 @@ function PanelBody({
 			containerId={containerId}
 			containerHost={container.host}
 			isReadOnly={isReadOnly}
-			owner={owner}
 			stats={stats}
 			inspect={inspect}
 		/>
