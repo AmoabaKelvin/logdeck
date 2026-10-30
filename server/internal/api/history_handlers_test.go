@@ -43,7 +43,7 @@ func newHistoryTestRouterWithAuth(t *testing.T, store *logstore.Store, authSvc *
 	manager := config.NewManager()
 	registry := services.NewRegistry(nil, nil, authSvc, manager.Config())
 	engine := alerts.NewEngine(registry, manager, nil, nil)
-	return NewRouter(registry, manager, engine, store, nil, nil, "test")
+	return NewRouter(registry, manager, engine, store, nil, nil, nil, "test")
 }
 
 // newHistoryStore opens a real store over a temp database and returns it with
@@ -759,7 +759,7 @@ func TestDeleteHistoryContainerReadOnlyMode(t *testing.T) {
 
 	manager := config.NewManager()
 	registry := services.NewRegistry(nil, nil, nil, manager.Config())
-	router := NewRouter(registry, manager, alerts.NewEngine(registry, manager, nil, nil), store, nil, nil, "test")
+	router := NewRouter(registry, manager, alerts.NewEngine(registry, manager, nil, nil), store, nil, nil, nil, "test")
 
 	w := doHistoryDelete(t, router, "/api/v1/history/containers/web?host=local", "")
 	if w.Code != http.StatusForbidden {

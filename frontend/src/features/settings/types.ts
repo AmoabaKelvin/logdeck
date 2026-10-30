@@ -108,6 +108,7 @@ export interface BackupContents {
 	alertRules: number;
 	alertChannels: number;
 	alertHistory: number;
+	auditEntries: number;
 	apiTokens: number;
 	logsBytes: number;
 }

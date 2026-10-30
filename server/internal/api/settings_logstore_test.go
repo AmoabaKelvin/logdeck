@@ -28,7 +28,7 @@ func newLogStoreTestRouter(t *testing.T, authSvc *auth.Service) (http.Handler, *
 
 	manager := config.NewManager()
 	registry := services.NewRegistry(nil, nil, authSvc, manager.Config())
-	return NewRouter(registry, manager, nil, nil, nil, nil, "test"), manager
+	return NewRouter(registry, manager, nil, nil, nil, nil, nil, "test"), manager
 }
 
 func putLogStorage(t *testing.T, router http.Handler, body string) *httptest.ResponseRecorder {
@@ -206,7 +206,7 @@ func TestUpdateLogStorageRejectedInReadOnlyMode(t *testing.T) {
 
 	manager := config.NewManager()
 	registry := services.NewRegistry(nil, nil, nil, manager.Config())
-	router := NewRouter(registry, manager, nil, nil, nil, nil, "test")
+	router := NewRouter(registry, manager, nil, nil, nil, nil, nil, "test")
 
 	// Lowering a cap evicts stored logs, so it is blocked like any other
 	// destructive route.

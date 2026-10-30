@@ -9,6 +9,7 @@ const empty = {
 	alertRules: 0,
 	alertChannels: 0,
 	alertHistory: 0,
+	auditEntries: 0,
 	apiTokens: 0,
 	logsBytes: 0,
 };
@@ -22,9 +23,12 @@ describe("describeContents", () => {
 				coolifyHosts: 1,
 				alertRules: 1,
 				alertHistory: 12,
+				auditEntries: 1,
 				logsBytes: 2048,
 			}),
-		).toBe("2 connections, 1 alert rule, 12 past alerts, 2 KB of logs");
+		).toBe(
+			"2 connections, 1 alert rule, 12 past alerts, 1 audit entry, 2 KB of logs",
+		);
 	});
 
 	it("says so when there is nothing beyond the defaults", () => {

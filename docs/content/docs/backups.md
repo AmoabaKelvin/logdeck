@@ -9,6 +9,7 @@ A backup is a single `.tar` file (`.tar.enc` when encrypted) with these entries:
 - `manifest.json`: the backup format version, the LogDeck version that made it, when it was made, what it contains, and a SHA-256 checksum and size for every other file
 - `config.json`: hosts, Coolify and Dokploy connections, read-only mode, alert rules and channels, the log-store and backup settings, and, if you choose, credentials
 - `alerts-history.json`: the recently fired alerts
+- `audit.jsonl`: the [audit log](/docs/audit-log). Backups made before LogDeck had one do not include it.
 - `logs.db`: the [stored logs](/docs/log-history), only if you choose to include them
 
 Some things are not in a backup, and you need to recover them with your deployment files:
@@ -62,7 +63,9 @@ Restore a saved backup from its row in the list, or upload a file with **Restore
 
 At startup, LogDeck moves each current file into a `pre-restore-<time>` folder in the data directory before it moves the restored copy into place. That folder is your way back, and LogDeck does not delete it. If LogDeck stops part-way, the next start finishes the job. If a file can't be moved, LogDeck puts back what it already moved, keeps the backup in a `restore-failed-<time>` folder, and starts with the data it had.
 
-Restoring does not replay anything. Past alerts in the restored history are not sent again, and alert rules only fire on new events. LogDeck never stores container actions, so none are resumed.
+Restoring does not replay anything. Past alerts in the restored history are not sent again, and alert rules only fire on new events. Container actions in the audit log are a record only, so none are resumed.
+
+Restoring never removes audit entries. LogDeck keeps the current audit log and adds the restored entries that are older than anything in it, so the changes made since the backup, including the restore itself, stay on record. A backup without an audit log leaves the current one as it is.
 
 If you upload a large backup through a reverse proxy, raise its request body limit (for example nginx's `client_max_body_size`) or restore from the backup folder instead.
 
