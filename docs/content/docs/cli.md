@@ -140,7 +140,9 @@ Search the recent logs of every running container across all hosts, merged by ti
 logdeck grep "connection refused" --since 1h --level ERROR
 ```
 
-An empty result still exits 0. Stdout stays empty, so pipelines stay clean, and a one-line hint goes to stderr: `no running containers to search` or `no matches in <N> containers since <time>`.
+An empty result still exits 0. Stdout stays empty, so pipelines stay clean, and a one-line hint goes to stderr: `no running containers to search` or `no matches in <N> containers since <time>`. `<N>` counts only the containers that were actually searched.
+
+When some containers' logs cannot be read, `grep` and `logs --stack` still print what they could read and add one warning per missing container to stderr: `warning: incomplete results: logs of <name> on <host> could not be read: <reason>`. The exit code stays 0. In JSON mode the document also carries `sources`, with each container's status (`ok`, `no_matches`, `removed`, or `failed` with an `error`), and `incomplete: true`. Check that field before treating an empty result as "no matches". If no container could be read at all, the command fails with exit code 1.
 
 ### `stats`
 
@@ -253,7 +255,8 @@ logdeck logs api --follow
 
 Notes for agents:
 
-- `-o json` always emits a single JSON document on stdout for one-shot commands. Streaming commands (`logs --follow`, `events`) emit NDJSON, one object per line.
+- `-o json` always emits a single JSON document on stdout for one-shot commands. Streaming commands (`logs --follow`, `events`) emit NDJSON, one object per line. A followed stack also emits `{"type":"source",...}` lines when a container's stream opens, fails, or stops.
+- `grep` and `logs --stack` in JSON mode report `incomplete: true` when some containers could not be read, so a partial result is never mistaken for a complete one.
 - Runtime and usage errors go to stderr as `{"error": "..."}` in JSON mode, so stdout stays clean for parsing. If `-o` itself fails to parse, the error falls back to plain text.
 - Exit codes: 0 success, 1 runtime or server error, 2 usage error.
 - `--since` and `--until` accept relative durations (`15m`, `2h`, `1d`), so no date math is needed.

@@ -102,6 +102,7 @@ Act on a whole Compose stack instead of one container at a time.
 
 - Start, stop, or restart every container in a stack from its group header
 - Aggregated stack logs merge all of a stack's containers into one stream, ordered by timestamp
+- When some containers' logs cannot be read, a banner lists each one with the reason and a Retry button. It clears once they are read again, and downloads carry the same warning
 - Color-coded container badges show which container wrote each line
 - Works with Docker Compose and podman-compose projects
 
