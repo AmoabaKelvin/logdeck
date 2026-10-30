@@ -207,7 +207,7 @@ logdeck networks
 
 ### `alerts`
 
-Manage alerting: rules, notification channels, and fired-alert history. Rules match container events (`die`, `oom`, `unhealthy`, `restart`), log lines (a minimum level, a regex, or both), or CPU and memory use held above a limit (`--type resource --metric cpu|memory --above 90%|1.5g`), and can require a threshold of matches within a window. LogDeck delivers every fired alert to each enabled channel. Channel types are `webhook` (a generic JSON POST that Slack and Discord incoming webhooks accept), `ntfy`, `gotify`, and `telegram`.
+Manage alerting: rules, notification channels, and fired-alert history. Rules match container events (`die`, `oom`, `unhealthy`, `restart`), log lines (a minimum level, a regex, or both), or CPU and memory use held above a limit (`--type resource --metric cpu|memory --above 90%|1.5g`), and can require a threshold of matches within a window. LogDeck delivers every fired alert to each enabled channel. Channel types are `webhook` (a generic JSON POST that Slack and Discord incoming webhooks accept), `slack`, `discord`, `email`, `pagerduty`, `opsgenie`, `ntfy`, `gotify`, and `telegram`.
 
 `--host`, `--container`, and `--project` are repeatable and narrow which containers a rule watches. A rule without them watches everything. `--window` and `--cooldown` accept durations (`60s`, `5m`) or bare seconds. When `--cooldown` is 0 or omitted, the server applies its default of 300 seconds between deliveries for the same rule and container.
 
@@ -223,6 +223,10 @@ logdeck alerts channels add --type webhook --endpoint https://hooks.example.com/
 logdeck alerts channels add --type ntfy --endpoint https://ntfy.sh/mytopic
 logdeck alerts channels add --type gotify --endpoint https://gotify.example.com --secret <app-token>
 logdeck alerts channels add --type telegram --secret "$TELEGRAM_BOT_TOKEN" --target "$CHAT_ID"
+logdeck alerts channels add --type slack --endpoint https://hooks.slack.com/services/...
+logdeck alerts channels add --type email --endpoint smtps://smtp.example.com --username alerts --secret "$SMTP_PASSWORD" --from alerts@example.com --target oncall@example.com
+logdeck alerts channels add --type pagerduty --secret "$PAGERDUTY_ROUTING_KEY"
+logdeck alerts channels add --type opsgenie --secret "$OPSGENIE_API_KEY"
 logdeck alerts channels test <id>
 logdeck alerts channels delete <id>
 logdeck alerts silences

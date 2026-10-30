@@ -42,6 +42,7 @@ import {
 import { AlertRuleDialog } from "./alert-rule-dialog";
 import {
 	buildChannelPayload,
+	channelFields,
 	CHANNEL_TYPES,
 	type ChannelDraft,
 	channelDestination,
@@ -90,59 +91,41 @@ function ChannelDraftFields({
 	draft: ChannelDraft;
 	set: <K extends keyof ChannelDraft>(key: K, value: ChannelDraft[K]) => void;
 }) {
-	const needsURL = draft.type !== "telegram";
-	const needsToken = draft.type === "gotify" || draft.type === "telegram";
-	const needsTarget = draft.type === "telegram";
-
-	const urlLabel = draft.type === "gotify" ? "Server URL" : "URL";
-	const urlPlaceholder =
-		draft.type === "ntfy"
-			? "https://ntfy.sh/mytopic"
-			: draft.type === "gotify"
-				? "https://gotify.example.com"
-				: "https://example.com/webhook";
-	const tokenLabel = draft.type === "gotify" ? "App token" : "Bot token";
-
 	return (
 		<>
-			{needsURL && (
-				<Field id="channel-url" label={urlLabel}>
-					<Input
-						id="channel-url"
-						name="url"
-						value={draft.url}
-						onChange={(e) => set("url", e.target.value)}
-						placeholder={urlPlaceholder}
-						className="h-8"
-					/>
-				</Field>
-			)}
-			{needsToken && (
-				<Field id="channel-token" label={tokenLabel}>
-					<Input
-						id="channel-token"
-						name="token"
-						type="password"
-						autoComplete="new-password"
-						value={draft.token}
-						onChange={(e) => set("token", e.target.value)}
-						placeholder={tokenLabel}
-						className="h-8"
-					/>
-				</Field>
-			)}
-			{needsTarget && (
-				<Field id="channel-target" label="Chat id">
-					<Input
-						id="channel-target"
-						name="target"
-						value={draft.target}
-						onChange={(e) => set("target", e.target.value)}
-						placeholder="-1001234567890"
-						className="h-8"
-					/>
-				</Field>
-			)}
+			{channelFields(draft.type).map((spec) => {
+				const id = `channel-${spec.field}`;
+				const secret = spec.field === "token";
+				return (
+					<Field
+						key={spec.field}
+						id={id}
+						label={
+							spec.optional ? (
+								<>
+									{spec.label}{" "}
+									<span className="font-normal text-muted-foreground">
+										(optional)
+									</span>
+								</>
+							) : (
+								spec.label
+							)
+						}
+					>
+						<Input
+							id={id}
+							name={spec.field}
+							type={secret ? "password" : undefined}
+							autoComplete={secret ? "new-password" : undefined}
+							value={draft[spec.field]}
+							onChange={(e) => set(spec.field, e.target.value)}
+							placeholder={spec.placeholder}
+							className="h-8"
+						/>
+					</Field>
+				);
+			})}
 		</>
 	);
 }

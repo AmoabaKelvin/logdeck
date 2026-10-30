@@ -31,7 +31,7 @@ LogDeck tells you when a container dies, gets OOM-killed, fails its health check
 - Log rules on a minimum level, a regex pattern, or both
 - Rate thresholds such as "5 matches in 60 seconds", and per-rule cooldowns that report how many matches they suppressed
 - Rules can target hosts, container names, or Compose projects
-- Notification channels: a generic JSON webhook that Slack and Discord accept unchanged, ntfy, Gotify, and Telegram
+- Notification channels: Slack, Discord, email over SMTP, PagerDuty and Opsgenie (resolved when a collection failure clears), ntfy, Gotify, Telegram, and a generic JSON webhook
 - Alert history with the delivery result of every notification
 
 [Read the guide](/docs/alerting)

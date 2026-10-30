@@ -195,10 +195,11 @@ Rules and channels, as described on the [alerting](/docs/alerting) page. IDs are
 `channels` entries:
 
 - `id`, `type`, `enabled`, and an optional `name`.
-- `type` is `webhook`, `ntfy`, `gotify`, or `telegram`.
-- `url`: the webhook URL, the ntfy topic URL, or the Gotify server base URL.
-- `token`: the Gotify app token or the Telegram bot token.
-- `target`: the Telegram chat id.
+- `type` is `webhook`, `slack`, `discord`, `email`, `pagerduty`, `opsgenie`, `ntfy`, `gotify`, or `telegram`.
+- `url`: the webhook URL (webhook, Slack, Discord), the ntfy topic URL, the Gotify server base URL, the `smtp://` or `smtps://` server URL for email, or an optional API URL for an EU PagerDuty or Opsgenie account.
+- `token`: the Gotify app token, the Telegram bot token, the SMTP password, the PagerDuty routing key, or the Opsgenie API key.
+- `target`: the Telegram chat id, or the comma-separated email recipients.
+- `username` and `from`: the SMTP username and the sender address, for email only.
 
 `rules` entries:
 
