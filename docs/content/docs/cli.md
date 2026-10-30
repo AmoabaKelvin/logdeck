@@ -230,12 +230,13 @@ logdeck alerts history --limit 20
 
 ### `audit`
 
-List recorded changes, newest first: who made each one, the action, the target and host, and the HTTP status. It needs an admin session or an admin-scoped token. `--actor`, `--action`, `--target`, and `--host` match part of the value, ignoring case. `--failed` keeps only changes that failed or were refused, and `--since` takes an RFC 3339 time or a relative one such as `2h` or `1d`. See [Audit log](/docs/audit-log).
+List recorded changes, newest first: who made each one, the action, the target and host, and the HTTP status. When authentication is enabled, it needs an admin session or an admin-scoped token. `--actor`, `--action`, `--target`, and `--host` match part of the value, ignoring case. `--failed` keeps only changes that failed or were refused, and `--since` takes an RFC 3339 time or a relative one such as `2h` or `1d`. `--limit` returns at most 500 entries at a time, and `--offset` skips to older ones. See [Audit log](/docs/audit-log).
 
 ```bash
 logdeck audit
 logdeck audit --actor token:ci --since 1d
 logdeck audit --action container.remove --failed --limit 100
+logdeck audit --limit 500 --offset 500
 ```
 
 ## Using with AI agents

@@ -65,7 +65,7 @@ At startup, LogDeck moves each current file into a `pre-restore-<time>` folder i
 
 Restoring does not replay anything. Past alerts in the restored history are not sent again, and alert rules only fire on new events. Container actions in the audit log are a record only, so none are resumed.
 
-Restoring never removes audit entries. LogDeck keeps the current audit log and adds the restored entries that are older than anything in it, so the changes made since the backup, including the restore itself, stay on record. A backup without an audit log leaves the current one as it is.
+LogDeck keeps the current audit log and adds the restored entries that are older than anything in it, so the changes made since the backup, including the restore itself, stay on record. The log is still capped at 10,000 entries: if the combined log is over that, the oldest are dropped, so a restore may add only some of the older entries, or none. A backup without an audit log leaves the current one as it is.
 
 If you upload a large backup through a reverse proxy, raise its request body limit (for example nginx's `client_max_body_size`) or restore from the backup folder instead.
 

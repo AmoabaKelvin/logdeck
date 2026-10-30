@@ -1,8 +1,8 @@
-The audit log records every change made through LogDeck: who made it, what it was, which host and container or setting it touched, when, and whether it worked. Open it under **Settings > Audit log**. Only admins see it: read-scoped API tokens are refused, the same as for the rest of Settings.
+The audit log records the changes made through LogDeck: who made each one, what it was, which host and container or setting it touched, when, and whether it worked. Open it under **Settings > Audit log**. When authentication is enabled, only admins see it: read-scoped API tokens are refused, the same as for the rest of Settings. When authentication is disabled, anyone who can reach LogDeck can read it.
 
 ## What is recorded
 
-Every request that can change something is recorded once it has been handled, whether it came from the UI, the [CLI](/docs/cli), [MCP](/docs/mcp), or a script calling the API:
+A request that can change something is recorded once it has been handled, whether it came from the UI, the [CLI](/docs/cli), [MCP](/docs/mcp), or a script calling the API:
 
 - Container start, stop, restart, and remove, and Compose stack start, stop, and restart
 - Opening a terminal and running a command in a container. A terminal is recorded as soon as it opens.
@@ -10,7 +10,7 @@ Every request that can change something is recorded once it has been handled, wh
 - Settings changes: hosts and connections, read-only mode, sign-in, API tokens, redaction, log storage, backups and restores, and alert rules, channels, and history
 - Deleting stored logs
 
-Refused and failed attempts are recorded too, for example a container stop blocked by [read-only mode](/docs/configuration#read-only-mode), with the HTTP status that was returned.
+Refused and failed attempts are recorded too, for example a container stop blocked by [read-only mode](/docs/configuration#read-only-mode), with the HTTP status that was returned. In rare cases a record is lost; see [Storage](#storage).
 
 Reads are not recorded: viewing or streaming logs, listing containers, and opening Settings leave no trace in the audit log. Neither do redaction previews and connection tests, which change nothing.
 
@@ -20,6 +20,8 @@ Each entry holds:
 - **Action**: a short name such as `container.stop`, `settings.read_only`, or `api_token.create`
 - **Target**: the container ID, Compose project, alert rule or channel ID, API token, or backup it applied to, and the host
 - **Result**: the HTTP status and how long the request took
+
+Text fields are cut off at 256 bytes, so a very long host or target is not recorded in full.
 
 Request bodies are never recorded, so env values, passwords, and tokens do not end up in the audit log. It records that the env vars of a container changed, not what they changed to.
 
@@ -31,7 +33,15 @@ The audit log is kept in `audit.jsonl` in the [data directory](/docs/configurati
 
 Entries are written by a single background writer, so a change never waits on the disk. They are appended to the file as they happen, and the file is rewritten only once it has grown well past the cap.
 
-The audit log goes into every [backup](/docs/backups). Restoring a backup adds the entries it holds that are older than anything in the current audit log, and keeps every current entry, so the changes made since the backup, including the restore itself, stay on record.
+Recording never holds up a change, so a record can be lost:
+
+- If the disk stalls and the writer's queue of 256 records fills up, new records are dropped.
+- If the file can't be opened or written, new records are kept in memory only, until the next restart.
+- A crash loses the records still in the queue.
+
+LogDeck notes the first two in the server log.
+
+The audit log goes into every [backup](/docs/backups). Restoring a backup adds the entries it holds that are older than anything in the current audit log, so the changes made since the backup, including the restore itself, stay on record. The cap still applies: if the combined log has more than 10,000 entries, the oldest are dropped, so a restore may add only some of the older entries, or none.
 
 ## CLI and API
 
@@ -39,6 +49,7 @@ The audit log goes into every [backup](/docs/backups). Restoring a backup adds t
 logdeck audit
 logdeck audit --actor token:ci --failed --since 1d
 logdeck audit --action container.stop --target web -o json
+logdeck audit --limit 500 --offset 500
 ```
 
 `GET /api/v1/settings/audit` returns `{"entries": [...], "total": n}`, newest first. Every filter is optional:

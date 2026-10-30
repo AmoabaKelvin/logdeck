@@ -60,7 +60,7 @@ LogDeck can mask secrets in log lines before it stores them or serves them anywh
 
 ## Audit log
 
-LogDeck records every change made through it, from the UI, the CLI, MCP, or the API.
+LogDeck records the changes made through it, from the UI, the CLI, MCP, or the API.
 
 - Who made it (a user or an API token), the action, the host and target, when, and the result, including refused attempts
 - Container actions, terminals and commands, env and resource changes, deploys, settings, API tokens, backups, and log deletion
