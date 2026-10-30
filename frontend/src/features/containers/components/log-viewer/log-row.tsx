@@ -95,6 +95,8 @@ export interface LogRowProps {
 		event: React.MouseEvent | React.KeyboardEvent,
 	) => void;
 	onToggleJson: (index: number) => void;
+	// Set when a clicked JSON value can be added to the search as a filter.
+	onAddFieldFilter?: (key: string, value: string) => void;
 	onCopy: (entry: LogEntry) => void;
 }
 
@@ -114,6 +116,7 @@ export function LogRow(props: LogRowProps) {
 		highlightSearchText,
 		onClick,
 		onToggleJson,
+		onAddFieldFilter,
 		onCopy,
 	} = props;
 
@@ -188,6 +191,7 @@ export function LogRow(props: LogRowProps) {
 						onToggle={() => onToggleJson(index)}
 						isCurrentMatch={isCurrentMatch}
 						highlightSearchText={hasMatch ? highlightSearchText : undefined}
+						onFieldClick={onAddFieldFilter}
 					/>
 				) : hasMatch ? (
 					highlightSearchText(displayText, isCurrentMatch)

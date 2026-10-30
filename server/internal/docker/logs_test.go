@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -30,7 +31,7 @@ func TestParseDockerLogsGroupsStructuredContinuationLines(t *testing.T) {
 		t.Fatalf("failed to write docker log stream: %v", err)
 	}
 
-	entries, err := parseDockerLogs(&stream, false, "", nil, nil)
+	entries, err := parseDockerLogs(&stream, false, "", nil, nil, nil)
 	if err != nil {
 		t.Fatalf("failed to parse docker logs: %v", err)
 	}
@@ -268,11 +269,56 @@ func TestParsedLogStreamFlagsContinuationsAndKeepsFilteredTraceBodies(t *testing
 func TestParseDockerLogsReadsUnframedTTYStream(t *testing.T) {
 	raw := strings.NewReader("2026-05-28T05:00:38.367Z ERROR: boom\n2026-05-28T05:00:39.000Z INFO: ok\n")
 
-	entries, err := parseDockerLogs(raw, true, "", nil, nil)
+	entries, err := parseDockerLogs(raw, true, "", nil, nil, nil)
 	if err != nil {
 		t.Fatalf("parse TTY stream: %v", err)
 	}
 	if len(entries) != 2 || entries[0].Stream != "stdout" {
 		t.Fatalf("expected 2 stdout entries, got %+v", entries)
 	}
+}
+
+func TestParsedLogsFilterByFields(t *testing.T) {
+	lines := "2026-05-28T05:00:38.367Z {\"level\":\"error\",\"user\":{\"id\":42},\"msg\":\"checkout failed\"}\n" +
+		"2026-05-28T05:00:38.368Z {\"level\":\"error\",\"user\":{\"id\":7},\"msg\":\"checkout failed\"}\n" +
+		"2026-05-28T05:00:38.369Z level=error user.id=42 msg=\"retrying\"\n" +
+		"2026-05-28T05:00:38.370Z plain line for user 42\n"
+	want := []string{
+		`{"level":"error","user":{"id":42},"msg":"checkout failed"}`,
+		`level=error user.id=42 msg="retrying"`,
+	}
+	filter, err := models.ParseFieldFilter("user.id=42")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := parseDockerLogs(strings.NewReader(lines), true, "", nil, filter, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := entryMessages(entries); !slices.Equal(got, want) {
+		t.Fatalf("one-shot read kept %q, want %q", got, want)
+	}
+
+	stream := newParsedLogStream(context.Background(), io.NopCloser(strings.NewReader(lines)), true, models.LogOptions{Where: "user.id=42"}, nil, nil, nil)
+	decoder := json.NewDecoder(stream)
+	entries = nil
+	for {
+		var entry models.LogEntry
+		if err := decoder.Decode(&entry); err != nil {
+			break
+		}
+		entries = append(entries, entry)
+	}
+	if got := entryMessages(entries); !slices.Equal(got, want) {
+		t.Fatalf("stream kept %q, want %q", got, want)
+	}
+}
+
+func entryMessages(entries []models.LogEntry) []string {
+	messages := make([]string, len(entries))
+	for i, entry := range entries {
+		messages[i] = entry.Message
+	}
+	return messages
 }

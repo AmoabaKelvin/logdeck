@@ -31,7 +31,7 @@ LogDeck tells you when a container dies, gets OOM-killed, fails its health check
 - Log rules on a minimum level, a regex pattern, or both
 - Rate thresholds such as "5 matches in 60 seconds", and per-rule cooldowns that report how many matches they suppressed
 - Rules can target hosts, container names, or Compose projects
-- Notification channels: a generic JSON webhook that Slack and Discord accept unchanged, ntfy, Gotify, and Telegram
+- Notification channels: Slack, Discord, email over SMTP, PagerDuty and Opsgenie (resolved when a collection failure clears), ntfy, Gotify, Telegram, and a generic JSON webhook
 - Alert history with the delivery result of every notification
 
 [Read the guide](/docs/alerting)
@@ -63,10 +63,27 @@ LogDeck can mask secrets in log lines before it stores them or serves them anywh
 Search and filters narrow a log view down to the lines you need.
 
 - Full-text search with match navigation, in highlight or exclude mode
+- Field filters on JSON and logfmt lines, such as `level=error user_id=42`
 - Log level filter: TRACE, DEBUG, INFO, WARN, ERROR, FATAL, PANIC, and unclassified lines
 - Regex matching
 - Time range presets and a custom calendar range
 - Color-coded log levels, collapsible JSON lines, and line pinning
+
+### Field filters
+
+A `key=value` term in the search box keeps only the lines whose field has that value. `key!=value` keeps the lines where it doesn't, including lines without the field. Terms are separated by spaces and must all match. Anything in the box that isn't a term is searched as text, as before.
+
+```text
+level=error user_id=42 path=/checkout
+http.status=500 msg="payment declined"
+```
+
+- A JSON line is looked up by key, or by dot path for nested objects (`http.status`). A key that itself contains dots, such as `log.level`, is matched first.
+- Any other line is read as logfmt: its `key=value` and `key="quoted value"` pairs count, even inside a sentence.
+- Values compare case-insensitively. A number matches a JSON number by value, so `42` matches `42.0`. Quote a value that contains spaces.
+- In an expanded JSON line, click a value to add it as a filter.
+- Live view filters in the browser. History, stack history, and the Search page filter on the server.
+- Regex mode takes the whole box as a pattern, so field terms work in plain-text mode only.
 
 ## Log export
 
@@ -150,6 +167,20 @@ Change container resources without recreating or restarting anything.
 - Human-friendly inputs such as `512m` and `1g`, with validation
 - Blocked in read-only mode
 
+## Image updates
+
+See which containers run an older image than their tag now points to, and update them.
+
+- An Update badge in the container list, and the status on the container page's Overview panel with a Check now button
+- LogDeck compares the digest the image was pulled by with the registry's current digest for the tag. Checks run in the background, at most once every six hours per tag and host, so the container list never waits on a registry and Docker Hub rate limits are respected
+- Locally built images, and containers pinned to a digest or created from an image ID, show as unknown
+- Private registries use the credentials in LogDeck's own Docker config (`~/.docker/config.json`, or the directory in `DOCKER_CONFIG`), as the docker CLI does. When LogDeck runs in a container, mount that file into it. The Docker daemon itself keeps no registry credentials
+- Standalone containers are pulled and recreated with the same settings. A failed pull leaves the container untouched, and a failed recreate restores the original
+- Coolify containers are updated by a Coolify deployment, and Dokploy containers by deploying from the Environment panel or in Dokploy
+- Compose containers are updated with `docker compose pull` and `docker compose up -d`, Swarm tasks with `docker service update`, and Quadlet containers by pulling and restarting their systemd unit. LogDeck shows the command instead of recreating them
+- Podman's Docker-compatible API cannot look up registry digests, so detection is unavailable on Podman hosts; pulling and recreating still works
+- Updating is blocked in read-only mode; checking is not
+
 ## Images, volumes, and networks
 
 See what else lives on your hosts besides containers.
@@ -220,7 +251,7 @@ Protect a LogDeck instance with a login, or run it open.
 Read-only mode stops LogDeck from changing your containers, while you keep reading their logs.
 
 - Blocks starting, stopping, restarting, and removing containers
-- Blocks Compose stack actions, environment and resource edits, and the web terminal
+- Blocks Compose stack actions, environment and resource edits, image updates, and the web terminal
 - Toggle it from the Settings page, or pin it with the `READONLY_MODE` environment variable
 
 [Read the guide](/docs/configuration#read-only-mode)

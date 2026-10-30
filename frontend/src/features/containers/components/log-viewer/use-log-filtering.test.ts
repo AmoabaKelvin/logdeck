@@ -4,6 +4,7 @@ import type {
 	LogEntry,
 	LogLevel,
 } from "@/features/containers/api/get-container-logs-parsed";
+import { splitFieldTerms } from "@/lib/field-filter";
 import { computeFilteredLogItems } from "./use-log-filtering";
 import { EMPTY_SEARCH, parseSearch } from "./use-log-search";
 
@@ -18,6 +19,7 @@ const noSearch = {
 	searchText: "",
 	useRegex: false,
 	searchParsed: EMPTY_SEARCH,
+	fieldTerms: [],
 };
 
 describe("computeFilteredLogItems", () => {
@@ -105,5 +107,22 @@ describe("computeFilteredLogItems", () => {
 		});
 
 		expect(items.map((item) => item.originalIndex)).toEqual([3]);
+	});
+
+	it("keeps only lines whose fields match, alongside exclusion", () => {
+		const structured = [
+			entry('{"level":"error","user":{"id":42},"path":"/checkout"}', "ERROR"),
+			entry('{"level":"error","user":{"id":7},"path":"/checkout"}', "ERROR"),
+			entry("level=error user.id=42 msg=retrying", "ERROR"),
+			entry("plain line for user 42"),
+		];
+		const items = computeFilteredLogItems(structured, {
+			...noSearch,
+			fieldTerms: splitFieldTerms("user.id=42").terms,
+			excludeMatches: true,
+			searchText: "retrying",
+		});
+
+		expect(items.map((item) => item.originalIndex)).toEqual([0]);
 	});
 });

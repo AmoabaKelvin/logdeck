@@ -35,13 +35,13 @@ The MCP server never widens what your token can do. The LogDeck server enforces 
 These are always available and read-only.
 
 - `list_containers`: containers across every host, including removed ones and their health state.
-- `get_logs`: recent parsed logs for one container, with tail, level, regex, and time-range filters. Never follows.
-- `search_logs`: regex search across many running containers, merged by timestamp. The result lists each container's status in `sources` and sets `incomplete` when some containers could not be searched.
+- `get_logs`: recent parsed logs for one container, with tail, level, regex, field (`where`), and time-range filters. Never follows.
+- `search_logs`: regex and/or field (`where`) search across many running containers, merged by timestamp. The result lists each container's status in `sources` and sets `incomplete` when some containers could not be searched.
 - `inspect_container`: the full inspect document for one container.
 - `list_events`: Docker or Podman events collected over a short bounded window.
 - `container_stats` / `host_stats`: live CPU and memory per container, and per-host system stats.
 - `list_images` / `list_volumes` / `list_networks`: images, volumes, and networks across hosts.
-- `history_search` / `history_status` / `history_containers`: query the persisted log store. `history_search` reads one container, a Compose project (`project`), or every container when `container` is omitted. Indexed, cursor-paginated, and readable even for containers that no longer exist. `history_containers` takes `search`, `sort`, `limit`, and `offset`.
+- `history_search` / `history_status` / `history_containers`: query the persisted log store. `history_search` reads one container, a Compose project (`project`), or every container when `container` is omitted, and takes the same `where` field filter. Indexed, cursor-paginated, and readable even for containers that no longer exist. `history_containers` takes `search`, `sort`, `limit`, and `offset`.
 
 ## Action tools
 

@@ -8,7 +8,8 @@ import (
 )
 
 // AlertsConfig holds the alerting settings persisted in the config file:
-// the notification channels and the list of alert rules.
+// the notification channels, the list of alert rules, and the silences that
+// mute them.
 type AlertsConfig struct {
 	// WebhookURL is the pre-channels single-webhook field. It is migrated into
 	// a webhook channel on load and cleared; it remains only so old configs
@@ -16,25 +17,64 @@ type AlertsConfig struct {
 	WebhookURL string         `json:"webhookUrl,omitempty"`
 	Channels   []AlertChannel `json:"channels,omitempty"`
 	Rules      []AlertRule    `json:"rules,omitempty"`
+	Silences   []AlertSilence `json:"silences,omitempty"`
+}
+
+// AlertSilence mutes the alerts it matches while it is active: they are kept
+// in history as muted and sent nowhere. A silence is either one-off (StartsAt
+// to EndsAt) or a weekly Schedule.
+type AlertSilence struct {
+	ID      string `json:"id"`
+	Comment string `json:"comment,omitempty"`
+
+	// Matchers: all optional, empty = match-all in that dimension, ANDed. A
+	// silence with none mutes every alert.
+	RuleID    string `json:"ruleId,omitempty"`
+	Host      string `json:"host,omitempty"`
+	Container string `json:"container,omitempty"` // exact container name
+	Project   string `json:"project,omitempty"`   // compose project
+
+	// One-off: RFC3339 times. An empty StartsAt starts at once, an empty
+	// EndsAt lasts until the silence is deleted.
+	StartsAt string `json:"startsAt,omitempty"`
+	EndsAt   string `json:"endsAt,omitempty"`
+
+	// Schedule makes the silence a recurring maintenance window instead.
+	Schedule *SilenceSchedule `json:"schedule,omitempty"`
+
+	CreatedAt string `json:"createdAt"`
+}
+
+// SilenceSchedule is a weekly maintenance window: it starts at Start on each
+// of Days and lasts DurationMinutes (at most a day).
+type SilenceSchedule struct {
+	Days            []string `json:"days,omitempty"` // "mon".."sun"; empty = every day
+	Start           string   `json:"start"`          // "15:04"
+	DurationMinutes int      `json:"durationMinutes"`
+	Timezone        string   `json:"timezone,omitempty"` // IANA name; empty = UTC
 }
 
 // AlertChannel is one notification destination. A fired alert is delivered to
-// every enabled channel.
+// every enabled channel. Type is "webhook", "ntfy", "gotify", "telegram",
+// "slack", "discord", "email", "pagerduty" or "opsgenie". URL and Token hold
+// every type's secrets, which backups without credentials strip.
 type AlertChannel struct {
-	ID      string `json:"id"`
-	Type    string `json:"type"` // "webhook" | "ntfy" | "gotify" | "telegram"
-	Name    string `json:"name,omitempty"`
-	Enabled bool   `json:"enabled"`
-	URL     string `json:"url,omitempty"`    // webhook: full URL; ntfy: topic URL; gotify: server base URL
-	Token   string `json:"token,omitempty"`  // gotify: app token; telegram: bot token
-	Target  string `json:"target,omitempty"` // telegram: chat_id
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Name     string `json:"name,omitempty"`
+	Enabled  bool   `json:"enabled"`
+	URL      string `json:"url,omitempty"`      // webhook/slack/discord: webhook URL; ntfy: topic URL; gotify: server base URL; email: smtp:// or smtps:// server; pagerduty/opsgenie: optional API URL
+	Token    string `json:"token,omitempty"`    // gotify: app token; telegram: bot token; email: SMTP password; pagerduty: routing key; opsgenie: API key
+	Target   string `json:"target,omitempty"`   // telegram: chat_id; email: comma-separated recipients
+	Username string `json:"username,omitempty"` // email: SMTP username
+	From     string `json:"from,omitempty"`     // email: sender address
 }
 
 type AlertRule struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Enabled bool   `json:"enabled"`
-	Type    string `json:"type"` // "event" | "log" | "collection"
+	Type    string `json:"type"` // "event" | "log" | "collection" | "resource"
 
 	// Targeting: all optional, empty = match-all in that dimension, ANDed.
 	// Collection rules target hosts only.
@@ -43,14 +83,22 @@ type AlertRule struct {
 	Projects   []string `json:"projects,omitempty"`   // compose projects
 
 	// Event rules.
-	Events []string `json:"events,omitempty"` // "die" | "oom" | "unhealthy"
+	Events []string `json:"events,omitempty"` // "die" | "oom" | "unhealthy" | "restart"
 
 	// Log rules.
 	MinLevel string `json:"minLevel,omitempty"`
 	Pattern  string `json:"pattern,omitempty"` // RE2
 
-	// Rate + cooldown (event and log rules). A collection rule uses
-	// WindowSeconds as how long a failure must last before it fires.
+	// Resource rules: the metric must stay above the limit for WindowSeconds.
+	// AbovePercent is CPU as docker stats shows it (100 = one core), or memory
+	// as a share of the container's memory limit. Memory can set AboveBytes
+	// instead.
+	Metric       string  `json:"metric,omitempty"` // "cpu" | "memory"
+	AbovePercent float64 `json:"abovePercent,omitempty"`
+	AboveBytes   int64   `json:"aboveBytes,omitempty"`
+
+	// Rate + cooldown (event and log rules). Collection and resource rules use
+	// WindowSeconds as how long the condition must last before it fires.
 	Threshold       int    `json:"threshold"`
 	WindowSeconds   int    `json:"windowSeconds,omitempty"`
 	CooldownSeconds int    `json:"cooldownSeconds,omitempty"`
@@ -99,6 +147,8 @@ func (m *Manager) UpdateAlerts(mutate func(current AlertsConfig) (AlertsConfig, 
 		copy(current.Channels, m.fileConfig.Alerts.Channels)
 		current.Rules = make([]AlertRule, len(m.fileConfig.Alerts.Rules))
 		copy(current.Rules, m.fileConfig.Alerts.Rules)
+		current.Silences = make([]AlertSilence, len(m.fileConfig.Alerts.Silences))
+		copy(current.Silences, m.fileConfig.Alerts.Silences)
 	}
 
 	updated, err := mutate(current)

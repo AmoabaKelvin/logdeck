@@ -130,7 +130,10 @@ Read or follow the parsed logs of a container, or of a whole Compose stack with 
 logdeck logs web --tail 200 --level ERROR --since 1h
 logdeck logs web --follow
 logdeck logs --stack myapp --search "timeout" --since 30m
+logdeck logs api --where level=error --where user_id=42
 ```
+
+`--where` filters JSON and logfmt lines by field: `key=value` or `key!=value`, with nested JSON keys as `a.b`. Repeat it to add terms; every term must match. See [field filters](/docs/features#field-filters).
 
 ### `grep`
 
@@ -138,7 +141,10 @@ Search the recent logs of every running container across all hosts, merged by ti
 
 ```bash
 logdeck grep "connection refused" --since 1h --level ERROR
+logdeck grep --where http.status=500 --since 1h
 ```
+
+`grep` takes the same `--where` as `logs`. With `--where`, the regex is optional.
 
 An empty result still exits 0. Stdout stays empty, so pipelines stay clean, and a one-line hint goes to stderr: `no running containers to search` or `no matches in <N> containers since <time>`. `<N>` counts only the containers that were actually searched.
 
@@ -207,7 +213,7 @@ logdeck networks
 
 ### `alerts`
 
-Manage alerting: rules, notification channels, and fired-alert history. Rules match container events (`die`, `oom`, `unhealthy`) or log lines (a minimum level, a regex, or both), and can require a threshold of matches within a window. LogDeck delivers every fired alert to each enabled channel. Channel types are `webhook` (a generic JSON POST that Slack and Discord incoming webhooks accept), `ntfy`, `gotify`, and `telegram`.
+Manage alerting: rules, notification channels, and fired-alert history. Rules match container events (`die`, `oom`, `unhealthy`, `restart`), log lines (a minimum level, a regex, or both), or CPU and memory use held above a limit (`--type resource --metric cpu|memory --above 90%|1.5g`), and can require a threshold of matches within a window. LogDeck delivers every fired alert to each enabled channel. Channel types are `webhook` (a generic JSON POST that Slack and Discord incoming webhooks accept), `slack`, `discord`, `email`, `pagerduty`, `opsgenie`, `ntfy`, `gotify`, and `telegram`.
 
 `--host`, `--container`, and `--project` are repeatable and narrow which containers a rule watches. A rule without them watches everything. `--window` and `--cooldown` accept durations (`60s`, `5m`) or bare seconds. When `--cooldown` is 0 or omitted, the server applies its default of 300 seconds between deliveries for the same rule and container.
 
@@ -215,16 +221,28 @@ Manage alerting: rules, notification channels, and fired-alert history. Rules ma
 logdeck alerts rules
 logdeck alerts rules create --type event --name oom-watch --events oom
 logdeck alerts rules create --type log --name errors --min-level ERROR --threshold 5 --window 60s
+logdeck alerts rules create --type event --name restart-loop --events restart --threshold 3 --window 10m
+logdeck alerts rules create --type resource --name memory --metric memory --above 90% --window 5m
 logdeck alerts rules disable <id>
 logdeck alerts channels list
 logdeck alerts channels add --type webhook --endpoint https://hooks.example.com/logdeck
 logdeck alerts channels add --type ntfy --endpoint https://ntfy.sh/mytopic
 logdeck alerts channels add --type gotify --endpoint https://gotify.example.com --secret <app-token>
 logdeck alerts channels add --type telegram --secret "$TELEGRAM_BOT_TOKEN" --target "$CHAT_ID"
+logdeck alerts channels add --type slack --endpoint https://hooks.slack.com/services/...
+logdeck alerts channels add --type email --endpoint smtps://smtp.example.com --username alerts --secret "$SMTP_PASSWORD" --from alerts@example.com --target oncall@example.com
+logdeck alerts channels add --type pagerduty --secret "$PAGERDUTY_ROUTING_KEY"
+logdeck alerts channels add --type opsgenie --secret "$OPSGENIE_API_KEY"
 logdeck alerts channels test <id>
 logdeck alerts channels delete <id>
+logdeck alerts silences
+logdeck alerts silences add --project checkout --for 2h --comment "deploy"
+logdeck alerts silences add --host prod --every sat,sun --at 02:00 --duration 2h --tz Europe/Berlin
+logdeck alerts silences delete <id>
 logdeck alerts history --limit 20
 ```
+
+`silences add` mutes the alerts that match every `--rule`, `--host`, `--container` and `--project` you give (none mutes everything). Without time flags the silence lasts until you delete it. `--for` or `--until` ends it, and `--from` delays its start. `--every`, `--at`, `--duration` and `--tz` make it a weekly maintenance window instead.
 
 `channels test` sends a test delivery and exits 1 if it fails. See [Alerting](/docs/alerting) for how rules, thresholds, and channels behave.
 
