@@ -545,10 +545,14 @@ function RulesBlock() {
 									<Td className="font-medium">{rule.name}</Td>
 									<Td className="text-muted-foreground">{rule.type}</Td>
 									<Td className="text-muted-foreground">
-										{renderTarget(rule)}
+										<span className="whitespace-normal">
+											{renderTarget(rule)}
+										</span>
 									</Td>
 									<Td className="font-mono text-muted-foreground">
-										{renderTrigger(rule)}
+										<span className="whitespace-normal">
+											{renderTrigger(rule)}
+										</span>
 									</Td>
 									<Td>
 										<Switch
