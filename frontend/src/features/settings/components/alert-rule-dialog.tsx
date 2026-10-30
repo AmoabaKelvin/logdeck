@@ -10,6 +10,7 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import {
+	AlertTriangleIcon,
 	ArrowLeftIcon,
 	CheckIcon,
 	HeartPulseIcon,
@@ -20,7 +21,6 @@ import {
 	RotateCcwIcon,
 	SlidersHorizontalIcon,
 	TrendingUpIcon,
-	TriangleAlertIcon,
 	XIcon,
 } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
@@ -173,7 +173,7 @@ const PRESETS: Preset[] = [
 	},
 	{
 		id: "collection",
-		icon: TriangleAlertIcon,
+		icon: AlertTriangleIcon,
 		title: "Collection failing",
 		description:
 			"LogDeck can't reach a host, read a container's logs or store them.",
