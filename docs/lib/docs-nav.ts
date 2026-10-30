@@ -55,6 +55,13 @@ export const docsNav = [
           "Back up LogDeck's settings, alert rules, alert history, and stored logs, encrypt them, schedule them to an off-host folder, and restore safely.",
       },
       {
+        title: "Log redaction",
+        href: "/docs/log-redaction",
+        updated: "2026-10-30",
+        description:
+          "Mask passwords, tokens, and API keys in container logs before LogDeck stores them or serves them to the UI, the API, the CLI, MCP, and alerts.",
+      },
+      {
         title: "CLI reference",
         href: "/docs/cli",
         updated: "2026-09-13",

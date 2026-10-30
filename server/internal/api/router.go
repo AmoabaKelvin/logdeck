@@ -35,6 +35,10 @@ type APIRouter struct {
 	// machineHostname caches the engine-reported hostname; see GetSystemStats.
 	machineHostnameMu sync.Mutex
 	machineHostname   string
+
+	// redactionMu keeps saving and activating one redaction update together,
+	// so two concurrent saves cannot leave the file and the live rules apart.
+	redactionMu sync.Mutex
 }
 
 func NewRouter(registry *services.Registry, manager *config.Manager, engine *alerts.Engine, logStore *logstore.Store, tracker *health.Tracker, backups *backup.Service, version string) *chi.Mux {
@@ -201,6 +205,9 @@ func (ar *APIRouter) registerSettingsRoutes(r chi.Router) {
 		r.With(
 			middleware.ReadOnly(func() bool { return ar.registry.Config().ReadOnly }),
 		).Put("/log-storage", ar.UpdateLogStorage)
+		r.Get("/redaction", ar.GetRedaction)
+		r.Put("/redaction", ar.UpdateRedaction)
+		r.Post("/redaction/preview", ar.PreviewRedaction)
 		r.Get("/api-tokens", ar.ListAPITokens)
 		r.Post("/api-tokens", ar.CreateAPIToken)
 		r.Delete("/api-tokens/{prefix}", ar.DeleteAPIToken)

@@ -7,6 +7,7 @@ import features from "@/content/docs/features.md";
 import gettingStarted from "@/content/docs/getting-started.md";
 import installation from "@/content/docs/installation.md";
 import logHistory from "@/content/docs/log-history.md";
+import logRedaction from "@/content/docs/log-redaction.md";
 import mcp from "@/content/docs/mcp.md";
 import { docsNav, siteUrl } from "@/lib/docs-nav";
 
@@ -21,6 +22,7 @@ const bodies = new Map([
   ["/docs/log-history", logHistory],
   ["/docs/alerting", alerting],
   ["/docs/backups", backups],
+  ["/docs/log-redaction", logRedaction],
   ["/docs/cli", cli],
   ["/docs/mcp", mcp],
   ["/docs/configuration", configuration],
