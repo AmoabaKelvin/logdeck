@@ -101,7 +101,7 @@ func TestAggregatedLogsBatching(t *testing.T) {
 		targets[i] = fmt.Sprintf("prod~id%d~name%d", i, i)
 	}
 
-	logs, err := a.aggregatedLogs(context.Background(), targets, url.Values{"tail": {"100"}})
+	logs, _, err := a.aggregatedLogs(context.Background(), targets, url.Values{"tail": {"100"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -116,6 +116,41 @@ func TestAggregatedLogsBatching(t *testing.T) {
 	}
 	if logs[0].Message != "batch 2" || logs[1].Message != "batch 1" {
 		t.Errorf("entries not merged by timestamp: %q then %q", logs[0].Message, logs[1].Message)
+	}
+}
+
+// TestAggregatedLogsUnreadableBatch verifies a batch the server could not read
+// at all marks its targets failed instead of discarding the other batches.
+func TestAggregatedLogsUnreadableBatch(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if requests == 2 {
+			http.Error(w, "no source could be read: host down", http.StatusBadGateway)
+			return
+		}
+		fmt.Fprint(w, `{"logs":[{"timestamp":"2026-01-02T12:00:00Z","level":"INFO","message":"ok"}],"count":1,"sources":[{"host":"prod","containerId":"id0","status":"ok"}]}`)
+	}))
+	defer server.Close()
+
+	a := &app{client: newClient(server.URL, ""), output: "table"}
+	targets := make([]string, 25)
+	for i := range targets {
+		targets[i] = fmt.Sprintf("prod~id%d~name%d", i, i)
+	}
+
+	logs, sources, err := a.aggregatedLogs(context.Background(), targets, url.Values{})
+	if err != nil {
+		t.Fatalf("one readable batch must not fail the read: %v", err)
+	}
+	missing := missingSources(sources)
+	if len(logs) != 1 || len(missing) != 5 || missing[0].ContainerName != "name20" || !strings.Contains(missing[0].Error, "host down") {
+		t.Fatalf("unreadable batch not reported: logs=%d missing=%+v", len(logs), missing)
+	}
+
+	requests = 1 // the next request is the failing one, and it is the only batch
+	if _, _, err := a.aggregatedLogs(context.Background(), targets[:1], url.Values{}); err == nil {
+		t.Fatal("expected an error when no batch could be read")
 	}
 }
 

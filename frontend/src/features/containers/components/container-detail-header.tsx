@@ -18,6 +18,7 @@ import {
 	formatCPUPercent,
 	formatImageName,
 	formatRelativeCreated,
+	getDeploymentOwner,
 	getHealthBadgeClass,
 	getStateBadgeClass,
 	getSystemdUnit,
@@ -188,12 +189,14 @@ export function ContainerDetailHeader({
 	const systemdUnit = getSystemdUnit(container?.labels);
 	const { label } = container ? splitContainerStatus(container) : { label: "" };
 
+	const owner = container && getDeploymentOwner(container);
 	const meta = container
 		? [
 				formatImageName(container.image),
 				container.host,
+				owner && `managed by ${owner.name}`,
 				`created ${formatRelativeCreated(container.created)}`,
-			]
+			].filter(Boolean)
 		: [];
 
 	return (

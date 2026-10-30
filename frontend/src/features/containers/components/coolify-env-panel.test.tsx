@@ -75,7 +75,7 @@ function button(element: HTMLElement): HTMLButtonElement {
 	return element;
 }
 
-function renderPanel() {
+function renderPanel(runningEnv?: string[]) {
 	const client = new QueryClient({
 		defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
 	});
@@ -85,6 +85,7 @@ function renderPanel() {
 			<ContainerEnvPanel
 				containerId="container"
 				containerHost="local"
+				runningEnv={runningEnv}
 				onContainerIdChange={onContainerIdChange}
 			/>
 		</QueryClientProvider>,
@@ -132,6 +133,7 @@ it("saves only the edited preview row, leaving hidden and build variables untouc
 	});
 	fireEvent.change(preview, { target: { value: "edited-preview" } });
 	fireEvent.click(screen.getByRole("button", { name: "Save in Coolify" }));
+	fireEvent.click(await screen.findByRole("button", { name: "Save" }));
 	await waitFor(() => expect(toast.success).toHaveBeenCalled());
 	expect(requests).toHaveLength(1);
 	expect(JSON.parse(String(requests[0].body))).toEqual({
@@ -180,6 +182,7 @@ it("leaves an unknown secret untouched when its replacement is cleared", async (
 		target: { value: "edited-preview" },
 	});
 	fireEvent.click(screen.getByRole("button", { name: "Save in Coolify" }));
+	fireEvent.click(await screen.findByRole("button", { name: "Save" }));
 	await waitFor(() => expect(writes).toHaveLength(1));
 	expect(JSON.parse(String(writes[0].body))).toEqual({
 		changes: [
@@ -212,6 +215,7 @@ it("offers a separate deployment after a production save and reports a request r
 		target: { value: "edited" },
 	});
 	fireEvent.click(screen.getByRole("button", { name: "Save in Coolify" }));
+	fireEvent.click(await screen.findByRole("button", { name: "Save" }));
 	const deploy = await screen.findByRole("button", {
 		name: "Deploy production through Coolify",
 	});
@@ -271,6 +275,7 @@ it("blocks deployment and retries after a partial failure until the user reviews
 		target: { value: "draft" },
 	});
 	fireEvent.click(screen.getByRole("button", { name: "Save in Coolify" }));
+	fireEvent.click(await screen.findByRole("button", { name: "Save" }));
 	const alert = await screen.findByRole("alert");
 	expect(alert.textContent).toContain("some changes may have been saved");
 	expect(
@@ -290,4 +295,24 @@ it("blocks deployment and retries after a partial failure until the user reviews
 				.value,
 		).toBe("saved-partially"),
 	);
+});
+
+it("shows saved values the running container lacks and offers to deploy them without a new save", async () => {
+	vi.stubGlobal(
+		"fetch",
+		vi.fn<typeof fetch>(async () => Response.json(savedConfiguration)),
+	);
+	renderPanel(["BUILD_ONLY=old", "PATH=/usr/bin", "COOLIFY_URL=https://app"]);
+	// KEY is build-only, so it never reaches the running container.
+	expect((await screen.findByText(/Not deployed yet/)).textContent).toMatch(
+		/none for BUILD_ONLY\. Deploy/,
+	);
+	screen.getByText("1 hidden or referenced value cannot be compared.");
+	screen.getByText("Set by Coolify at deploy time: COOLIFY_URL.");
+	screen.getByText(/1 running variable is not in the saved configuration/);
+	expect(
+		button(
+			screen.getByRole("button", { name: "Deploy production through Coolify" }),
+		).disabled,
+	).toBe(false);
 });

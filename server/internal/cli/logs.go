@@ -156,11 +156,11 @@ func (a *app) stackLogs(ctx context.Context, project, host string, follow bool, 
 		return a.followLogs(ctx, "/logs/aggregate", query, true)
 	}
 
-	logs, err := a.aggregatedLogs(ctx, targets, query)
+	logs, sources, err := a.aggregatedLogs(ctx, targets, query)
 	if err != nil {
 		return err
 	}
-	return a.printLogs(logs, true)
+	return a.printAggregatedLogs(logs, sources)
 }
 
 // buildTargets encodes containers as host~id~name aggregate targets.
@@ -173,10 +173,17 @@ func buildTargets(containers []containerInfo) []string {
 }
 
 // aggregatedLogs fetches one-shot aggregate logs, batching targets by the
-// server's per-request limit and merging results by timestamp.
-func (a *app) aggregatedLogs(ctx context.Context, targets []string, query url.Values) ([]logEntry, error) {
+// server's per-request limit and merging results by timestamp. The sources
+// report every target's outcome. A batch the server could not read at all
+// counts its targets as failed; an error is returned only when every batch
+// failed.
+func (a *app) aggregatedLogs(ctx context.Context, targets []string, query url.Values) ([]logEntry, []logSource, error) {
 	var all []logEntry
-	for _, batch := range batchStrings(targets, maxAggregateTargets) {
+	var sources []logSource
+	var firstErr error
+	batches := batchStrings(targets, maxAggregateTargets)
+	failed := 0
+	for _, batch := range batches {
 		batchQuery := url.Values{}
 		for key, values := range query {
 			batchQuery[key] = values
@@ -184,15 +191,67 @@ func (a *app) aggregatedLogs(ctx context.Context, targets []string, query url.Va
 		batchQuery.Set("targets", strings.Join(batch, ","))
 
 		var resp struct {
-			Logs []logEntry `json:"logs"`
+			Logs    []logEntry  `json:"logs"`
+			Sources []logSource `json:"sources"`
 		}
 		if err := a.client.get(ctx, "/logs/aggregate", batchQuery, &resp); err != nil {
-			return nil, err
+			if firstErr == nil {
+				firstErr = err
+			}
+			failed++
+			for _, target := range batch {
+				parts := strings.SplitN(target, "~", 3) // built by buildTargets
+				sources = append(sources, logSource{Host: parts[0], ContainerID: parts[1], ContainerName: parts[2], Status: "failed", Error: err.Error()})
+			}
+			continue
 		}
 		all = append(all, resp.Logs...)
+		sources = append(sources, resp.Sources...)
+	}
+	if failed > 0 && failed == len(batches) {
+		return nil, nil, firstErr
 	}
 	mergeByTimestamp(all)
-	return all, nil
+	return all, sources, nil
+}
+
+// missingSources returns the sources whose logs could not be read.
+func missingSources(sources []logSource) []logSource {
+	var missing []logSource
+	for _, source := range sources {
+		if source.Status == "failed" {
+			missing = append(missing, source)
+		}
+	}
+	return missing
+}
+
+func warnMissingSource(source logSource) {
+	name := source.ContainerName
+	if name == "" {
+		name = source.ContainerID
+	}
+	fmt.Fprintf(os.Stderr, "warning: incomplete results: logs of %s on %s could not be read: %s\n", name, source.Host, source.Error)
+}
+
+// printAggregatedLogs prints merged logs so a result missing sources cannot
+// pass for a complete one: json mode carries the sources and an incomplete
+// flag, table mode warns on stderr for each missing source.
+func (a *app) printAggregatedLogs(logs []logEntry, sources []logSource) error {
+	missing := missingSources(sources)
+	if a.jsonOutput() {
+		if logs == nil {
+			logs = []logEntry{}
+		}
+		if sources == nil {
+			sources = []logSource{}
+		}
+		return a.printJSON(map[string]any{"logs": logs, "count": len(logs), "sources": sources, "incomplete": len(missing) > 0})
+	}
+	for _, source := range missing {
+		warnMissingSource(source)
+	}
+	return a.printLogs(logs, true)
 }
 
 // mergeByTimestamp sorts entries chronologically (stable, so same-timestamp
@@ -221,7 +280,8 @@ func (a *app) printLogs(logs []logEntry, withName bool) error {
 }
 
 // followLogs streams an NDJSON log endpoint, skipping heartbeats. Table mode
-// formats entries; json mode echoes the raw NDJSON lines.
+// formats entries and warns on stderr when an aggregated stream reports a
+// failed source; json mode echoes the raw NDJSON lines, source lines included.
 func (a *app) followLogs(ctx context.Context, path string, query url.Values, withName bool) error {
 	body, err := a.client.stream(ctx, path, query)
 	if err != nil {
@@ -234,11 +294,23 @@ func (a *app) followLogs(ctx context.Context, path string, query url.Values, wit
 			fmt.Println(string(line))
 			return nil
 		}
-		var entry logEntry
+		var entry struct {
+			logEntry
+			Type   string `json:"type"`
+			Host   string `json:"host"`
+			Status string `json:"status"`
+			Error  string `json:"error"`
+		}
 		if err := json.Unmarshal(line, &entry); err != nil {
 			return nil // skip malformed lines rather than aborting the stream
 		}
-		fmt.Println(formatLogLine(entry, withName))
+		if entry.Type == "source" {
+			if entry.Status == "failed" {
+				warnMissingSource(logSource{Host: entry.Host, ContainerID: entry.ContainerID, ContainerName: entry.ContainerName, Error: entry.Error})
+			}
+			return nil
+		}
+		fmt.Println(formatLogLine(entry.logEntry, withName))
 		return nil
 	})
 }
