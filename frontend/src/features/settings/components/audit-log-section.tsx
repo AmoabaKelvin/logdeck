@@ -109,17 +109,11 @@ export function AuditLogSection() {
 					{textFilter(
 						"audit-action",
 						"Action",
-						"container.stop, settings",
+						"container.stop",
 						action,
 						setAction,
 					)}
-					{textFilter(
-						"audit-target",
-						"Target",
-						"Container, project or host",
-						target,
-						setTarget,
-					)}
+					{textFilter("audit-target", "Target", "web, shop", target, setTarget)}
 					<Field id="audit-result" label="Result">
 						<Select
 							value={result}
