@@ -7,7 +7,8 @@ import (
 )
 
 // redactCredentials strips every secret from a config file: the sign-in
-// settings and API tokens entirely, platform API tokens, and alert channel
+// settings (users with their password hashes, and OIDC with its client
+// secret) and API tokens entirely, platform API tokens, and alert channel
 // URLs and tokens (a webhook or ntfy URL is itself the credential).
 func redactCredentials(fc config.FileConfig) config.FileConfig {
 	fc.Auth = nil

@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { z } from "zod";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -8,11 +8,36 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/auth-context";
 import { safeRedirect } from "@/lib/api-client";
+import { getAuthConfig } from "@/lib/auth-config";
+import { API_BASE_URL } from "@/types/api";
 
-// Where to go after signing in; set when a page sent the user here.
+// Where to go after signing in; set when a page sent the user here. The OIDC
+// callback adds oidc_error when a sign-in through the provider fails.
 const loginSearchSchema = z
-	.object({ redirect: z.string().optional() })
+	.object({
+		redirect: z.string().optional(),
+		oidc_error: z.string().optional(),
+	})
 	.catch({});
+
+// The server sends a code, not text, so a crafted link can't put words here.
+function oidcErrorMessage(code: string): string {
+	switch (code) {
+		case "denied":
+			return "Your account is not allowed to sign in to LogDeck. Ask an admin to map one of your groups to a role.";
+		case "expired":
+			return "The sign-in took too long or was started in another browser. Please try again.";
+		case "cancelled":
+			return "Sign-in was cancelled at the identity provider.";
+		default:
+			return "Signing in with SSO failed. The server log has the details.";
+	}
+}
+
+// The OIDC callback lands on this page with the session token in the fragment.
+function fragmentToken(): string | null {
+	return new URLSearchParams(window.location.hash.slice(1)).get("oidc_token");
+}
 
 export const Route = createFileRoute("/login")({
 	validateSearch: loginSearchSchema.parse,
@@ -23,11 +48,43 @@ function LoginPage() {
 	const [username, setUsername] = useState("");
 	const [password, setPassword] = useState("");
 	const [error, setError] = useState("");
-	const [isLoading, setIsLoading] = useState(false);
+	const [isLoading, setIsLoading] = useState(() => fragmentToken() !== null);
 
-	const { login } = useAuth();
-	const { redirect } = Route.useSearch();
+	const [oidcEnabled, setOidcEnabled] = useState(false);
+
+	const { login, loginWithToken } = useAuth();
+	const { redirect, oidc_error: oidcError } = Route.useSearch();
 	const navigate = useNavigate();
+
+	useEffect(() => {
+		getAuthConfig()
+			.then((config) => setOidcEnabled(config.oidcEnabled))
+			.catch(() => setOidcEnabled(false));
+	}, []);
+
+	// Take the token out of the address bar before anything else can read it.
+	// Clearing it also makes this run once, however often the effect fires.
+	useEffect(() => {
+		const token = fragmentToken();
+		if (!token) return;
+		window.history.replaceState(
+			null,
+			"",
+			window.location.pathname + window.location.search,
+		);
+		void (async () => {
+			try {
+				await loginWithToken(token);
+				navigate({ href: safeRedirect(redirect) });
+			} catch (err) {
+				setError(err instanceof Error ? err.message : "Sign-in failed.");
+				setIsLoading(false);
+			}
+		})();
+	}, [loginWithToken, navigate, redirect]);
+
+	const shownError = error || (oidcError ? oidcErrorMessage(oidcError) : "");
+	const oidcLoginUrl = `${API_BASE_URL}/api/v1/auth/oidc/login?redirect=${encodeURIComponent(safeRedirect(redirect))}`;
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -90,9 +147,9 @@ function LoginPage() {
 						/>
 					</div>
 
-					{error && (
+					{shownError && (
 						<div className="p-3 text-sm text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 rounded-md border border-red-200 dark:border-red-800">
-							{error}
+							{shownError}
 						</div>
 					)}
 
@@ -100,6 +157,12 @@ function LoginPage() {
 						{isLoading ? "Signing in..." : "Sign in"}
 					</Button>
 				</form>
+
+				{oidcEnabled && (
+					<Button variant="outline" className="w-full" asChild>
+						<a href={oidcLoginUrl}>Sign in with SSO</a>
+					</Button>
+				)}
 
 				<div className="text-center text-xs text-muted-foreground">
 					<p>How hard can it be?</p>

@@ -45,7 +45,38 @@ export interface ReadOnlyConfig {
 export interface AuthConfig {
 	source: ConfigSource;
 	enabled: boolean;
-	adminUsername?: string;
+	/** Absent on servers older than OIDC sign-in. */
+	oidc?: OIDCConfig;
+}
+
+export interface OIDCConfig {
+	source: ConfigSource;
+	enabled: boolean;
+	issuer?: string;
+	clientId?: string;
+	/** Masked when one is stored; sending the mask back keeps it. */
+	clientSecret?: string;
+	redirectUrl?: string;
+	groupsClaim?: string;
+	adminGroups?: string[];
+	readGroups?: string[];
+	/** Given to users in none of the groups; empty refuses them. */
+	defaultRole?: "" | UserRole;
+}
+
+/** Roles mean the same as API token scopes. */
+export type UserRole = "admin" | "read";
+
+export interface ManagedUser {
+	username: string;
+	role: UserRole;
+	/** "env" for the admin set by ADMIN_USERNAME, which can't be changed here. */
+	source: ConfigSource;
+	createdAt?: string;
+}
+
+export interface UsersResponse {
+	users: ManagedUser[];
 }
 
 // Unlike the other categories, each log store field is overridden

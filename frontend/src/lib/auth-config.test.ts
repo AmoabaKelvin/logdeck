@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
 	AuthConfigUnavailableError,
+	getAuthConfig,
 	isAuthEnabled,
 	resetAuthConfigCache,
 } from "./auth-config";
@@ -11,7 +12,7 @@ const fetchMock =
 
 function jsonResponse(
 	status: number,
-	body: { authEnabled: boolean } | string,
+	body: { authEnabled: boolean; oidcEnabled?: boolean } | string,
 ): Response {
 	return new Response(JSON.stringify(body), {
 		status,
@@ -69,5 +70,25 @@ describe("isAuthEnabled", () => {
 		);
 		await expect(isAuthEnabled()).resolves.toBe(true);
 		expect(fetchMock).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe("getAuthConfig", () => {
+	it("reports OIDC sign-in when the server offers it", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse(200, { authEnabled: true, oidcEnabled: true }),
+		);
+		await expect(getAuthConfig()).resolves.toEqual({
+			authEnabled: true,
+			oidcEnabled: true,
+		});
+	});
+
+	it("treats a server that does not mention OIDC as without it", async () => {
+		fetchMock.mockResolvedValue(jsonResponse(200, { authEnabled: true }));
+		await expect(getAuthConfig()).resolves.toEqual({
+			authEnabled: true,
+			oidcEnabled: false,
+		});
 	});
 });

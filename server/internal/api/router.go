@@ -95,6 +95,8 @@ func (ar *APIRouter) Routes() *chi.Mux {
 
 		// Auth endpoints (always registered, dynamic behavior)
 		r.With(loginRateLimiter.middleware).Post("/auth/login", ar.handleLogin)
+		r.With(loginRateLimiter.middleware).Get("/auth/oidc/login", ar.handleOIDCLogin)
+		r.With(loginRateLimiter.middleware).Get("/auth/oidc/callback", ar.handleOIDCCallback)
 
 		// Settings endpoints (follow same auth pattern as other routes)
 		ar.registerSettingsRoutes(r)
@@ -199,6 +201,11 @@ func (ar *APIRouter) registerSettingsRoutes(r chi.Router) {
 		r.Put("/dokploy-hosts", ar.UpdateDokployHosts)
 		r.Put("/read-only", ar.UpdateReadOnly)
 		r.Put("/auth", ar.UpdateAuth)
+		r.Put("/oidc", ar.UpdateOIDC)
+		r.Get("/users", ar.ListUsers)
+		r.Post("/users", ar.CreateUser)
+		r.Put("/users/{username}", ar.UpdateUser)
+		r.Delete("/users/{username}", ar.DeleteUser)
 		// Lowering a retention cap makes the next janitor pass evict stored
 		// logs, so this route is blocked in read-only mode like the purge route
 		// — the other settings mutations touch no data and are not.
@@ -241,10 +248,13 @@ func (ar *APIRouter) registerAlertRoutes(r chi.Router) {
 	})
 }
 
-// handleAuthConfig reports whether authentication is enabled. Public, no auth.
+// handleAuthConfig reports whether authentication and OIDC sign-in are
+// enabled. Public, no auth.
 func (ar *APIRouter) handleAuthConfig(w http.ResponseWriter, r *http.Request) {
+	svc := ar.registry.Auth()
 	WriteJsonResponse(w, http.StatusOK, map[string]bool{
-		"authEnabled": ar.registry.Auth() != nil,
+		"authEnabled": svc != nil,
+		"oidcEnabled": svc != nil && svc.OIDCEnabled(),
 	})
 }
 
@@ -272,12 +282,13 @@ func (ar *APIRouter) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := svc.ValidateCredentials(loginReq.Username, loginReq.Password); err != nil {
+	user, err := svc.ValidateCredentials(loginReq.Username, loginReq.Password)
+	if err != nil {
 		http.Error(w, "Invalid username or password", http.StatusUnauthorized)
 		return
 	}
 
-	token, err := svc.GenerateToken(loginReq.Username)
+	token, err := svc.GenerateToken(user.Username)
 	if err != nil {
 		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
 		return
@@ -285,22 +296,19 @@ func (ar *APIRouter) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	WriteJsonResponse(w, http.StatusOK, map[string]any{
 		"token": token,
-		"user": map[string]string{
-			"username": loginReq.Username,
-			"role":     "admin",
-		},
+		"user":  user,
 	})
 }
 
 // handleGetMe returns the current authenticated user's information.
 func (ar *APIRouter) handleGetMe(w http.ResponseWriter, r *http.Request) {
-	userValue := r.Context().Value(auth.UserContextKey)
-	if userValue == nil {
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
 		http.Error(w, "User not found in context", http.StatusUnauthorized)
 		return
 	}
 
 	WriteJsonResponse(w, http.StatusOK, map[string]any{
-		"user": userValue,
+		"user": user,
 	})
 }

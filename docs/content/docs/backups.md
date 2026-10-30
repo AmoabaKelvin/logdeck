@@ -18,7 +18,7 @@ Some things are not in a backup, and you need to recover them with your deployme
 
 ## Credentials and encryption
 
-**Include credentials** controls whether the backup carries the sign-in settings (the admin password hash and the JWT secret), API token hashes, Coolify and Dokploy API tokens, and alert channel URLs and tokens. A webhook or ntfy URL is itself a credential, so channel URLs count.
+**Include credentials** controls whether the backup carries the sign-in settings (users and their password hashes, the OIDC client secret, and the JWT secret), API token hashes, Coolify and Dokploy API tokens, and alert channel URLs and tokens. A webhook or ntfy URL is itself a credential, so channel URLs count.
 
 When a backup has no credentials, restoring it never changes who can sign in. The instance keeps the sign-in settings and API tokens it has when the restore is applied, so a token revoked while the restore waits for a restart stays revoked. A Coolify or Dokploy connection takes its token from the one with the same name and API URL on the instance you restore onto, and an alert channel takes its URL and token from the one with the same ID. One with no match comes back without its secret, and a channel without one comes back disabled. The restore preview counts how many need their secret entered again.
 

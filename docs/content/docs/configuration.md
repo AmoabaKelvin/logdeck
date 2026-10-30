@@ -4,7 +4,7 @@ LogDeck runs with no configuration at all, and every environment variable on thi
 
 LogDeck reads its configuration from environment variables and from a JSON config file that the Settings page writes. Environment variables win. A value pinned by the environment shows in the UI but can't be changed there, which is what you want when the deployment, not the admin, should have the final say.
 
-Hosts, Coolify and Dokploy connections, read-only mode, and authentication can come from either source. API tokens, alert rules, and log retention live only in the config file. Manage tokens in the UI, alert rules in the UI or the CLI, and retention through the config file or its [environment overrides](#log-persistence). [The config file](#the-config-file) section documents every key, so you can also generate the file yourself.
+Hosts, Coolify and Dokploy connections, read-only mode, authentication, and OIDC sign-in can come from either source. Users beyond an environment-defined admin, API tokens, alert rules, and log retention live only in the config file. Manage tokens in the UI, alert rules in the UI or the CLI, and retention through the config file or its [environment overrides](#log-persistence). [The config file](#the-config-file) section documents every key, so you can also generate the file yourself.
 
 ## The data directory
 
@@ -55,8 +55,22 @@ Every key is optional. This example sets all of them:
   "auth": {
     "enabled": true,
     "jwtSecret": "a-long-random-string",
-    "adminUsername": "admin",
-    "adminPasswordHash": "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
+    "users": [
+      {
+        "username": "admin",
+        "passwordHash": "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy",
+        "role": "admin"
+      }
+    ],
+    "oidc": {
+      "enabled": true,
+      "issuer": "https://auth.example.com",
+      "clientId": "logdeck",
+      "clientSecret": "your-client-secret",
+      "redirectUrl": "https://logdeck.example.com/api/v1/auth/oidc/callback",
+      "adminGroups": ["logdeck-admins"],
+      "readGroups": ["developers"]
+    }
   },
   "apiTokens": [
     {
@@ -165,12 +179,12 @@ A list of `{ "hostName", "apiURL", "apiToken", "serverId" }` objects. The host n
 
 ### `auth`
 
-Ignored when `JWT_SECRET`, `ADMIN_USERNAME`, or `ADMIN_PASSWORD` is set. With `enabled` true, all three of `jwtSecret`, `adminUsername`, and `adminPasswordHash` are required, or LogDeck runs without auth.
+`enabled` and `jwtSecret` are ignored when `JWT_SECRET`, `ADMIN_USERNAME`, or `ADMIN_PASSWORD` is set. `users` and `oidc` apply either way, so you can add users next to an admin pinned by the environment. Auth is on when `enabled` is true and `jwtSecret` is set.
 
 - `jwtSecret`: signs sessions. Any long random string. Changing it ends every session.
-- `adminUsername`: the login name.
-- `adminPasswordHash`: a [bcrypt hash](#password-hashing) of the password. JSON has no `$` escaping, so paste it as is.
-- `adminPasswordSalt`: legacy only. When set, `adminPasswordHash` is read as hex SHA256(password + salt) instead of bcrypt.
+- `users`: the [local users](#users-and-roles), each `{ "username", "passwordHash", "role" }`. `passwordHash` is a [bcrypt hash](#password-hashing); JSON has no `$` escaping, so paste it as is. `role` is `admin` or `read`, and any other value is treated as `read`.
+- `oidc`: [single sign-on](#single-sign-on-oidc) settings. Ignored when `OIDC_ISSUER` is set.
+- `adminUsername`, `adminPasswordHash`, `adminPasswordSalt`: the single admin of older versions. LogDeck moves it into `users` as an admin on startup and rewrites the file. With `adminPasswordSalt`, the hash is hex SHA256(password + salt) instead of bcrypt; it keeps working until the password is changed.
 
 ### `apiTokens`
 
@@ -337,7 +351,7 @@ Default: `http://localhost:5173,http://127.0.0.1:5173`
 
 > **Authentication is optional.** If these variables are unset, LogDeck runs without authentication, which is fine for local development or a trusted network. You can also enable it from the Settings page with no environment variables at all, and LogDeck stores those credentials in the config file. Setting the variables here pins auth so the UI can't change it.
 
-`JWT_SECRET`, `ADMIN_USERNAME`, and `ADMIN_PASSWORD` go together. Set all of them or none of them. Setting only some is a startup error.
+`JWT_SECRET`, `ADMIN_USERNAME`, and `ADMIN_PASSWORD` go together. Set all of them or none of them. Setting only some is a startup error. They define one admin; more [users](#users-and-roles) can be added in Settings.
 
 ### `JWT_SECRET`
 
@@ -368,6 +382,40 @@ Required for auth from the environment. A bcrypt hash of the admin password, nev
 ### `ADMIN_PASSWORD_SALT`
 
 Legacy and optional. Older LogDeck deployments hashed the admin password as SHA256(password + salt). LogDeck still accepts that combination, with `ADMIN_PASSWORD_SALT` set and `ADMIN_PASSWORD` holding the resulting hex digest, so existing setups keep working. Use bcrypt for new deployments and leave this unset.
+
+### Users and roles
+
+Admins manage users under Settings > Access: add a user, change their role, reset their password, or delete them. Every user has one of two roles, with the same meaning as the [API token scopes](#scopes):
+
+- `admin` has full access.
+- `read` can view containers, logs, stored history, stats, and events, and nothing else. A read-only user can't change anything, open a shell, see environment variables, or open Settings.
+
+Changes apply on the user's next request: a deleted user is signed out, a new role takes effect at once, and a reset password ends the sessions signed in with the old one. LogDeck won't delete or demote the last admin. An admin set by `ADMIN_USERNAME` is listed too, and stays as the environment defines it.
+
+Turning on authentication in Settings asks for the first admin. A setup from an older version keeps its admin, who becomes the first user.
+
+### Single sign-on (OIDC)
+
+LogDeck can sign people in through an OpenID Connect provider such as Authelia, Authentik, Keycloak, or Google, using the authorization code flow with PKCE. It is an extra way to sign in: authentication must be on, and local users keep working. Configure it under Settings > Access, or pin it with the variables below.
+
+Register LogDeck with the provider as a web application with the redirect URL `https://<your-logdeck>/api/v1/auth/oidc/callback`. LogDeck requests the `openid`, `profile`, and `email` scopes, plus `groups` when the provider lists it.
+
+The user's role comes from the groups claim of the ID token. Membership in an admin group makes them an admin, otherwise membership in a read group makes them read-only. Anyone else gets the default role, and is refused when there is none. Users are shown by their `preferred_username`, then their email, then their subject ID.
+
+Group changes at the provider apply at the next sign-in. Changing the OIDC settings, or turning OIDC off, ends every session it issued.
+
+| Variable             | Description                                                                         |
+| -------------------- | ----------------------------------------------------------------------------------- |
+| `OIDC_ISSUER`        | The provider's issuer URL. Setting it turns OIDC on and pins all of these settings. |
+| `OIDC_CLIENT_ID`     | The client ID registered with the provider.                                         |
+| `OIDC_CLIENT_SECRET` | The client secret. Leave it unset for a public client.                              |
+| `OIDC_REDIRECT_URL`  | The callback URL registered with the provider, as above.                            |
+| `OIDC_GROUPS_CLAIM`  | The ID token claim that lists the user's groups. Default: `groups`.                 |
+| `OIDC_ADMIN_GROUPS`  | Comma-separated groups whose members are admins.                                    |
+| `OIDC_READ_GROUPS`   | Comma-separated groups whose members are read-only.                                 |
+| `OIDC_DEFAULT_ROLE`  | `admin` or `read` for users in none of those groups. Unset refuses them.            |
+
+With Google, which puts no groups in its ID tokens, use `OIDC_DEFAULT_ROLE`, and restrict who can sign in on the Google side, for example with an internal app in Google Workspace.
 
 ## Dokploy integration
 
@@ -519,7 +567,7 @@ Each token has one of two scopes.
 
 `admin` has full access, the same as a logged-in admin session.
 
-`read` is read-only. Give it to CI jobs, dashboards, and AI agents that only need to look. A read token can:
+`read` is read-only, the same as a read-only user. Give it to CI jobs, dashboards, and AI agents that only need to look. A read token can:
 
 - Read live logs, stored log history, container details, stats, and events
 - List images, volumes, networks, and hosts

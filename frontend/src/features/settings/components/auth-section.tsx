@@ -17,28 +17,27 @@ interface AuthSectionProps {
 export function AuthSection({ config }: AuthSectionProps) {
 	const isEnv = config.source === "env";
 	const [enabled, setEnabled] = useState(config.enabled);
-	const [username, setUsername] = useState(config.adminUsername ?? "");
+	const [username, setUsername] = useState("");
 	const [password, setPassword] = useState("");
 
 	const mutation = useUpdateAuth();
 
-	const hasChanges =
-		enabled !== config.enabled ||
-		username !== (config.adminUsername ?? "") ||
-		password.length > 0;
+	// Turning auth on is when the first admin is set up. Once it is on, users
+	// are managed in the list below.
+	const turningOn = enabled && !config.enabled;
+	const hasChanges = enabled !== config.enabled;
 
 	function handleSave() {
-		if (enabled && !username.trim()) {
-			toast.error("Username is required when enabling auth");
-			return;
-		}
-		if (enabled && !config.enabled && !password) {
-			toast.error("Password is required when first enabling auth");
+		if (turningOn && password && !username.trim()) {
+			toast.error("Username is required");
 			return;
 		}
 
-		const payload: UpdateAuthPayload = { enabled, adminUsername: username };
-		if (password) payload.newPassword = password;
+		const payload: UpdateAuthPayload = { enabled };
+		if (turningOn && password) {
+			payload.adminUsername = username.trim();
+			payload.newPassword = password;
+		}
 
 		mutation.mutate(payload, {
 			onSuccess: (msg) => {
@@ -52,7 +51,7 @@ export function AuthSection({ config }: AuthSectionProps) {
 	return (
 		<SettingsSection
 			title="Authentication"
-			description="Protect the dashboard with a username and password."
+			description="Require signing in to use the dashboard."
 			badge={isEnv && <EnvBadge />}
 			action={
 				<Switch
@@ -68,27 +67,24 @@ export function AuthSection({ config }: AuthSectionProps) {
 				/>
 			}
 		>
-			{(enabled || hasChanges) && (
+			{hasChanges && !isEnv && (
 				<div className="space-y-4">
-					{enabled && (
+					{turningOn && (
 						<div className="max-w-xs space-y-4">
-							<Field id="admin-username" label="Admin username">
+							<Field
+								id="admin-username"
+								label="Admin username"
+								hint="Leave both blank to keep the admins already in the list."
+							>
 								<Input
 									id="admin-username"
 									name="adminUsername"
 									value={username}
 									onChange={(e) => setUsername(e.target.value)}
-									disabled={isEnv}
 									placeholder="admin"
 								/>
 							</Field>
-							<Field
-								id="admin-password"
-								label={config.enabled ? "New password" : "Password"}
-								hint={
-									config.enabled ? "Leave blank to keep the current one." : null
-								}
-							>
+							<Field id="admin-password" label="Password">
 								<Input
 									id="admin-password"
 									name="newPassword"
@@ -96,15 +92,12 @@ export function AuthSection({ config }: AuthSectionProps) {
 									autoComplete="new-password"
 									value={password}
 									onChange={(e) => setPassword(e.target.value)}
-									disabled={isEnv}
 								/>
 							</Field>
 						</div>
 					)}
 
-					{hasChanges && !isEnv && (
-						<SaveButton isPending={mutation.isPending} onClick={handleSave} />
-					)}
+					<SaveButton isPending={mutation.isPending} onClick={handleSave} />
 				</div>
 			)}
 		</SettingsSection>

@@ -43,16 +43,19 @@ export function AppHeader() {
 				</Link>
 
 				<div className="ml-auto flex shrink-0 items-center gap-0.5 sm:order-last">
-					<Tooltip>
-						<TooltipTrigger asChild>
-							<Button variant="ghost" size="icon-sm" asChild>
-								<Link to="/settings" aria-label="Settings">
-									<SettingsIcon className="size-4" />
-								</Link>
-							</Button>
-						</TooltipTrigger>
-						<TooltipContent>Settings</TooltipContent>
-					</Tooltip>
+					{/* Settings are admin-only on the server; read-only users would only see errors. */}
+					{user?.role !== "read" && (
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button variant="ghost" size="icon-sm" asChild>
+									<Link to="/settings" aria-label="Settings">
+										<SettingsIcon className="size-4" />
+									</Link>
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>Settings</TooltipContent>
+						</Tooltip>
+					)}
 
 					<ThemeToggle />
 

@@ -12,9 +12,11 @@ import { DokployHostsSection } from "./dokploy-hosts-section";
 import { CoolifyHostsSection } from "./coolify-hosts-section";
 import { DockerHostsSection } from "./docker-hosts-section";
 import { LogStorageSection } from "./log-storage-section";
+import { OidcSection } from "./oidc-section";
 import { ReadOnlySection } from "./read-only-section";
 import { RedactionSection } from "./redaction-section";
 import { ErrorNote } from "./settings-ui";
+import { UsersSection } from "./users-section";
 
 const SETTINGS_TABS = [
 	"connections",
@@ -119,9 +121,17 @@ export function SettingsPage() {
 							{tab === "access" && (
 								<>
 									<AuthSection
-										key={`${data.auth.enabled}-${data.auth.adminUsername}`}
+										key={String(data.auth.enabled)}
 										config={data.auth}
 									/>
+									<UsersSection />
+									{data.auth.oidc && (
+										<OidcSection
+											key={JSON.stringify(data.auth.oidc)}
+											config={data.auth.oidc}
+											authEnabled={data.auth.enabled}
+										/>
+									)}
 									<ReadOnlySection config={data.readOnly} />
 									<ApiTokensSection />
 								</>

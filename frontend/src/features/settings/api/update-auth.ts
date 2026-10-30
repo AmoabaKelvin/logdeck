@@ -3,9 +3,10 @@ import { API_BASE_URL } from "@/types/api";
 
 const ENDPOINT = `${API_BASE_URL}/api/v1/settings/auth`;
 
+/** adminUsername and newPassword set up an admin when turning auth on. */
 export interface UpdateAuthPayload {
 	enabled: boolean;
-	adminUsername: string;
+	adminUsername?: string;
 	newPassword?: string;
 }
 

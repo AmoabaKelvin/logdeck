@@ -18,6 +18,8 @@ interface AuthContextType {
 	isLoading: boolean;
 	isAuthEnabled: boolean;
 	login: (username: string, password: string) => Promise<void>;
+	/** Signs in with a session token issued by the OIDC callback. */
+	loginWithToken: (token: string) => Promise<void>;
 	logout: () => void;
 }
 
@@ -109,6 +111,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 		}
 	};
 
+	const loginWithToken = async (newToken: string) => {
+		const response = await fetch(`${API_BASE_URL}/api/v1/auth/me`, {
+			headers: { Authorization: `Bearer ${newToken}` },
+		});
+		if (!response.ok) {
+			throw new Error("Sign-in failed. Please try again.");
+		}
+		const data = await response.json();
+		setAuthToken(newToken);
+		setToken(newToken);
+		setUser(data.user);
+	};
+
 	const logout = () => {
 		removeAuthToken();
 		setToken(null);
@@ -124,6 +139,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 		isLoading,
 		isAuthEnabled,
 		login,
+		loginWithToken,
 		logout,
 	};
 
