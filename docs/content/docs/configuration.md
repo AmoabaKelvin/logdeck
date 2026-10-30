@@ -114,6 +114,26 @@ Every key is optional. This example sets all of them:
     "enabled": true,
     "perContainerMB": 50,
     "totalMB": 1024
+  },
+  "redaction": {
+    "enabled": true,
+    "builtins": [
+      "authorization",
+      "bearer",
+      "credentials",
+      "url-credentials",
+      "api-keys",
+      "jwt"
+    ],
+    "rules": [
+      {
+        "name": "customer ids",
+        "enabled": true,
+        "pattern": "(customer_id=)\\d+",
+        "replacement": "${1}***",
+        "projects": ["shop"]
+      }
+    ]
   }
 }
 ```
@@ -188,6 +208,17 @@ Rules and channels, as described on the [alerting](/docs/alerting) page. IDs are
 ### `logStore`
 
 `enabled`, `perContainerMB`, and `totalMB`, with the defaults shown in the example. Each one is overridden independently by its [environment variable](#log-persistence). Zero or negative sizes fall back to the default.
+
+### `redaction`
+
+[Log redaction](/docs/log-redaction) settings. The section lives only in the file, with no environment variables.
+
+- `enabled`: turns redaction on. Off when the key is missing.
+- `replacement`: the text that stands in for a hidden value. Default `[REDACTED]`.
+- `builtins`: the built-in patterns to run: `authorization`, `bearer`, `credentials`, `url-credentials`, `api-keys`, `jwt`, `email`.
+- `rules`: custom patterns, run in order after the built-ins. Each has `name`, `enabled`, an RE2 `pattern`, an optional `replacement` where `$1` expands a capture group, and optional `hosts`, `containers`, and `projects` targeting lists.
+
+LogDeck refuses to start when a pattern is invalid or can match empty text, including in a disabled rule, so a typo cannot quietly turn redaction off.
 
 ## Server
 

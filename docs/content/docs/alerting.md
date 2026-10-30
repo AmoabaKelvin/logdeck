@@ -21,6 +21,8 @@ Log rules match lines as they stream. A rule can set a minimum level, a regex pa
 - **Minimum level.** Matches any line at that level or more severe (`TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL`, `PANIC`). Lines LogDeck cannot classify never pass a level filter.
 - **Pattern.** An RE2 regular expression, tested against the parsed message and the raw line.
 
+Log rules always see the original line, even with [log redaction](/docs/log-redaction) on, so redaction never changes which alerts fire. The sample line an alert records and sends is redacted.
+
 ### Collection rules
 
 Collection rules tell you when LogDeck itself stops seeing what happens, so a quiet dashboard is not mistaken for a quiet system. A collection rule fires when one of these has lasted for the rule's delay (`windowSeconds`, at least 60 seconds, 60 by default):

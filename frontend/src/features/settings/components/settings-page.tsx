@@ -12,12 +12,14 @@ import { CoolifyHostsSection } from "./coolify-hosts-section";
 import { DockerHostsSection } from "./docker-hosts-section";
 import { LogStorageSection } from "./log-storage-section";
 import { ReadOnlySection } from "./read-only-section";
+import { RedactionSection } from "./redaction-section";
 import { ErrorNote } from "./settings-ui";
 
 const SETTINGS_TABS = [
 	"connections",
 	"access",
 	"alerts",
+	"redaction",
 	"storage",
 	"health",
 ] as const;
@@ -27,6 +29,7 @@ const TAB_LABELS = {
 	connections: "Connections",
 	access: "Access",
 	alerts: "Alerts",
+	redaction: "Redaction",
 	storage: "Log storage",
 	health: "Collection health",
 } satisfies Record<SettingsTab, string>;
@@ -48,8 +51,8 @@ export function SettingsPage() {
 			<div>
 				<h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
 				<p className="mt-1 max-w-prose text-pretty text-base/6 text-muted-foreground sm:text-sm/6">
-					Hosts, access, alerts and storage. Anything set via environment
-					variable is shown here but changes only with a restart.
+					Hosts, access, alerts, redaction and storage. Anything set via
+					environment variable is shown here but changes only with a restart.
 				</p>
 			</div>
 
@@ -120,6 +123,11 @@ export function SettingsPage() {
 								</>
 							)}
 							{tab === "alerts" && <AlertsSection />}
+							{tab === "redaction" && (
+								<RedactionSection
+									onOpenStorage={() => void setTab("storage")}
+								/>
+							)}
 							{tab === "storage" && (
 								<LogStorageSection
 									config={data.logStore}

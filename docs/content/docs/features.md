@@ -36,6 +36,17 @@ LogDeck tells you when a container dies, gets OOM-killed, fails its health check
 
 [Read the guide](/docs/alerting)
 
+## Log redaction
+
+LogDeck can mask secrets in log lines before it stores them or serves them anywhere.
+
+- Built-in patterns for Authorization headers, bearer tokens, passwords and secrets, URL credentials, common API keys, and JWTs
+- Custom RE2 patterns with their own replacement text, targeted at hosts, containers, or Compose projects
+- A preview that tries patterns on sample lines without saving them
+- Applies to live views, stored history, the API, the CLI, MCP, downloads, and alert notifications, while alert rules still match the original line
+
+[Read the guide](/docs/log-redaction)
+
 ## Filtering and search
 
 Search and filters narrow a log view down to the lines you need.
