@@ -8,7 +8,6 @@
 package audit
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -26,6 +25,9 @@ const (
 	// queueSize bounds the records waiting for the writer. Changes are rare
 	// next to it, so a full queue means the disk has stalled.
 	queueSize = 256
+	// maxFieldLen caps each text field of a record, in bytes. Some come from
+	// the request URL, which can be close to a megabyte.
+	maxFieldLen = 256
 )
 
 // Entry is one recorded change. It holds no request bodies, so env values,
@@ -51,6 +53,16 @@ type Entry struct {
 
 // OK reports whether the change succeeded.
 func (e Entry) OK() bool { return e.Status > 0 && e.Status < 400 }
+
+// capped returns e with its text fields cut to maxFieldLen bytes.
+func (e Entry) capped() Entry {
+	for _, field := range []*string{&e.Actor, &e.Role, &e.Action, &e.Method, &e.Route, &e.Host, &e.Target} {
+		if len(*field) > maxFieldLen {
+			*field = strings.ToValidUTF8((*field)[:maxFieldLen], "")
+		}
+	}
+	return e
+}
 
 // Path returns the audit log file that sits next to the config file.
 func Path(configFilePath string) string {
@@ -85,7 +97,8 @@ func Open(path string) *Store {
 
 func open(path string, max int) *Store {
 	s := &Store{path: path, max: max, queue: make(chan Entry, queueSize), done: make(chan struct{})}
-	if data, err := os.ReadFile(path); err == nil {
+	data, err := os.ReadFile(path)
+	if err == nil {
 		s.entries, s.lines = Decode(data)
 		if len(s.entries) > max {
 			s.entries = s.entries[len(s.entries)-max:]
@@ -97,13 +110,20 @@ func open(path string, max int) *Store {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		log.Printf("audit: failed to open %s, changes are recorded in memory only: %v", path, err)
+	} else if len(data) > 0 && data[len(data)-1] != '\n' {
+		// A crash can leave the last line unterminated. End it, or the next
+		// record joins it and neither parses on the next load.
+		if _, err := f.Write([]byte{'\n'}); err != nil {
+			log.Printf("audit: failed to append to %s: %v", path, err)
+		}
 	}
 	go s.writeLoop(f)
 	return s
 }
 
-// Record queues e for the writer and returns at once. If the queue is full
-// the record is dropped and logged rather than holding up the request.
+// Record queues e for the writer, with its text fields capped, and returns at
+// once. If the queue is full the record is dropped and logged rather than
+// holding up the request.
 func (s *Store) Record(e Entry) {
 	if s == nil {
 		return
@@ -113,6 +133,7 @@ func (s *Store) Record(e Entry) {
 	if s.closed {
 		return
 	}
+	e = e.capped()
 	select {
 	case s.queue <- e:
 	default:
@@ -284,15 +305,15 @@ func Encode(entries []Entry) []byte {
 func Decode(data []byte) ([]Entry, int) {
 	var entries []Entry
 	lines := 0
-	sc := bufio.NewScanner(bytes.NewReader(data))
-	sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
-	for sc.Scan() {
-		if len(bytes.TrimSpace(sc.Bytes())) == 0 {
+	for len(data) > 0 {
+		var line []byte
+		line, data, _ = bytes.Cut(data, []byte{'\n'})
+		if len(bytes.TrimSpace(line)) == 0 {
 			continue
 		}
 		lines++
 		var e Entry
-		if err := json.Unmarshal(sc.Bytes(), &e); err != nil {
+		if err := json.Unmarshal(line, &e); err != nil {
 			continue
 		}
 		entries = append(entries, e)
@@ -317,8 +338,8 @@ func Check(path string) error {
 // MergeInto completes a restored audit log with the live one, so restoring a
 // backup never hides changes made since it was taken, including the restore
 // itself. It rewrites restoredPath to the restored entries older than the
-// oldest live entry, followed by every live entry. Running it twice gives the
-// same file.
+// oldest live entry, followed by every live entry, keeping the newest
+// MaxEntries. Running it twice gives the same file.
 func MergeInto(restoredPath, livePath string) error {
 	live, err := os.ReadFile(livePath)
 	if os.IsNotExist(err) {

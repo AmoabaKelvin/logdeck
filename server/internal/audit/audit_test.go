@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -98,5 +99,94 @@ func TestMergeIntoKeepsLiveEntries(t *testing.T) {
 	}
 	if err := Check(restored); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A line too long for any record must not cost the entries after it.
+func TestDecodeKeepsEntriesAfterOversizedLine(t *testing.T) {
+	huge := entry(1, "admin", 200)
+	huge.Target = strings.Repeat("x", 2<<20)
+	before, after := Encode([]Entry{entry(0, "admin", 200)}), Encode([]Entry{entry(2, "admin", 200)})
+
+	for _, tc := range []struct {
+		name        string
+		line        []byte
+		wantEntries int
+	}{
+		{"valid entry", Encode([]Entry{huge}), 3},
+		{"not an entry", append(bytes.Repeat([]byte("x"), 2<<20), '\n'), 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, lines := Decode(bytes.Join([][]byte{before, tc.line, after}, nil))
+			if lines != 3 || len(got) != tc.wantEntries {
+				t.Fatalf("got %d entries of %d lines, want %d of 3", len(got), lines, tc.wantEntries)
+			}
+			if got[len(got)-1].Target != entry(2, "", 0).Target {
+				t.Fatalf("last entry = %+v", got[len(got)-1])
+			}
+		})
+	}
+}
+
+// A file that does not end in a newline must not swallow the next record.
+func TestRecordAfterUnterminatedLastLine(t *testing.T) {
+	complete := bytes.TrimSuffix(Encode([]Entry{entry(0, "admin", 200)}), []byte("\n"))
+	for _, tc := range []struct {
+		name string
+		tail []byte
+		want []string
+	}{
+		{"line cut short by a crash", []byte(`{"time":"2026-`), []string{entry(1, "", 0).Target}},
+		{"complete record", complete, []string{entry(0, "", 0).Target, entry(1, "", 0).Target}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "audit.jsonl")
+			if err := os.WriteFile(path, tc.tail, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			s := open(path, 10)
+			s.Record(entry(1, "admin", 200))
+			s.Close()
+
+			s = open(path, 10)
+			defer s.Close()
+			got := s.Entries()
+			if len(got) != len(tc.want) {
+				t.Fatalf("reloaded entries = %+v, want targets %v", got, tc.want)
+			}
+			for i, target := range tc.want {
+				if got[i].Target != target {
+					t.Errorf("entry %d target = %q, want %q", i, got[i].Target, target)
+				}
+			}
+		})
+	}
+}
+
+func TestRecordCapsTextFields(t *testing.T) {
+	s := open(filepath.Join(t.TempDir(), "audit.jsonl"), 10)
+	s.Record(Entry{
+		Time:   t0,
+		Actor:  "admin",
+		Action: "compose." + strings.Repeat("a", 1000),
+		Host:   strings.Repeat("h", 1000),
+		// The cap falls inside a two-byte character, which must not be split.
+		Target: "x" + strings.Repeat("é", 1000),
+		Status: 400,
+	})
+	s.Close()
+
+	got := s.Entries()[0]
+	if got.Actor != "admin" {
+		t.Errorf("actor = %q", got.Actor)
+	}
+	if want := "compose." + strings.Repeat("a", 248); got.Action != want {
+		t.Errorf("action = %q, want %q", got.Action, want)
+	}
+	if want := strings.Repeat("h", 256); got.Host != want {
+		t.Errorf("host = %q, want %q", got.Host, want)
+	}
+	if want := "x" + strings.Repeat("é", 127); got.Target != want {
+		t.Errorf("target = %q, want %q", got.Target, want)
 	}
 }
