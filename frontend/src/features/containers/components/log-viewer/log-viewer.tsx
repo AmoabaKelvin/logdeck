@@ -14,7 +14,10 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import type { AggregateLogTarget } from "@/features/containers/api/get-aggregated-logs";
+import type {
+	AggregateLogTarget,
+	LogSource,
+} from "@/features/containers/api/get-aggregated-logs";
 import {
 	getAggregatedLogs,
 	streamAggregatedLogs,
@@ -34,7 +37,11 @@ import type { HistoryScope } from "@/features/containers/api/get-history";
 import { useHistoryLogs } from "@/features/containers/hooks/use-history-logs";
 import { useHistoryStatus } from "@/features/containers/hooks/use-history-status";
 import { mapRawRangeToGroupedRange } from "./animated-range";
-import { downloadLogs, formatLogEntryLine } from "./log-export";
+import {
+	downloadLogs,
+	formatLogEntryLine,
+	formatMissingSource,
+} from "./log-export";
 import { LogList } from "./log-list";
 import { LogToolbar } from "./log-toolbar";
 import { ShortcutHelpDialog } from "./shortcut-help";
@@ -48,6 +55,10 @@ import { LOG_LEVELS, type LogViewState } from "./use-log-view-state";
 // Typing in the search box changes a server query key in history mode; wait
 // for the user to pause before spending a round-trip.
 const HISTORY_SEARCH_DEBOUNCE_MS = 300;
+
+function sourceKey(source: { host: string; containerId: string }): string {
+	return `${source.host}~${source.containerId}`;
+}
 
 function formatScannedTo(iso: string): string {
 	return format(new Date(iso), "MMM d, HH:mm:ss");
@@ -174,6 +185,30 @@ export function LogViewer({
 		[timeRange, anchor.now],
 	);
 
+	// Aggregate mode: sources whose logs could not be read, by host~id. An
+	// entry stays until a later read or source line reports that source
+	// readable again, so lines from healthy sources never hide a broken one.
+	const [failedSources, setFailedSources] = useState<
+		ReadonlyMap<string, LogSource>
+	>(() => new Map());
+	// Each read reports through its own recorder; starting a new read retires
+	// the old one, so a superseded read cannot bring back a cleared failure.
+	const sourceReadRef = useRef(0);
+	const newSourceRecorder = useCallback(() => {
+		const read = ++sourceReadRef.current;
+		return (source: LogSource) => {
+			if (read !== sourceReadRef.current) return;
+			setFailedSources((prev) => {
+				const key = sourceKey(source);
+				if (source.status === "failed") return new Map(prev).set(key, source);
+				if (!prev.has(key)) return prev;
+				const next = new Map(prev);
+				next.delete(key);
+				return next;
+			});
+		};
+	}, []);
+
 	// Aggregate mode reuses the single-stream hook untouched: the targets are
 	// baked into the fetch/stream functions, and a targets-derived key stands
 	// in for containerId/host so the hook refetches when the set changes.
@@ -181,9 +216,9 @@ export function LogViewer({
 		() =>
 			targets
 				? (_id: string, _host: string, options: ContainerLogsOptions) =>
-						getAggregatedLogs(targets, options)
+						getAggregatedLogs(targets, options, newSourceRecorder())
 				: getContainerLogsParsed,
-		[targets],
+		[targets, newSourceRecorder],
 	);
 	const streamLogs = useMemo(
 		() =>
@@ -193,9 +228,10 @@ export function LogViewer({
 						_host: string,
 						options: ContainerLogsOptions,
 						signal: AbortSignal,
-					) => streamAggregatedLogs(targets, options, signal)
+					) =>
+						streamAggregatedLogs(targets, options, signal, newSourceRecorder())
 				: streamContainerLogsParsed,
-		[targets],
+		[targets, newSourceRecorder],
 	);
 	const streamContainerId = targets
 		? targets.map((t) => t.id).join(",")
@@ -235,6 +271,15 @@ export function LogViewer({
 	const isHistory =
 		supportsHistory &&
 		(historyOnly || (historyEnabled && source === "history"));
+
+	// Only the live view reads sources, and only current members count.
+	const missingSources = useMemo(() => {
+		if (!targets || isHistory || failedSources.size === 0) return [];
+		const current = new Set(
+			targets.map((t) => sourceKey({ host: t.host, containerId: t.id })),
+		);
+		return [...failedSources.values()].filter((s) => current.has(sourceKey(s)));
+	}, [targets, isHistory, failedSources]);
 
 	const title = (containerName ?? containerId ?? "").replace(/^\//, "");
 	// Rows name their container whenever the view can hold more than one.
@@ -436,21 +481,20 @@ export function LogViewer({
 		};
 	}, []);
 
-	useImperativeHandle(
-		ref,
-		() => ({
-			refreshAfterRecreate: async () => {
-				if (isStreaming) {
-					stopStreaming();
-					await new Promise((resolve) => setTimeout(resolve, 100));
-					void startStreaming();
-				} else {
-					await fetchLogs();
-				}
-			},
-		}),
-		[isStreaming, stopStreaming, startStreaming, fetchLogs],
-	);
+	// Restart the stream (or refetch) so every source is read again.
+	const reloadLogs = useCallback(async () => {
+		if (isStreaming) {
+			stopStreaming();
+			await new Promise((resolve) => setTimeout(resolve, 100));
+			void startStreaming();
+		} else {
+			await fetchLogs();
+		}
+	}, [isStreaming, stopStreaming, startStreaming, fetchLogs]);
+
+	useImperativeHandle(ref, () => ({ refreshAfterRecreate: reloadLogs }), [
+		reloadLogs,
+	]);
 
 	const handleLogLinesChange = (value: string) => {
 		const num = parseInt(value, 10);
@@ -512,7 +556,7 @@ export function LogViewer({
 			toast.error("No logs to download");
 			return;
 		}
-		downloadLogs(filteredLogs, containerName, format);
+		downloadLogs(filteredLogs, containerName, format, missingSources);
 		toast.success(`Logs downloaded as ${format.toUpperCase()}`);
 	};
 
@@ -970,6 +1014,35 @@ export function LogViewer({
 		/>
 	);
 
+	const coverageBanner =
+		missingSources.length > 0 ? (
+			<div className="flex shrink-0 items-start gap-3 border-b border-amber-500/40 bg-amber-500/5 px-3 py-2">
+				<div className="min-w-0 flex-1">
+					<p className="text-base font-medium sm:text-sm">
+						Incomplete: {missingSources.length} source
+						{missingSources.length === 1 ? "" : "s"} missing
+					</p>
+					{missingSources.map((missing) => (
+						<p
+							key={sourceKey(missing)}
+							className="mt-0.5 truncate text-xs text-muted-foreground"
+							title={formatMissingSource(missing)}
+						>
+							{formatMissingSource(missing)}
+						</p>
+					))}
+				</div>
+				<Button
+					variant="outline"
+					size="sm"
+					onClick={() => void reloadLogs()}
+					className="h-8 text-xs"
+				>
+					Retry
+				</Button>
+			</div>
+		) : null;
+
 	const logList = (
 		<LogList
 			variant={variant}
@@ -1025,6 +1098,7 @@ export function LogViewer({
 				<div className="shrink-0 border-b border-border/70 py-3 pr-4 pl-2.5">
 					{toolbar}
 				</div>
+				{coverageBanner}
 				{logList}
 				{shortcutHelpDialog}
 			</div>
@@ -1035,6 +1109,7 @@ export function LogViewer({
 		return (
 			<div className="flex flex-col lg:min-h-0 lg:flex-1">
 				<div className="shrink-0 border-y border-border/70 py-3">{toolbar}</div>
+				{coverageBanner}
 				{logList}
 				{shortcutHelpDialog}
 			</div>
@@ -1048,6 +1123,7 @@ export function LogViewer({
 			<div className="shrink-0 border-y border-border/70 px-4 py-3 sm:px-6">
 				{toolbar}
 			</div>
+			{coverageBanner}
 			<div className="flex min-h-0 flex-1 flex-col px-2 sm:px-4">{logList}</div>
 			{shortcutHelpDialog}
 		</div>

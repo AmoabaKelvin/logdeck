@@ -21,6 +21,7 @@ const server = {
 	historyLogs: vi.fn<(cursor: string | null) => HistoryLogsPage | Error>(),
 	historySearch: vi.fn<(params: URLSearchParams) => HistoryLogsPage>(),
 	logs: vi.fn<() => LogEntry[]>(),
+	aggregate: vi.fn<() => Response>(),
 	stream:
 		vi.fn<(signal: AbortSignal | undefined) => ReadableStream<Uint8Array>>(),
 };
@@ -42,6 +43,12 @@ function respond(input: RequestInfo | URL, init?: RequestInit): Response {
 			? Response.json({ error: page.message }, { status: 500 })
 			: Response.json(page);
 	}
+	if (url.pathname.endsWith("/logs/aggregate")) {
+		if (url.searchParams.get("follow") === "true") {
+			return new Response(server.stream(init?.signal ?? undefined));
+		}
+		return server.aggregate();
+	}
 	if (url.pathname.endsWith("/logs/parsed")) {
 		if (url.searchParams.get("follow") === "true") {
 			return new Response(server.stream(init?.signal ?? undefined));
@@ -59,6 +66,7 @@ beforeEach(() => {
 	server.historyLogs.mockReset().mockReturnValue({ logs: [], count: 0 });
 	server.historySearch.mockReset().mockReturnValue({ logs: [], count: 0 });
 	server.logs.mockReset().mockReturnValue([]);
+	server.aggregate.mockReset();
 	server.stream.mockReset();
 	vi.stubGlobal(
 		"fetch",
@@ -90,7 +98,8 @@ function createControlledStream() {
 		},
 	});
 
-	const push = (...entries: LogEntry[]) => {
+	// Log entries, or any other line the server writes (source events).
+	const push = (...entries: object[]) => {
 		for (const next of entries) {
 			controller?.enqueue(encoder.encode(`${JSON.stringify(next)}\n`));
 		}
@@ -112,7 +121,7 @@ async function drainMicrotasks(iterations = 100) {
 function Harness(
 	props: Pick<
 		React.ComponentProps<typeof LogViewer>,
-		"history" | "historyOnly"
+		"history" | "historyOnly" | "targets"
 	>,
 ) {
 	const viewState = useLocalLogViewState();
@@ -514,6 +523,128 @@ describe("LogViewer fullscreen", () => {
 		expect(
 			screen.getByRole("button", { name: "Exit fullscreen" }),
 		).toBeTruthy();
+	});
+});
+
+describe("LogViewer combined coverage", () => {
+	const targets = [
+		{ id: "web1", host: "prod", name: "web" },
+		{ id: "api1", host: "prod", name: "api" },
+	];
+	const source = (containerId: string, status: string, error?: string) => ({
+		host: "prod",
+		containerId,
+		containerName: containerId === "web1" ? "web" : "api",
+		status,
+		error,
+	});
+	const banner = () => screen.queryByText(/Incomplete: \d+ sources? missing/);
+
+	it("lists a source that could not be read until a retry reads it", async () => {
+		server.aggregate
+			.mockImplementationOnce(() =>
+				Response.json({
+					logs: [entry(1)],
+					count: 1,
+					incomplete: true,
+					sources: [
+						source("web1", "ok"),
+						source("api1", "failed", "daemon exploded"),
+					],
+				}),
+			)
+			.mockImplementation(() =>
+				Response.json({
+					logs: [entry(1)],
+					count: 1,
+					incomplete: false,
+					sources: [source("web1", "ok"), source("api1", "no_matches")],
+				}),
+			);
+
+		await act(async () => {
+			render(<Harness targets={targets} />);
+			await drainMicrotasks();
+		});
+		expect(banner()?.textContent).toBe("Incomplete: 1 source missing");
+		expect(screen.getByText("api on prod: daemon exploded")).toBeTruthy();
+
+		await act(async () => {
+			fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+			await drainMicrotasks();
+		});
+		expect(server.aggregate).toHaveBeenCalledTimes(2);
+		expect(banner()).toBeNull();
+	});
+
+	it("names every source when none could be read", async () => {
+		server.aggregate.mockImplementation(() =>
+			Response.json(
+				{
+					error: "no source could be read: web on prod: x; api on prod: y",
+					sources: [
+						source("web1", "failed", "x"),
+						source("api1", "failed", "y"),
+					],
+				},
+				{ status: 502 },
+			),
+		);
+
+		await act(async () => {
+			render(<Harness targets={targets} />);
+			await drainMicrotasks();
+		});
+		expect(banner()?.textContent).toBe("Incomplete: 2 sources missing");
+		expect(toast.error).toHaveBeenCalledWith(
+			"Failed to fetch logs: no source could be read: web on prod: x; api on prod: y",
+		);
+	});
+
+	it("keeps a stream failure visible while healthy sources keep logging", async () => {
+		vi.useFakeTimers();
+		server.aggregate.mockImplementation(() =>
+			Response.json({ logs: [], count: 0, sources: [] }),
+		);
+		const controlled = createControlledStream();
+		server.stream.mockReturnValue(controlled.stream);
+
+		await act(async () => {
+			render(<Harness targets={targets} />);
+			await drainMicrotasks();
+		});
+		await act(async () => {
+			fireEvent.click(screen.getByRole("button", { name: "Stream" }));
+			await drainMicrotasks();
+		});
+
+		await act(async () => {
+			controlled.push(
+				{ type: "source", ...source("web1", "ok") },
+				{ type: "source", ...source("api1", "failed", "stream broke") },
+			);
+			for (let i = 1; i <= 5; i++) {
+				controlled.push({ ...entry(i), containerId: "web1" });
+			}
+			await drainMicrotasks();
+		});
+		await act(async () => {
+			vi.advanceTimersByTime(100);
+		});
+		expect(banner()?.textContent).toBe("Incomplete: 1 source missing");
+		expect(screen.getByText("api on prod: stream broke")).toBeTruthy();
+
+		await act(async () => {
+			controlled.push({ type: "source", ...source("api1", "ok") });
+			await drainMicrotasks();
+		});
+		expect(banner()).toBeNull();
+
+		await act(async () => {
+			controlled.end();
+			await drainMicrotasks();
+		});
+		vi.useRealTimers();
 	});
 });
 

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -37,7 +38,7 @@ func (ar *APIRouter) GetAggregatedLogs(w http.ResponseWriter, r *http.Request) {
 	if options.Follow {
 		stream, err := ar.registry.Docker().StreamAggregatedLogsParsed(r.Context(), targets, options)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeAggregateError(w, err)
 			return
 		}
 		defer stream.Close()
@@ -45,16 +46,32 @@ func (ar *APIRouter) GetAggregatedLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logs, err := ar.registry.Docker().GetAggregatedLogsParsed(r.Context(), targets, options)
+	logs, sources, err := ar.registry.Docker().GetAggregatedLogsParsed(r.Context(), targets, options)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeAggregateError(w, err)
 		return
 	}
 
 	WriteJsonResponse(w, http.StatusOK, map[string]any{
-		"logs":  logs,
-		"count": len(logs),
+		"logs":       logs,
+		"count":      len(logs),
+		"sources":    sources,
+		"incomplete": docker.Incomplete(sources),
 	})
+}
+
+// writeAggregateError answers a read where no source could be read with a
+// 502 that still lists every source, so the caller can say which failed.
+func writeAggregateError(w http.ResponseWriter, err error) {
+	var unreadable *docker.NoReadableSourceError
+	if errors.As(err, &unreadable) {
+		WriteJsonResponse(w, http.StatusBadGateway, map[string]any{
+			"error":   err.Error(),
+			"sources": unreadable.Sources,
+		})
+		return
+	}
+	http.Error(w, err.Error(), http.StatusInternalServerError)
 }
 
 func parseAggregateTargets(r *http.Request) ([]docker.LogTarget, error) {
