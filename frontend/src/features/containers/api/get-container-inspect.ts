@@ -52,6 +52,8 @@ export interface ContainerInspect {
 		WorkingDir?: string;
 		Entrypoint?: string[] | null;
 		Cmd?: string[] | null;
+		// Null when the API token may not read the environment.
+		Env?: string[] | null;
 		Healthcheck?: {
 			Test?: string[];
 			// Docker reports these in nanoseconds.
