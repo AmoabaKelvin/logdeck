@@ -49,6 +49,7 @@ import {
 	EMPTY_CHANNEL_DRAFT,
 } from "./channel-utils";
 import { showResultToast } from "./mutation-toast";
+import { SilenceDialog, SilencesBlock } from "./silences-block";
 import {
 	ErrorNote,
 	Field,
@@ -70,11 +71,12 @@ export function AlertsSection() {
 	return (
 		<SettingsSection
 			title="Alerts"
-			description="Get told when a container dies, runs out of memory, turns unhealthy or logs errors, or when LogDeck itself can't collect logs. Every enabled channel receives each alert, and the history keeps a record."
+			description="Get told when a container dies, runs out of memory, turns unhealthy or logs errors, or when LogDeck itself can't collect logs. Every enabled channel receives each alert unless a silence mutes it, and the history keeps a record."
 		>
 			<div className="space-y-8">
 				<ChannelsBlock />
 				<RulesBlock />
+				<SilencesBlock />
 				<HistoryBlock />
 			</div>
 		</SettingsSection>
@@ -474,6 +476,7 @@ function RulesBlock() {
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
 	const [editingRule, setEditingRule] = useState<AlertRule | null>(null);
 	const [ruleToDelete, setRuleToDelete] = useState<AlertRule | null>(null);
+	const [ruleToMute, setRuleToMute] = useState<AlertRule | null>(null);
 
 	const rules = data?.rules ?? [];
 
@@ -575,6 +578,13 @@ function RulesBlock() {
 											<Button
 												variant="ghost"
 												size="sm"
+												onClick={() => setRuleToMute(rule)}
+											>
+												Mute
+											</Button>
+											<Button
+												variant="ghost"
+												size="sm"
 												disabled={deleteMutation.isPending}
 												onClick={() => setRuleToDelete(rule)}
 												className="text-destructive hover:text-destructive"
@@ -593,6 +603,14 @@ function RulesBlock() {
 					open={isDialogOpen}
 					onOpenChange={setIsDialogOpen}
 					rule={editingRule}
+				/>
+
+				<SilenceDialog
+					open={ruleToMute !== null}
+					onOpenChange={(open) => {
+						if (!open) setRuleToMute(null);
+					}}
+					initial={{ ruleId: ruleToMute?.id ?? "" }}
 				/>
 
 				<AlertDialog
@@ -628,6 +646,9 @@ function RulesBlock() {
 function DeliveryStatus({ entry }: { entry: AlertHistoryEntry }) {
 	if (!entry.delivery) {
 		return <span className="text-muted-foreground">—</span>;
+	}
+	if (entry.delivery.status === "muted") {
+		return <span className="text-muted-foreground">muted</span>;
 	}
 	const ok = entry.delivery.status === "ok";
 	const detail = ok

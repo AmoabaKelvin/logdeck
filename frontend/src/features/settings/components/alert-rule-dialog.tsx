@@ -441,7 +441,7 @@ function SectionLabel({ children }: { children: ReactNode }) {
 	);
 }
 
-function ToggleChip({
+export function ToggleChip({
 	label,
 	pressed,
 	onToggle,

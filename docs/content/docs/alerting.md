@@ -64,6 +64,19 @@ A single stray error is rarely worth a notification. Two controls decide when ma
 
 LogDeck keeps threshold and cooldown state in memory, so it resets when LogDeck restarts.
 
+## Silences and maintenance windows
+
+A silence mutes the alerts it matches. Use one for a planned deploy or a host reboot. Muted alerts still fire and are kept in history with the delivery status `muted`, but no channel receives them. Recovery alerts are muted the same way.
+
+A silence matches on any of **rule**, **host**, **container name** and **Compose project**. LogDeck combines them with AND, and a silence that names none of them mutes every alert. A silence is one of:
+
+- **For a while**, for example the next hour. It ends by itself.
+- **Until unmuted.** It lasts until you delete it.
+- **Between two times.** It is a one-off window that starts later.
+- **Every week**, as a recurring maintenance window: on the days you pick (none means every day), from a time of day, for up to 24 hours, in an IANA time zone such as `Europe/Berlin` (UTC by default). Daylight saving follows that zone.
+
+Manage silences under **Settings > Alerts > Silences**, which shows what is muting right now and until when. Each rule row also has a **Mute** button. From the terminal, use `logdeck alerts silences`. LogDeck checks silences once per fired alert, at the time the alert fired, and never per log line. It saves them in `config.json`, so they survive a restart. LogDeck drops one-off silences that have ended the next time you add one.
+
 ## Channels
 
 A channel is one notification destination. LogDeck delivers every fired alert to **every enabled channel**. Add channels under **Settings > Alerts**, or with `logdeck alerts channels add`. Four types are supported:
@@ -152,7 +165,15 @@ logdeck alerts rules create --type resource --name checkout-memory \
 logdeck alerts rules create --type resource --name api-memory --container api --metric memory --above 1.5g
 logdeck alerts rules create --type resource --name api-cpu --container api --metric cpu --above 150% --window 10m
 
+# Quiet the checkout project for a two-hour deploy, then see what is muted
+logdeck alerts silences add --project checkout --for 2h --comment "deploy v2.3"
+logdeck alerts silences
+
+# Mute prod every Sunday 02:00-04:00 Berlin time for the host's reboot window
+logdeck alerts silences add --host prod --every sun --at 02:00 --duration 2h --tz Europe/Berlin
+
 # Inspect and manage
+logdeck alerts silences delete <id>   # unmute
 logdeck alerts rules                  # list, with targets and triggers
 logdeck alerts rules disable <id>     # or enable / delete
 logdeck alerts history --limit 20

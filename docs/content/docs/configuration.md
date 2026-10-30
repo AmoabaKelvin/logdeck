@@ -211,6 +211,13 @@ Rules and channels, as described on the [alerting](/docs/alerting) page. IDs are
 - `windowSeconds`: the threshold window, or for collection and resource rules how long the condition must last. Default 60.
 - `cooldownSeconds`: minimum seconds between alerts for the same rule and container. Default 300.
 
+`silences` entries:
+
+- `id`, an optional `comment`, and `createdAt`.
+- `ruleId`, `host`, `container`, `project`: optional matchers, combined with AND. None means every alert.
+- `startsAt`, `endsAt`: RFC 3339 times for a one-off silence. An empty `startsAt` starts at once, and an empty `endsAt` lasts until the silence is deleted.
+- `schedule`: a weekly window instead, with `days` (`mon` to `sun`, empty for every day), `start` (`HH:MM`), `durationMinutes` (at most 1440), and `timezone` (an IANA name, UTC when empty).
+
 `webhookUrl` is a legacy key from before channels existed. LogDeck turns it into a webhook channel on the next start and rewrites the file.
 
 ### `logStore`

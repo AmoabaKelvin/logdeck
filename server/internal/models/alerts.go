@@ -35,6 +35,7 @@ type Alert struct {
 	Host          string          `json:"host"`
 	ContainerID   string          `json:"containerId"`
 	ContainerName string          `json:"containerName"`
+	Project       string          `json:"project,omitempty"`
 	Reason        string          `json:"reason"`
 	Sample        string          `json:"sample,omitempty"`
 	Count         int             `json:"count"`

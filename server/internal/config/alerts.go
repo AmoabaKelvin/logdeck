@@ -8,7 +8,8 @@ import (
 )
 
 // AlertsConfig holds the alerting settings persisted in the config file:
-// the notification channels and the list of alert rules.
+// the notification channels, the list of alert rules, and the silences that
+// mute them.
 type AlertsConfig struct {
 	// WebhookURL is the pre-channels single-webhook field. It is migrated into
 	// a webhook channel on load and cleared; it remains only so old configs
@@ -16,6 +17,41 @@ type AlertsConfig struct {
 	WebhookURL string         `json:"webhookUrl,omitempty"`
 	Channels   []AlertChannel `json:"channels,omitempty"`
 	Rules      []AlertRule    `json:"rules,omitempty"`
+	Silences   []AlertSilence `json:"silences,omitempty"`
+}
+
+// AlertSilence mutes the alerts it matches while it is active: they are kept
+// in history as muted and sent nowhere. A silence is either one-off (StartsAt
+// to EndsAt) or a weekly Schedule.
+type AlertSilence struct {
+	ID      string `json:"id"`
+	Comment string `json:"comment,omitempty"`
+
+	// Matchers: all optional, empty = match-all in that dimension, ANDed. A
+	// silence with none mutes every alert.
+	RuleID    string `json:"ruleId,omitempty"`
+	Host      string `json:"host,omitempty"`
+	Container string `json:"container,omitempty"` // exact container name
+	Project   string `json:"project,omitempty"`   // compose project
+
+	// One-off: RFC3339 times. An empty StartsAt starts at once, an empty
+	// EndsAt lasts until the silence is deleted.
+	StartsAt string `json:"startsAt,omitempty"`
+	EndsAt   string `json:"endsAt,omitempty"`
+
+	// Schedule makes the silence a recurring maintenance window instead.
+	Schedule *SilenceSchedule `json:"schedule,omitempty"`
+
+	CreatedAt string `json:"createdAt"`
+}
+
+// SilenceSchedule is a weekly maintenance window: it starts at Start on each
+// of Days and lasts DurationMinutes (at most a day).
+type SilenceSchedule struct {
+	Days            []string `json:"days,omitempty"` // "mon".."sun"; empty = every day
+	Start           string   `json:"start"`          // "15:04"
+	DurationMinutes int      `json:"durationMinutes"`
+	Timezone        string   `json:"timezone,omitempty"` // IANA name; empty = UTC
 }
 
 // AlertChannel is one notification destination. A fired alert is delivered to
@@ -107,6 +143,8 @@ func (m *Manager) UpdateAlerts(mutate func(current AlertsConfig) (AlertsConfig, 
 		copy(current.Channels, m.fileConfig.Alerts.Channels)
 		current.Rules = make([]AlertRule, len(m.fileConfig.Alerts.Rules))
 		copy(current.Rules, m.fileConfig.Alerts.Rules)
+		current.Silences = make([]AlertSilence, len(m.fileConfig.Alerts.Silences))
+		copy(current.Silences, m.fileConfig.Alerts.Silences)
 	}
 
 	updated, err := mutate(current)
