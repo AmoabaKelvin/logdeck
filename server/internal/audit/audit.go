@@ -162,6 +162,8 @@ func (s *Store) Close() {
 func (s *Store) writeLoop(f *os.File) {
 	defer close(s.done)
 	var buf []byte
+	// torn is set after a failed write, which may have left part of a line.
+	torn := false
 	for e := range s.queue {
 		batch := []Entry{e}
 	drain:
@@ -178,11 +180,16 @@ func (s *Store) writeLoop(f *os.File) {
 		}
 
 		buf = buf[:0]
+		if torn {
+			buf = append(buf, '\n')
+		}
 		for _, e := range batch {
 			buf = appendLine(buf, e)
 		}
 		if f != nil {
-			if _, err := f.Write(buf); err != nil {
+			_, err := f.Write(buf)
+			torn = err != nil
+			if err != nil {
 				log.Printf("audit: failed to append to %s: %v", s.path, err)
 			} else if err := f.Sync(); err != nil {
 				log.Printf("audit: failed to sync %s: %v", s.path, err)

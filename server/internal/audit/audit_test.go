@@ -2,6 +2,7 @@ package audit
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -188,5 +189,40 @@ func TestRecordCapsTextFields(t *testing.T) {
 	}
 	if want := "x" + strings.Repeat("é", 127); got.Target != want {
 		t.Errorf("target = %q, want %q", got.Target, want)
+	}
+}
+
+// A failed write can leave part of a line behind, which must not swallow the
+// next record. A pipe past its write deadline fails the write, and clearing
+// the deadline lets the next one through.
+func TestRecordAfterFailedWrite(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	if err := w.SetWriteDeadline(t0); err != nil {
+		t.Fatal(err)
+	}
+	s := &Store{path: "pipe", max: 10, queue: make(chan Entry, queueSize), done: make(chan struct{})}
+	go s.writeLoop(w)
+
+	s.Record(entry(0, "admin", 200))
+	for len(s.Entries()) == 0 {
+		time.Sleep(time.Millisecond)
+	}
+	if err := w.SetWriteDeadline(time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	s.Record(entry(1, "admin", 200))
+	s.Close()
+
+	written, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, lines := Decode(append([]byte(`{"time":"2026-`), written...))
+	if lines != 2 || len(got) != 1 || got[0].Target != entry(1, "", 0).Target {
+		t.Fatalf("got %+v of %d lines from %q", got, lines, written)
 	}
 }
