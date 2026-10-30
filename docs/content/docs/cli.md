@@ -207,7 +207,7 @@ logdeck networks
 
 ### `alerts`
 
-Manage alerting: rules, notification channels, and fired-alert history. Rules match container events (`die`, `oom`, `unhealthy`) or log lines (a minimum level, a regex, or both), and can require a threshold of matches within a window. LogDeck delivers every fired alert to each enabled channel. Channel types are `webhook` (a generic JSON POST that Slack and Discord incoming webhooks accept), `ntfy`, `gotify`, and `telegram`.
+Manage alerting: rules, notification channels, and fired-alert history. Rules match container events (`die`, `oom`, `unhealthy`, `restart`), log lines (a minimum level, a regex, or both), or CPU and memory use held above a limit (`--type resource --metric cpu|memory --above 90%|1.5g`), and can require a threshold of matches within a window. LogDeck delivers every fired alert to each enabled channel. Channel types are `webhook` (a generic JSON POST that Slack and Discord incoming webhooks accept), `ntfy`, `gotify`, and `telegram`.
 
 `--host`, `--container`, and `--project` are repeatable and narrow which containers a rule watches. A rule without them watches everything. `--window` and `--cooldown` accept durations (`60s`, `5m`) or bare seconds. When `--cooldown` is 0 or omitted, the server applies its default of 300 seconds between deliveries for the same rule and container.
 
@@ -215,6 +215,8 @@ Manage alerting: rules, notification channels, and fired-alert history. Rules ma
 logdeck alerts rules
 logdeck alerts rules create --type event --name oom-watch --events oom
 logdeck alerts rules create --type log --name errors --min-level ERROR --threshold 5 --window 60s
+logdeck alerts rules create --type event --name restart-loop --events restart --threshold 3 --window 10m
+logdeck alerts rules create --type resource --name memory --metric memory --above 90% --window 5m
 logdeck alerts rules disable <id>
 logdeck alerts channels list
 logdeck alerts channels add --type webhook --endpoint https://hooks.example.com/logdeck

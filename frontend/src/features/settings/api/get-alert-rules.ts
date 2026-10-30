@@ -3,8 +3,9 @@ import { API_BASE_URL } from "@/types/api";
 
 const ENDPOINT = `${API_BASE_URL}/api/v1/alerts/rules`;
 
-export type AlertRuleType = "event" | "log" | "collection";
-export type AlertEventKind = "die" | "oom" | "unhealthy";
+export type AlertRuleType = "event" | "log" | "collection" | "resource";
+export type AlertEventKind = "die" | "oom" | "unhealthy" | "restart";
+export type AlertResourceMetric = "cpu" | "memory";
 
 export interface AlertRule {
 	id: string;
@@ -17,6 +18,10 @@ export interface AlertRule {
 	events?: AlertEventKind[];
 	minLevel?: string;
 	pattern?: string;
+	metric?: AlertResourceMetric;
+	/** CPU as docker stats shows it (100 is one core), or memory as a share of its limit. */
+	abovePercent?: number;
+	aboveBytes?: number;
 	threshold: number;
 	windowSeconds?: number;
 	cooldownSeconds?: number;

@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
+import { formatBytes } from "@/features/containers/components/container-utils";
 
 import type { AlertChannel } from "../api/get-alert-channels";
 import type { AlertHistoryEntry } from "../api/get-alert-history";
@@ -444,10 +445,17 @@ function renderTrigger(rule: AlertRule): string {
 		if (rule.pattern) parts.push(`pattern /${rule.pattern}/`);
 	} else if (rule.type === "collection") {
 		parts.push(`failing for ${(rule.windowSeconds ?? 60) / 60} min`);
+	} else if (rule.type === "resource") {
+		const limit = rule.aboveBytes
+			? formatBytes(rule.aboveBytes)
+			: `${rule.abovePercent ?? 0}%`;
+		parts.push(
+			`${rule.metric === "cpu" ? "CPU" : "memory"} > ${limit} for ${(rule.windowSeconds ?? 60) / 60} min`,
+		);
 	} else {
 		parts.push((rule.events ?? []).join(", "));
 	}
-	if (rule.threshold > 1) {
+	if (rule.threshold > 1 && rule.type !== "resource") {
 		parts.push(`${rule.threshold} in ${rule.windowSeconds ?? 0}s`);
 	}
 	if (rule.cooldownSeconds) {
@@ -537,10 +545,14 @@ function RulesBlock() {
 									<Td className="font-medium">{rule.name}</Td>
 									<Td className="text-muted-foreground">{rule.type}</Td>
 									<Td className="text-muted-foreground">
-										{renderTarget(rule)}
+										<span className="whitespace-normal">
+											{renderTarget(rule)}
+										</span>
 									</Td>
 									<Td className="font-mono text-muted-foreground">
-										{renderTrigger(rule)}
+										<span className="whitespace-normal">
+											{renderTrigger(rule)}
+										</span>
 									</Td>
 									<Td>
 										<Switch
