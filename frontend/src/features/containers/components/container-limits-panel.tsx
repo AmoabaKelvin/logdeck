@@ -21,8 +21,13 @@ import {
 	updateContainerResources,
 } from "../api/update-container-resources";
 import type { ContainerStats } from "../types";
-import { PanelError, PanelLoading, PanelSection } from "./container-panel-ui";
-import { formatBytes } from "./container-utils";
+import {
+	PanelError,
+	PanelLoading,
+	PanelNote,
+	PanelSection,
+} from "./container-panel-ui";
+import { type DeploymentOwner, formatBytes } from "./container-utils";
 import { Meter } from "./meter";
 import { formatMemoryBytes, parseMemoryInput } from "./parse-memory";
 
@@ -86,6 +91,7 @@ interface ContainerLimitsPanelProps {
 	containerId: string;
 	containerHost: string;
 	isReadOnly: boolean;
+	owner?: DeploymentOwner;
 	// Live usage, so a limit is set next to what the container actually does.
 	stats: ContainerStats | undefined;
 	inspect: ContainerInspect | undefined;
@@ -99,6 +105,7 @@ export function ContainerLimitsPanel({
 	containerId,
 	containerHost,
 	isReadOnly,
+	owner,
 	stats,
 	inspect,
 }: ContainerLimitsPanelProps) {
@@ -198,6 +205,15 @@ export function ContainerLimitsPanel({
 
 	return (
 		<div className="grid gap-x-10 gap-y-8 lg:grid-cols-3">
+			{owner && !isReadOnly && (
+				<div className="lg:col-span-3">
+					<PanelNote>
+						Limits set here apply to this container only. {owner.name} recreates
+						it on the next deployment and drops them, so set them in{" "}
+						{owner.source} to keep them.
+					</PanelNote>
+				</div>
+			)}
 			<Reading
 				title="Memory"
 				value={stats ? formatBytes(stats.memory_used) : "—"}

@@ -11,7 +11,7 @@ import {
 	PanelError,
 	PanelLoading,
 } from "./container-panel-ui";
-import { getSystemdUnit } from "./container-utils";
+import { getDeploymentOwner, getSystemdUnit } from "./container-utils";
 
 const PANELS = ["overview", "network", "environment", "limits"] as const;
 type Panel = (typeof PANELS)[number];
@@ -71,12 +71,14 @@ function PanelBody({
 		);
 	}
 
+	const owner = getDeploymentOwner(container);
 	return panel === "environment" ? (
 		<ContainerEnvPanel
 			containerId={containerId}
 			containerHost={container.host}
 			isReadOnly={isReadOnly}
 			systemdUnit={getSystemdUnit(container.labels)}
+			owner={owner}
 			onContainerIdChange={onContainerRecreated}
 		/>
 	) : (
@@ -84,6 +86,7 @@ function PanelBody({
 			containerId={containerId}
 			containerHost={container.host}
 			isReadOnly={isReadOnly}
+			owner={owner}
 			stats={stats}
 			inspect={inspect}
 		/>
