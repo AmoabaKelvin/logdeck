@@ -142,6 +142,8 @@ func (ar *APIRouter) registerContainerRoutes(r chi.Router) {
 		// Env vars expose secrets, so read-scoped tokens are denied
 		r.With(auth.DenyReadScope).Get("/env", ar.GetEnvVariables)
 		r.Get("/resources", ar.GetContainerResources)
+		// Asks the registry, not the container; allowed in read-only mode
+		r.Post("/image/check", ar.CheckImageUpdate)
 
 		// Mutating routes (blocked in read-only mode)
 		r.Group(func(mutating chi.Router) {
@@ -156,6 +158,7 @@ func (ar *APIRouter) registerContainerRoutes(r chi.Router) {
 			mutating.Post("/env/deploy", ar.DeployEnvironment)
 			mutating.Put("/resources", ar.UpdateContainerResources)
 			mutating.Post("/resources/deploy", ar.DeployContainerResources)
+			mutating.Post("/image/update", ar.UpdateContainerImage)
 			// Exec is GET (websocket upgrade) but spawns a shell, so
 			// read-scoped tokens are denied explicitly
 			mutating.With(auth.DenyReadScope).Get("/exec", ar.HandleTerminal)

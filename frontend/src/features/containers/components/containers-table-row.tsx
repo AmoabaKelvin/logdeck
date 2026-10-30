@@ -257,6 +257,14 @@ export function ContainerRow({
 								Dokploy
 							</Badge>
 						)}
+						{container.image_update?.status === "available" && (
+							<Badge
+								title="The registry has a newer image for this tag"
+								className="h-4 shrink-0 border-0 bg-amber-500/10 px-1.5 text-[0.625rem] text-amber-700 dark:text-amber-400"
+							>
+								Update
+							</Badge>
+						)}
 					</div>
 					{shortImage === container.image ? (
 						<span className="truncate text-xs text-muted-foreground">

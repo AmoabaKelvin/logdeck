@@ -150,6 +150,20 @@ Change container resources without recreating or restarting anything.
 - Human-friendly inputs such as `512m` and `1g`, with validation
 - Blocked in read-only mode
 
+## Image updates
+
+See which containers run an older image than their tag now points to, and update them.
+
+- An Update badge in the container list, and the status on the container page's Overview panel with a Check now button
+- LogDeck compares the digest the image was pulled by with the registry's current digest for the tag. Checks run in the background, at most once every six hours per tag and host, so the container list never waits on a registry and Docker Hub rate limits are respected
+- Locally built images, and containers pinned to a digest or created from an image ID, show as unknown
+- Private registries use the credentials in LogDeck's own Docker config (`~/.docker/config.json`, or the directory in `DOCKER_CONFIG`), as the docker CLI does. When LogDeck runs in a container, mount that file into it. The Docker daemon itself keeps no registry credentials
+- Standalone containers are pulled and recreated with the same settings. A failed pull leaves the container untouched, and a failed recreate restores the original
+- Coolify containers are updated by a Coolify deployment, and Dokploy containers by deploying from the Environment panel or in Dokploy
+- Compose containers are updated with `docker compose pull` and `docker compose up -d`, Swarm tasks with `docker service update`, and Quadlet containers by pulling and restarting their systemd unit. LogDeck shows the command instead of recreating them
+- Podman's Docker-compatible API cannot look up registry digests, so detection is unavailable on Podman hosts; pulling and recreating still works
+- Updating is blocked in read-only mode; checking is not
+
 ## Images, volumes, and networks
 
 See what else lives on your hosts besides containers.
@@ -220,7 +234,7 @@ Protect a LogDeck instance with a login, or run it open.
 Read-only mode stops LogDeck from changing your containers, while you keep reading their logs.
 
 - Blocks starting, stopping, restarting, and removing containers
-- Blocks Compose stack actions, environment and resource edits, and the web terminal
+- Blocks Compose stack actions, environment and resource edits, image updates, and the web terminal
 - Toggle it from the Settings page, or pin it with the `READONLY_MODE` environment variable
 
 [Read the guide](/docs/configuration#read-only-mode)
