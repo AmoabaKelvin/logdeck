@@ -511,7 +511,10 @@ func sendMail(ctx context.Context, ch config.AlertChannel, alert models.Alert) e
 	if err := w.Close(); err != nil {
 		return err
 	}
-	return c.Quit()
+	// The server has accepted the message by now. A failed QUIT must not read
+	// as a failed delivery, or the retry would send it twice.
+	_ = c.Quit()
+	return nil
 }
 
 // emailMessage renders the alert as a plain-text message.

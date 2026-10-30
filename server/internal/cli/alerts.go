@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,6 +31,9 @@ type alertRule struct {
 	Events          []string `json:"events,omitempty"`
 	MinLevel        string   `json:"minLevel,omitempty"`
 	Pattern         string   `json:"pattern,omitempty"`
+	Metric          string   `json:"metric,omitempty"`
+	AbovePercent    float64  `json:"abovePercent,omitempty"`
+	AboveBytes      int64    `json:"aboveBytes,omitempty"`
 	Threshold       int      `json:"threshold,omitempty"`
 	WindowSeconds   int      `json:"windowSeconds,omitempty"`
 	CooldownSeconds int      `json:"cooldownSeconds,omitempty"`
@@ -74,12 +78,13 @@ type alertChannel struct {
 func newAlertsCmd(a *app) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "alerts",
-		Short: "Manage alert rules, notification channels, and fired-alert history",
+		Short: "Manage alert rules, notification channels, silences, and fired-alert history",
 	}
 	cmd.AddCommand(
 		newAlertRulesCmd(a),
 		newAlertHistoryCmd(a),
 		newAlertChannelsCmd(a),
+		newAlertSilencesCmd(a),
 	)
 	return cmd
 }
@@ -169,6 +174,12 @@ func ruleTrigger(r alertRule) string {
 		}
 	case "collection":
 		parts = append(parts, fmt.Sprintf("failing %ds", r.WindowSeconds))
+	case "resource":
+		above := fmt.Sprintf("%g%%", r.AbovePercent)
+		if r.AboveBytes > 0 {
+			above = humanBytes(uint64(r.AboveBytes))
+		}
+		parts = append(parts, fmt.Sprintf("%s>%s for %ds", r.Metric, above, r.WindowSeconds))
 	default:
 		if r.MinLevel != "" {
 			parts = append(parts, "level>="+r.MinLevel)
@@ -177,7 +188,7 @@ func ruleTrigger(r alertRule) string {
 			parts = append(parts, "pattern="+r.Pattern)
 		}
 	}
-	if r.Threshold > 0 && r.Type != "collection" {
+	if r.Threshold > 0 && r.Type != "collection" && r.Type != "resource" {
 		parts = append(parts, fmt.Sprintf("%dx/%ds", r.Threshold, r.WindowSeconds))
 	}
 	if r.CooldownSeconds > 0 {
@@ -210,15 +221,15 @@ func parseSecondsFlag(flag, value string) (int, error) {
 
 func newAlertRuleCreateCmd(a *app) *cobra.Command {
 	var (
-		ruleType, name, minLevel, pattern, window, cooldown string
-		hosts, containers, projects, events                 []string
-		threshold                                           int
-		disabled                                            bool
-		req                                                 alertRule
+		ruleType, name, minLevel, pattern, window, cooldown, metric, above string
+		hosts, containers, projects, events                                []string
+		threshold                                                          int
+		disabled                                                           bool
+		req                                                                alertRule
 	)
 
 	cmd := &cobra.Command{
-		Use:   "create --type <log|event|collection> --name <name>",
+		Use:   "create --type <log|event|collection|resource> --name <name>",
 		Short: "Create an alert rule",
 		Args:  cobra.NoArgs,
 		// Flag validation runs in PreRunE so bad combinations are usage
@@ -227,6 +238,9 @@ func newAlertRuleCreateCmd(a *app) *cobra.Command {
 			if name == "" {
 				return fmt.Errorf("--name is required")
 			}
+			if ruleType != "resource" && (metric != "" || above != "") {
+				return fmt.Errorf("--metric and --above only apply to --type resource")
+			}
 			switch ruleType {
 			case "log":
 				if len(events) > 0 {
@@ -234,12 +248,15 @@ func newAlertRuleCreateCmd(a *app) *cobra.Command {
 				}
 			case "event":
 				if len(events) == 0 {
-					return fmt.Errorf("--events is required for --type event (die, oom, unhealthy)")
+					return fmt.Errorf("--events is required for --type event (die, oom, unhealthy, restart)")
 				}
 				for _, e := range events {
-					if e != "die" && e != "oom" && e != "unhealthy" {
-						return fmt.Errorf("invalid event %q (must be die, oom, or unhealthy)", e)
+					if e != "die" && e != "oom" && e != "unhealthy" && e != "restart" {
+						return fmt.Errorf("invalid event %q (must be die, oom, unhealthy, or restart)", e)
 					}
+				}
+				if len(events) > 1 && slices.Contains(events, "restart") {
+					return fmt.Errorf("--events restart can't be combined with other events")
 				}
 				if minLevel != "" {
 					return fmt.Errorf("--min-level only applies to --type log")
@@ -252,23 +269,49 @@ func newAlertRuleCreateCmd(a *app) *cobra.Command {
 				if len(events) > 0 || minLevel != "" || pattern != "" || len(containers) > 0 || len(projects) > 0 {
 					return fmt.Errorf("--type collection takes only --host, --window and --cooldown")
 				}
+			case "resource":
+				// --window is how long usage stays above --above before it alerts.
+				if len(events) > 0 || minLevel != "" || pattern != "" {
+					return fmt.Errorf("--type resource takes --metric and --above, not --events, --min-level or --pattern")
+				}
+				if metric != "cpu" && metric != "memory" {
+					return fmt.Errorf("--metric is required for --type resource (cpu or memory)")
+				}
+				if above == "" {
+					return fmt.Errorf("--above is required for --type resource (e.g. 90%%, 1.5g)")
+				}
+				if strings.HasSuffix(above, "%") {
+					percent, err := strconv.ParseFloat(strings.TrimSuffix(above, "%"), 64)
+					if err != nil || percent <= 0 {
+						return fmt.Errorf("invalid --above %q (examples: 90%%, 512m, 1.5g)", above)
+					}
+					req.AbovePercent = percent
+				} else {
+					if metric == "cpu" {
+						return fmt.Errorf("--above for cpu is a percentage (100%% is one core)")
+					}
+					bytes, err := parseMemory(above)
+					if err != nil || bytes <= 0 {
+						return fmt.Errorf("invalid --above %q (examples: 90%%, 512m, 1.5g)", above)
+					}
+					req.AboveBytes = bytes
+				}
 			case "":
-				return fmt.Errorf("--type is required (log, event, or collection)")
+				return fmt.Errorf("--type is required (log, event, collection, or resource)")
 			default:
-				return fmt.Errorf("invalid --type %q (must be log, event, or collection)", ruleType)
+				return fmt.Errorf("invalid --type %q (must be log, event, collection, or resource)", ruleType)
 			}
 
-			req = alertRule{
-				Name:       name,
-				Enabled:    !disabled,
-				Type:       ruleType,
-				Hosts:      hosts,
-				Containers: containers,
-				Projects:   projects,
-				Events:     events,
-				MinLevel:   minLevel,
-				Pattern:    pattern,
-			}
+			req.Name = name
+			req.Enabled = !disabled
+			req.Type = ruleType
+			req.Hosts = hosts
+			req.Containers = containers
+			req.Projects = projects
+			req.Events = events
+			req.MinLevel = minLevel
+			req.Pattern = pattern
+			req.Metric = metric
 			if cmd.Flags().Changed("threshold") {
 				if threshold < 1 {
 					return fmt.Errorf("--threshold must be >= 1")
@@ -299,16 +342,18 @@ func newAlertRuleCreateCmd(a *app) *cobra.Command {
 		}),
 	}
 
-	cmd.Flags().StringVar(&ruleType, "type", "", "rule type: log, event, or collection")
+	cmd.Flags().StringVar(&ruleType, "type", "", "rule type: log, event, collection, or resource")
 	cmd.Flags().StringVar(&name, "name", "", "rule name")
 	cmd.Flags().StringSliceVar(&hosts, "host", nil, "limit to these hosts (repeatable)")
 	cmd.Flags().StringSliceVar(&containers, "container", nil, "limit to these container names (repeatable)")
 	cmd.Flags().StringSliceVar(&projects, "project", nil, "limit to these compose projects (repeatable)")
-	cmd.Flags().StringSliceVar(&events, "events", nil, "events to match: die, oom, unhealthy (only with --type event)")
+	cmd.Flags().StringSliceVar(&events, "events", nil, "events to match: die, oom, unhealthy, or restart on its own (only with --type event)")
 	cmd.Flags().StringVar(&minLevel, "min-level", "", "minimum log level to match, e.g. ERROR (only with --type log)")
 	cmd.Flags().StringVar(&pattern, "pattern", "", "regex the log message must match (only with --type log)")
+	cmd.Flags().StringVar(&metric, "metric", "", "usage to watch: cpu or memory (only with --type resource)")
+	cmd.Flags().StringVar(&above, "above", "", "limit usage must stay over: a percentage (90%; for cpu 100% is one core) or for memory a size (512m, 1.5g)")
 	cmd.Flags().IntVar(&threshold, "threshold", 0, "fire only after this many matches within --window")
-	cmd.Flags().StringVar(&window, "window", "", "threshold window, or for collection how long a failure lasts first (e.g. 60s, 5m, or bare seconds)")
+	cmd.Flags().StringVar(&window, "window", "", "threshold window, or for collection and resource how long the condition lasts first (e.g. 60s, 5m, or bare seconds)")
 	cmd.Flags().StringVar(&cooldown, "cooldown", "", "minimum time between deliveries (e.g. 5m); 0 or omitted uses the server default of 300s")
 	cmd.Flags().BoolVar(&disabled, "disabled", false, "create the rule disabled")
 	return cmd

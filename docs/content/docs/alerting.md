@@ -1,4 +1,4 @@
-LogDeck alerts you when a container dies, gets OOM-killed, fails its health check, or starts logging errors, and when LogDeck itself can no longer collect logs.
+LogDeck alerts you when a container dies, gets OOM-killed, fails its health check, restarts in a loop, stays busy on CPU or memory, or starts logging errors, and when LogDeck itself can no longer collect logs.
 
 LogDeck already watches every container's events and log stream. Alert rules match on what it sees and deliver each fired alert to every enabled notification channel. Manage rules and channels under **Settings > Alerts** in the UI, or with `logdeck alerts` from the terminal.
 
@@ -6,13 +6,16 @@ LogDeck already watches every container's events and log stream. Alert rules mat
 
 ### Event rules
 
-Event rules watch container lifecycle events. Three are alertable:
+Event rules watch container lifecycle events. Four are alertable:
 
 - `die`: the container exited. Only a **non-zero exit code** fires the rule. A clean exit (code 0) is not an alert condition. When the engine event arrives without an exit code, LogDeck inspects the container to find it.
 - `oom`: the OOM killer killed the container.
 - `unhealthy`: the container's health check transitioned to unhealthy. Recoveries (healthy or starting) do not fire.
+- `restart`: the container started again after it exited on its own, whatever the exit code. That covers a restart policy bringing a crashed container back. `docker restart`, `docker stop` and a new container from `docker compose up` don't count.
 
 An OOM kill usually emits `oom` followed right away by a `die` with code 137. For a rule that watches both, LogDeck counts that pair as one incident and alerts once.
+
+For a restart loop, give a `restart` rule a threshold and window ("3 restarts in 10 minutes"). Once it has fired, LogDeck sends a recovery alert ("no restart for 600s") when the container then goes a full window without restarting. Every crash in a loop is both a `die` and a `restart`, so `restart` can't share a rule with the other events.
 
 ### Log rules
 
@@ -37,11 +40,20 @@ A container whose logging driver can't be read (`syslog`, `awslogs`, `none`, ...
 
 LogDeck can't send anything while it is stopped. To catch that, point an external monitor at `GET /api/v1/healthz?strict=1`; see [Collection health](#collection-health).
 
+### Resource rules
+
+Resource rules fire when a container's CPU or memory use stays above a limit for the rule's duration (`windowSeconds`, at least 60 seconds, 60 by default):
+
+- **CPU** is a percentage, read the way `docker stats` and the LogDeck dashboard show it: 100% is one full core, so a container using two cores reads 200%.
+- **Memory** is either a percentage of the container's memory limit (of the host's memory when it has none) or a size such as 1.5 GiB. Memory excludes reclaimable page cache, as in `docker stats`.
+
+LogDeck reads usage once a minute, and only for running containers that an enabled resource rule targets. Use must be above the limit at every reading across the duration, so a short spike does not fire. The alert gives the current value ("memory above 90% for 300s (now 94%)"). When use drops back under the limit, or the container stops, LogDeck sends a recovery alert. The cooldown is the least time between two alerts for the same container. A reading that fails, or a host LogDeck can't reach, leaves the state as it was.
+
 ## Targeting
 
 You can narrow every rule by **hosts**, **container names** (exact match), and **Compose projects**. LogDeck combines the dimensions with AND, and a dimension you leave empty matches everything. A rule with no targeting at all watches every container on every host.
 
-Collection rules take hosts only. Log storage failures reach every collection rule, whatever hosts it names.
+Collection rules take hosts only. Log storage failures reach every collection rule, whatever hosts it names. Resource rules take all three.
 
 ## Rate thresholds and cooldowns
 
@@ -51,6 +63,19 @@ A single stray error is rarely worth a notification. Two controls decide when ma
 - **Cooldown.** The minimum time between deliveries for the same rule and container. It defaults to **300 seconds** when unset. LogDeck does not throw away matches that land during a cooldown. It counts them, and the next alert reports how many it **suppressed**.
 
 LogDeck keeps threshold and cooldown state in memory, so it resets when LogDeck restarts.
+
+## Silences and maintenance windows
+
+A silence mutes the alerts it matches. Use one for a planned deploy or a host reboot. Muted alerts still fire and are kept in history with the delivery status `muted`, but no channel receives them. Recovery alerts are muted the same way.
+
+A silence matches on any of **rule**, **host**, **container name** and **Compose project**. LogDeck combines them with AND, and a silence that names none of them mutes every alert. A silence is one of:
+
+- **For a while**, for example the next hour. It ends by itself.
+- **Until unmuted.** It lasts until you delete it.
+- **Between two times.** It is a one-off window that starts later.
+- **Every week**, as a recurring maintenance window: on the days you pick (none means every day), from a time of day, for up to 24 hours, in an IANA time zone such as `Europe/Berlin` (UTC by default). Daylight saving follows that zone.
+
+Manage silences under **Settings > Alerts > Silences**, which shows what is muting right now and until when. Each rule row also has a **Mute** button. From the terminal, use `logdeck alerts silences`. LogDeck checks silences once per fired alert, at the time the alert fired, and never per log line. It saves them in `config.json`, so they survive a restart. LogDeck drops one-off silences that have ended the next time you add one.
 
 ## Channels
 
@@ -103,7 +128,7 @@ Use **Test** next to a channel in Settings, or `logdeck alerts channels test <id
 
 LogDeck keeps the most recent 500 fired alerts, newest first, and mirrors them to `alerts-history.json` next to the config file. History survives a restart as long as that directory is a mounted volume.
 
-Each entry records the rule, the container and host, the reason, a sample line for log rules, how many matches LogDeck suppressed, and the delivery result. Read it under **Settings > Alerts**, with `logdeck alerts history`, or from `GET /api/v1/alerts/history`. Clear it with a single action in the UI, or with `logdeck alerts history clear`.
+Each entry records the rule, the container and host, the reason, a sample line for log rules, how many matches LogDeck suppressed, and the delivery result. A recovery alert carries `"recovered": true`, and its sample is the reason of the alert it clears. Read it under **Settings > Alerts**, with `logdeck alerts history`, or from `GET /api/v1/alerts/history`. Clear it with a single action in the UI, or with `logdeck alerts history clear`.
 
 ## Managing rules from the CLI
 
@@ -139,7 +164,27 @@ logdeck alerts rules create --type log --name upstream-timeouts \
 # Tell me when LogDeck has been unable to collect from prod for 5 minutes
 logdeck alerts rules create --type collection --name collection --host prod --window 5m
 
+# Tell me when anything restarts 3 times in 10 minutes, and when it settles
+logdeck alerts rules create --type event --name restart-loop \
+  --events restart --threshold 3 --window 10m
+
+# Tell me when a checkout container stays above 90% of its memory limit for 5 minutes
+logdeck alerts rules create --type resource --name checkout-memory \
+  --project checkout --metric memory --above 90% --window 5m
+
+# Or above a fixed size, or more than 1.5 cores of CPU
+logdeck alerts rules create --type resource --name api-memory --container api --metric memory --above 1.5g
+logdeck alerts rules create --type resource --name api-cpu --container api --metric cpu --above 150% --window 10m
+
+# Quiet the checkout project for a two-hour deploy, then see what is muted
+logdeck alerts silences add --project checkout --for 2h --comment "deploy v2.3"
+logdeck alerts silences
+
+# Mute prod every Sunday 02:00-04:00 Berlin time for the host's reboot window
+logdeck alerts silences add --host prod --every sun --at 02:00 --duration 2h --tz Europe/Berlin
+
 # Inspect and manage
+logdeck alerts silences delete <id>   # unmute
 logdeck alerts rules                  # list, with targets and triggers
 logdeck alerts rules disable <id>     # or enable / delete
 logdeck alerts history --limit 20

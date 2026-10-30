@@ -218,6 +218,28 @@ func (c *MultiHostClient) GetAllRunningContainerStats(ctx context.Context) ([]mo
 	return results, nil
 }
 
+// RunningContainers lists the running containers of every host include
+// accepts; the hosts it rejects are not contacted and come back empty. A host
+// whose listing failed is absent from the result.
+func (c *MultiHostClient) RunningContainers(ctx context.Context, include func(host string) bool) map[string][]models.ContainerInfo {
+	byHost, _ := eachHost(ctx, c, func(ctx context.Context, name string, cl *client.Client) ([]models.ContainerInfo, error) {
+		if !include(name) {
+			return nil, nil
+		}
+		containers, err := cl.ContainerList(ctx, container.ListOptions{All: false})
+		if err != nil {
+			return nil, err
+		}
+		labelPodStacks(ctx, cl, containers)
+		infos := make([]models.ContainerInfo, 0, len(containers))
+		for _, ctr := range containers {
+			infos = append(infos, models.ContainerInfo{ID: ctr.ID, Names: ctr.Names, Labels: ctr.Labels, Host: name})
+		}
+		return infos, nil
+	})
+	return byHost
+}
+
 func calculateCPUPercent(stats *container.StatsResponse) float64 {
 	cpuDelta := float64(stats.CPUStats.CPUUsage.TotalUsage - stats.PreCPUStats.CPUUsage.TotalUsage)
 	systemDelta := float64(stats.CPUStats.SystemUsage - stats.PreCPUStats.SystemUsage)

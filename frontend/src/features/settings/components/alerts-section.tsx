@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
+import { formatBytes } from "@/features/containers/components/container-utils";
 
 import type { AlertChannel } from "../api/get-alert-channels";
 import type { AlertHistoryEntry } from "../api/get-alert-history";
@@ -49,6 +50,7 @@ import {
 	EMPTY_CHANNEL_DRAFT,
 } from "./channel-utils";
 import { showResultToast } from "./mutation-toast";
+import { SilenceDialog, SilencesBlock } from "./silences-block";
 import {
 	ErrorNote,
 	Field,
@@ -70,11 +72,12 @@ export function AlertsSection() {
 	return (
 		<SettingsSection
 			title="Alerts"
-			description="Get told when a container dies, runs out of memory, turns unhealthy or logs errors, or when LogDeck itself can't collect logs. Every enabled channel receives each alert, and the history keeps a record."
+			description="Get told when a container dies, runs out of memory, turns unhealthy or logs errors, or when LogDeck itself can't collect logs. Every enabled channel receives each alert unless a silence mutes it, and the history keeps a record."
 		>
 			<div className="space-y-8">
 				<ChannelsBlock />
 				<RulesBlock />
+				<SilencesBlock />
 				<HistoryBlock />
 			</div>
 		</SettingsSection>
@@ -427,10 +430,17 @@ function renderTrigger(rule: AlertRule): string {
 		if (rule.pattern) parts.push(`pattern /${rule.pattern}/`);
 	} else if (rule.type === "collection") {
 		parts.push(`failing for ${(rule.windowSeconds ?? 60) / 60} min`);
+	} else if (rule.type === "resource") {
+		const limit = rule.aboveBytes
+			? formatBytes(rule.aboveBytes)
+			: `${rule.abovePercent ?? 0}%`;
+		parts.push(
+			`${rule.metric === "cpu" ? "CPU" : "memory"} > ${limit} for ${(rule.windowSeconds ?? 60) / 60} min`,
+		);
 	} else {
 		parts.push((rule.events ?? []).join(", "));
 	}
-	if (rule.threshold > 1) {
+	if (rule.threshold > 1 && rule.type !== "resource") {
 		parts.push(`${rule.threshold} in ${rule.windowSeconds ?? 0}s`);
 	}
 	if (rule.cooldownSeconds) {
@@ -449,6 +459,7 @@ function RulesBlock() {
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
 	const [editingRule, setEditingRule] = useState<AlertRule | null>(null);
 	const [ruleToDelete, setRuleToDelete] = useState<AlertRule | null>(null);
+	const [ruleToMute, setRuleToMute] = useState<AlertRule | null>(null);
 
 	const rules = data?.rules ?? [];
 
@@ -520,10 +531,14 @@ function RulesBlock() {
 									<Td className="font-medium">{rule.name}</Td>
 									<Td className="text-muted-foreground">{rule.type}</Td>
 									<Td className="text-muted-foreground">
-										{renderTarget(rule)}
+										<span className="whitespace-normal">
+											{renderTarget(rule)}
+										</span>
 									</Td>
 									<Td className="font-mono text-muted-foreground">
-										{renderTrigger(rule)}
+										<span className="whitespace-normal">
+											{renderTrigger(rule)}
+										</span>
 									</Td>
 									<Td>
 										<Switch
@@ -546,6 +561,13 @@ function RulesBlock() {
 											<Button
 												variant="ghost"
 												size="sm"
+												onClick={() => setRuleToMute(rule)}
+											>
+												Mute
+											</Button>
+											<Button
+												variant="ghost"
+												size="sm"
 												disabled={deleteMutation.isPending}
 												onClick={() => setRuleToDelete(rule)}
 												className="text-destructive hover:text-destructive"
@@ -564,6 +586,14 @@ function RulesBlock() {
 					open={isDialogOpen}
 					onOpenChange={setIsDialogOpen}
 					rule={editingRule}
+				/>
+
+				<SilenceDialog
+					open={ruleToMute !== null}
+					onOpenChange={(open) => {
+						if (!open) setRuleToMute(null);
+					}}
+					initial={{ ruleId: ruleToMute?.id ?? "" }}
 				/>
 
 				<AlertDialog
@@ -599,6 +629,9 @@ function RulesBlock() {
 function DeliveryStatus({ entry }: { entry: AlertHistoryEntry }) {
 	if (!entry.delivery) {
 		return <span className="text-muted-foreground">—</span>;
+	}
+	if (entry.delivery.status === "muted") {
+		return <span className="text-muted-foreground">muted</span>;
 	}
 	const ok = entry.delivery.status === "ok";
 	const detail = ok

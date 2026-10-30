@@ -10,6 +10,7 @@ import (
 	"net/mail"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -28,7 +29,7 @@ const (
 	minAlertWindowSecs     = 5
 	maxAlertWindowSecs     = 3600
 	maxAlertCooldownSecs   = 86400
-	minCollectionDelaySecs = 60
+	minTickedWindowSecs    = 60
 
 	defaultAlertHistoryLimit = 100
 	maxAlertHistoryLimit     = 500
@@ -53,6 +54,9 @@ type alertRuleRequest struct {
 	Events          []string `json:"events"`
 	MinLevel        string   `json:"minLevel"`
 	Pattern         string   `json:"pattern"`
+	Metric          string   `json:"metric"`
+	AbovePercent    float64  `json:"abovePercent"`
+	AboveBytes      int64    `json:"aboveBytes"`
 	Threshold       int      `json:"threshold"`
 	WindowSeconds   int      `json:"windowSeconds"`
 	CooldownSeconds int      `json:"cooldownSeconds"`
@@ -75,6 +79,7 @@ var validAlertEvents = map[string]bool{
 	"die":       true,
 	"oom":       true,
 	"unhealthy": true,
+	"restart":   true,
 }
 
 // buildAlertRule validates and normalizes a rule request into a config rule.
@@ -90,6 +95,9 @@ func buildAlertRule(req alertRuleRequest) (config.AlertRule, error) {
 		Events:          req.Events,
 		MinLevel:        strings.ToUpper(strings.TrimSpace(req.MinLevel)),
 		Pattern:         strings.TrimSpace(req.Pattern),
+		Metric:          req.Metric,
+		AbovePercent:    req.AbovePercent,
+		AboveBytes:      req.AboveBytes,
 		Threshold:       req.Threshold,
 		WindowSeconds:   req.WindowSeconds,
 		CooldownSeconds: req.CooldownSeconds,
@@ -126,6 +134,10 @@ func buildAlertRule(req alertRuleRequest) (config.AlertRule, error) {
 		}
 	}
 
+	if rule.Type != "resource" && (rule.Metric != "" || rule.AbovePercent != 0 || rule.AboveBytes != 0) {
+		return rule, errors.New("metric, abovePercent and aboveBytes only apply to a resource rule")
+	}
+
 	switch rule.Type {
 	case "event":
 		if len(rule.Events) == 0 {
@@ -133,8 +145,13 @@ func buildAlertRule(req alertRuleRequest) (config.AlertRule, error) {
 		}
 		for _, ev := range rule.Events {
 			if !validAlertEvents[ev] {
-				return rule, fmt.Errorf("events contains invalid value %q (must be \"die\", \"oom\", or \"unhealthy\")", ev)
+				return rule, fmt.Errorf("events contains invalid value %q (must be \"die\", \"oom\", \"unhealthy\", or \"restart\")", ev)
 			}
+		}
+		// A crash loop is a die and a restart each round, so one rule
+		// counting both would reach its threshold twice as fast.
+		if len(rule.Events) > 1 && slices.Contains(rule.Events, "restart") {
+			return rule, errors.New("restart can't be combined with other events in one rule")
 		}
 		if rule.MinLevel != "" {
 			return rule, errors.New("minLevel must be empty for an event rule")
@@ -168,14 +185,39 @@ func buildAlertRule(req alertRuleRequest) (config.AlertRule, error) {
 		}
 		// Collection state is checked once a minute, so a shorter delay would
 		// read as a promise the engine cannot keep.
-		if rule.WindowSeconds != 0 && rule.WindowSeconds < minCollectionDelaySecs {
-			return rule, fmt.Errorf("windowSeconds must be at least %d for a collection rule", minCollectionDelaySecs)
+		if rule.WindowSeconds != 0 && rule.WindowSeconds < minTickedWindowSecs {
+			return rule, fmt.Errorf("windowSeconds must be at least %d for a collection rule", minTickedWindowSecs)
 		}
 		rule.Threshold = 1 // one sustained failure fires; there is no rate
+	case "resource":
+		if len(rule.Events) > 0 || rule.MinLevel != "" || rule.Pattern != "" {
+			return rule, errors.New("events, minLevel and pattern must be empty for a resource rule")
+		}
+		switch rule.Metric {
+		case "cpu":
+			if rule.AbovePercent <= 0 || rule.AboveBytes != 0 {
+				return rule, errors.New("a cpu rule requires abovePercent greater than 0 (100 is one core) and no aboveBytes")
+			}
+		case "memory":
+			if (rule.AbovePercent != 0) == (rule.AboveBytes != 0) {
+				return rule, errors.New("a memory rule requires exactly one of abovePercent or aboveBytes")
+			}
+			if rule.AbovePercent < 0 || rule.AbovePercent > 100 || rule.AboveBytes < 0 {
+				return rule, errors.New("abovePercent must be between 0 and 100, and aboveBytes positive, for a memory rule")
+			}
+		default:
+			return rule, fmt.Errorf("metric %q is invalid (must be \"cpu\" or \"memory\")", rule.Metric)
+		}
+		// Usage is sampled once a minute, so a shorter window would read as a
+		// promise the engine cannot keep.
+		if rule.WindowSeconds != 0 && rule.WindowSeconds < minTickedWindowSecs {
+			return rule, fmt.Errorf("windowSeconds must be at least %d for a resource rule", minTickedWindowSecs)
+		}
+		rule.Threshold = 1 // one sustained breach fires; there is no rate
 	case "":
 		return rule, errors.New("type is required")
 	default:
-		return rule, fmt.Errorf("type %q is invalid (must be \"event\", \"log\", or \"collection\")", rule.Type)
+		return rule, fmt.Errorf("type %q is invalid (must be \"event\", \"log\", \"collection\", or \"resource\")", rule.Type)
 	}
 
 	if rule.Threshold < 0 {

@@ -200,6 +200,24 @@ var alertRuleValidationCases = []struct{ name, body string }{
 	{"collection targeting containers", `{"name":"r","type":"collection","containers":["web"]}`},
 	{"collection with events", `{"name":"r","type":"collection","events":["die"]}`},
 	{"collection delay under a minute", `{"name":"r","type":"collection","windowSeconds":30}`},
+	{"restart mixed with die", `{"name":"r","type":"event","events":["die","restart"]}`},
+	{"metric on an event rule", `{"name":"r","type":"event","events":["die"],"metric":"cpu"}`},
+	{"resource without metric", `{"name":"r","type":"resource","abovePercent":90}`},
+	{"cpu without limit", `{"name":"r","type":"resource","metric":"cpu"}`},
+	{"cpu in bytes", `{"name":"r","type":"resource","metric":"cpu","abovePercent":90,"aboveBytes":1024}`},
+	{"memory with both limits", `{"name":"r","type":"resource","metric":"memory","abovePercent":90,"aboveBytes":1024}`},
+	{"memory over 100 percent", `{"name":"r","type":"resource","metric":"memory","abovePercent":150}`},
+	{"resource window under a minute", `{"name":"r","type":"resource","metric":"cpu","abovePercent":90,"windowSeconds":30}`},
+	{"resource with events", `{"name":"r","type":"resource","metric":"cpu","abovePercent":90,"events":["die"]}`},
+}
+
+func TestCreateResourceAlertRule(t *testing.T) {
+	router, _ := newAlertsTestRouter(t, nil)
+	created := createAlertRule(t, router, `{"name":"memory","type":"resource","projects":["shop"],"metric":"memory","aboveBytes":1073741824,"windowSeconds":300,"threshold":5}`)
+	if created.Type != "resource" || created.Metric != "memory" || created.AboveBytes != 1<<30 ||
+		created.WindowSeconds != 300 || created.Threshold != 1 {
+		t.Fatalf("unexpected rule: %+v", created)
+	}
 }
 
 func TestCreateCollectionAlertRule(t *testing.T) {
