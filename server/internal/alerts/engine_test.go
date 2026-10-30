@@ -18,6 +18,7 @@ import (
 	"github.com/AmoabaKelvin/logdeck/internal/docker"
 	"github.com/AmoabaKelvin/logdeck/internal/logstream"
 	"github.com/AmoabaKelvin/logdeck/internal/models"
+	"github.com/AmoabaKelvin/logdeck/internal/redact"
 )
 
 // fakeHub records subscriptions and lets tests feed records to live sinks.
@@ -713,5 +714,32 @@ func TestPodmanRestartEvents(t *testing.T) {
 		if a.ContainerName != "loop" {
 			t.Fatalf("alert for %q, want only the crash loop", a.ContainerName)
 		}
+	}
+}
+
+func TestLogRuleMatchesOriginalAndRedactsSample(t *testing.T) {
+	set, err := redact.Compile(config.RedactionConfig{Enabled: true, Builtins: []string{"credentials"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	redact.Activate(set)
+	t.Cleanup(func() { redact.Activate(nil) })
+
+	// The pattern names the secret value itself, which only the original line
+	// contains.
+	te := startTestEngine(t, config.AlertRule{
+		ID: "r1", Name: "Leaked test password", Enabled: true, Type: "log",
+		Pattern: "password=hunter2", Threshold: 1,
+	})
+	waitFor(t, "subscription", func() bool { return te.hub.liveCount() == 1 })
+	if !te.hub.firstLive().opts.Unredacted {
+		t.Fatal("alert subscription must read unredacted lines")
+	}
+
+	te.hub.emit(record(models.LogLevelError, "login failed password=hunter2"))
+
+	waitFor(t, "alert in history", func() bool { return len(te.e.History(0)) == 1 })
+	if got := te.e.History(0)[0].Sample; got != "login failed password=[REDACTED]" {
+		t.Fatalf("sample = %q, want it redacted", got)
 	}
 }

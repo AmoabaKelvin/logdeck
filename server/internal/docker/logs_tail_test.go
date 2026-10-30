@@ -28,7 +28,7 @@ func TestTailLogStreamParsesMultiplexedFrames(t *testing.T) {
 	}
 
 	var entries []models.LogEntry
-	err := tailLogStream(context.Background(), io.NopCloser(&stream), false, func(e models.LogEntry) {
+	err := tailLogStream(context.Background(), io.NopCloser(&stream), false, nil, func(e models.LogEntry) {
 		entries = append(entries, e)
 	})
 	if err != nil {
@@ -52,7 +52,7 @@ func TestTailLogStreamTTYReadsRawStream(t *testing.T) {
 	raw := "INFO: request received\nERROR: boom\n"
 
 	var entries []models.LogEntry
-	err := tailLogStream(context.Background(), io.NopCloser(strings.NewReader(raw)), true, func(e models.LogEntry) {
+	err := tailLogStream(context.Background(), io.NopCloser(strings.NewReader(raw)), true, nil, func(e models.LogEntry) {
 		entries = append(entries, e)
 	})
 	if err != nil {
@@ -79,7 +79,7 @@ func TestTailLogStreamStopsOnContextCancel(t *testing.T) {
 
 	results := make(chan error, 1)
 	go func() {
-		results <- tailLogStream(ctx, rawReader, false, func(models.LogEntry) {})
+		results <- tailLogStream(ctx, rawReader, false, nil, func(models.LogEntry) {})
 	}()
 
 	cancel()

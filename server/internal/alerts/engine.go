@@ -29,6 +29,7 @@ import (
 	"github.com/AmoabaKelvin/logdeck/internal/docker"
 	"github.com/AmoabaKelvin/logdeck/internal/logstream"
 	"github.com/AmoabaKelvin/logdeck/internal/models"
+	"github.com/AmoabaKelvin/logdeck/internal/redact"
 )
 
 const (
@@ -441,7 +442,9 @@ func (e *Engine) subscribeRule(st *runState, rule *compiledRule) {
 	st.gen++
 	gen := st.gen
 	spec := rule.spec
-	opts := models.LogOptions{Timestamps: true, Tail: "0", ShowStdout: true, ShowStderr: true}
+	// Rules match the original line, so turning redaction on never changes
+	// which alerts fire. The sample is stored and sent, so it is redacted.
+	opts := models.LogOptions{Timestamps: true, Tail: "0", ShowStdout: true, ShowStderr: true, Unredacted: true}
 	sink := func(rec logstream.Record) {
 		if !rule.matchesEntry(rec.Entry) {
 			return
@@ -452,7 +455,7 @@ func (e *Engine) subscribeRule(st *runState, rule *compiledRule) {
 			host:          rec.Host,
 			containerID:   rec.ContainerID,
 			containerName: rec.ContainerName,
-			sample:        entrySample(rec.Entry),
+			sample:        recordSample(rec),
 		}
 		select {
 		case e.firedCh <- m:
@@ -808,6 +811,18 @@ func eventSample(action, exitCode string) string {
 		return "unhealthy"
 	}
 	return "die (exit " + exitCode + ")"
+}
+
+// recordSample is the redacted sample of a record from an unredacted
+// subscription. The line is parsed again after redaction, so the sample reads
+// as every other reader sees the line.
+func recordSample(rec logstream.Record) string {
+	entry := rec.Entry
+	target := redact.Target{Host: rec.Host, Name: rec.ContainerName, Project: docker.ComposeProject(rec.Labels)}
+	if rules := redact.Active().For(target); rules != nil {
+		entry = models.ParseLogLine(rules.Line(entry.Raw), entry.Stream)
+	}
+	return entrySample(entry)
 }
 
 // entrySample picks the line recorded as the alert's sample.

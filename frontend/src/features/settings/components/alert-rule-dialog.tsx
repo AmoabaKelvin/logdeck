@@ -1,5 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,16 +32,12 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
-import { getContainers } from "@/features/containers/api/get-containers";
-import {
-	formatContainerName,
-	getComposeProject,
-} from "@/features/containers/components/container-utils";
 import { cn } from "@/lib/utils";
 
 import type { AlertRulePayload } from "../api/create-alert-rule";
 import type { AlertEventKind, AlertRule } from "../api/get-alert-rules";
 import { useCreateAlertRule, useUpdateAlertRule } from "../hooks/use-alerts";
+import { useTargetOptions } from "../hooks/use-target-options";
 import { MultiCombobox } from "./multi-combobox";
 
 const LOG_LEVELS = [
@@ -463,32 +458,7 @@ function RuleEditor({
 	const updateMutation = useUpdateAlertRule();
 	const isSaving = createMutation.isPending || updateMutation.isPending;
 
-	const containersQuery = useQuery({
-		queryKey: ["containers"],
-		queryFn: getContainers,
-		staleTime: 30_000,
-	});
-
-	const targetOptions = useMemo(() => {
-		const containers = new Set<string>();
-		const projects = new Set<string>();
-		const hosts = new Set<string>();
-		for (const container of containersQuery.data?.containers ?? []) {
-			const name = formatContainerName(container.names);
-			if (name !== "—") containers.add(name);
-			const project = getComposeProject(container.labels);
-			if (project) projects.add(project);
-			if (container.host) hosts.add(container.host);
-		}
-		for (const host of containersQuery.data?.hosts ?? []) {
-			hosts.add(host.name);
-		}
-		return {
-			containers: [...containers],
-			projects: [...projects],
-			hosts: [...hosts],
-		};
-	}, [containersQuery.data]);
+	const targetOptions = useTargetOptions();
 
 	function set<K extends keyof FormState>(key: K, value: FormState[K]) {
 		setForm((prev) => ({ ...prev, [key]: value }));

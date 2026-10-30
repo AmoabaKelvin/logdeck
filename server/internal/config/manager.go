@@ -22,6 +22,7 @@ type FileConfig struct {
 	APITokens    []APIToken          `json:"apiTokens,omitempty"`
 	Alerts       *AlertsConfig       `json:"alerts,omitempty"`
 	LogStore     *LogStoreConfig     `json:"logStore,omitempty"`
+	Redaction    *RedactionConfig    `json:"redaction,omitempty"`
 }
 
 // APIToken represents a stored API access token. Only the SHA256 hash of the

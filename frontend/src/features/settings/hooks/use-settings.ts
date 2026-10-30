@@ -3,7 +3,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createApiToken } from "../api/create-api-token";
 import { deleteApiToken } from "../api/delete-api-token";
 import { getApiTokens } from "../api/get-api-tokens";
+import { getRedaction, type RedactionConfig } from "../api/get-redaction";
 import { getSettings } from "../api/get-settings";
+import { previewRedaction } from "../api/preview-redaction";
 import { testCoolifyHost } from "../api/test-coolify-host";
 import { testDockerHost } from "../api/test-docker-host";
 import { testDokployHost } from "../api/test-dokploy-host";
@@ -19,10 +21,12 @@ import {
 	updateLogStorage,
 } from "../api/update-log-storage";
 import { updateReadOnly } from "../api/update-read-only";
+import { updateRedaction } from "../api/update-redaction";
 import type { APITokenScope } from "../types";
 
 const SETTINGS_KEY = ["settings"] as const;
 const API_TOKENS_KEY = ["settings", "api-tokens"] as const;
+const REDACTION_KEY = ["settings", "redaction"] as const;
 const HISTORY_STATUS_KEY = ["history", "status"] as const;
 // The container list carries the host set and the read-only flag.
 const CONTAINERS_KEY = ["containers"] as const;
@@ -171,5 +175,35 @@ export function useTestCoolifyHost() {
 export function useTestDokployHost() {
 	return useMutation({
 		mutationFn: (host: DokployHostInput) => testDokployHost(host),
+	});
+}
+
+export function useRedaction() {
+	return useQuery({
+		queryKey: REDACTION_KEY,
+		queryFn: getRedaction,
+		staleTime: 30_000,
+	});
+}
+
+export function useUpdateRedaction() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (config: RedactionConfig) => updateRedaction(config),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: REDACTION_KEY });
+		},
+	});
+}
+
+export function usePreviewRedaction() {
+	return useMutation({
+		mutationFn: ({
+			config,
+			sample,
+		}: {
+			config: RedactionConfig;
+			sample: string;
+		}) => previewRedaction(config, sample),
 	});
 }

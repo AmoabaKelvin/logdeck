@@ -20,6 +20,7 @@ import (
 	"github.com/AmoabaKelvin/logdeck/internal/dokploy"
 	"github.com/AmoabaKelvin/logdeck/internal/logstore"
 	"github.com/AmoabaKelvin/logdeck/internal/logstream"
+	"github.com/AmoabaKelvin/logdeck/internal/redact"
 	"github.com/AmoabaKelvin/logdeck/internal/services"
 	"github.com/AmoabaKelvin/logdeck/internal/system"
 )
@@ -65,6 +66,18 @@ func main() {
 
 	if cfg.ReadOnly {
 		log.Println("READ-ONLY MODE is ENABLED")
+	}
+
+	// Redaction is active before any log is read. The settings API rejects
+	// invalid rules, so one here was edited into the file by hand; starting
+	// without it would store and serve the logs it was meant to hide.
+	redaction, err := redact.Compile(manager.Redaction())
+	if err != nil {
+		log.Fatalf("Invalid log redaction settings in %s: %v", manager.ConfigFilePath(), err)
+	}
+	redact.Activate(redaction)
+	if redaction != nil {
+		log.Println("Log redaction is ENABLED")
 	}
 
 	coolifyClient := coolify.NewMultiClient(cfg.CoolifyHosts)

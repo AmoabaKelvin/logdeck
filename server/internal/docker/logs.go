@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/models"
+	"github.com/AmoabaKelvin/logdeck/internal/redact"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
@@ -31,11 +32,11 @@ const (
 
 // parseDockerLogs parses the Docker log stream into structured entries,
 // optionally filtering by level and/or search regex.
-func parseDockerLogs(reader io.Reader, tty bool, levelFilter string, searchRegex *regexp.Regexp) ([]models.LogEntry, error) {
+func parseDockerLogs(reader io.Reader, tty bool, levelFilter string, searchRegex *regexp.Regexp, redactor *redact.Stream) ([]models.LogEntry, error) {
 	var entries []models.LogEntry
 
-	stdout := &logWriter{stream: "stdout", entries: &entries}
-	stderr := &logWriter{stream: "stderr", entries: &entries}
+	stdout := &logWriter{stream: "stdout", entries: &entries, redactor: redactor}
+	stderr := &logWriter{stream: "stderr", entries: &entries, redactor: redactor}
 
 	err := copyLogStream(stdout, stderr, reader, tty)
 	if err != nil && err != io.EOF {
@@ -74,13 +75,28 @@ func copyLogStream(stdout, stderr io.Writer, logs io.Reader, tty bool) error {
 	return err
 }
 
-// isTTY reports whether the container was created with a TTY.
-func isTTY(ctx context.Context, apiClient *client.Client, id string) (bool, error) {
+// inspectLogSource reports whether the container was created with a TTY and
+// returns the redactor for its lines, targeted by the container's name and
+// compose project. Every engine log read goes through it, which is what keeps
+// unredacted lines out of storage and API responses. Unredacted opts get a
+// nil redactor.
+func inspectLogSource(ctx context.Context, apiClient *client.Client, host, id string, opts models.LogOptions) (bool, *redact.Stream, error) {
 	inspect, err := apiClient.ContainerInspect(ctx, id)
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
-	return inspect.Config != nil && inspect.Config.Tty, nil
+	tty := inspect.Config != nil && inspect.Config.Tty
+	if opts.Unredacted {
+		return tty, nil, nil
+	}
+	target := redact.Target{Host: host}
+	if inspect.ContainerJSONBase != nil {
+		target.Name = strings.TrimPrefix(inspect.Name, "/")
+	}
+	if inspect.Config != nil {
+		target.Project = ComposeProject(inspect.Config.Labels)
+	}
+	return tty, redact.NewStream(target), nil
 }
 
 // maxLineBufferSize caps the pending (newline-less) line buffer in the log
@@ -90,9 +106,10 @@ const maxLineBufferSize = 1 << 20 // 1 MiB
 
 // logWriter implements io.Writer and parses log lines
 type logWriter struct {
-	stream  string
-	entries *[]models.LogEntry
-	buffer  []byte
+	stream   string
+	entries  *[]models.LogEntry
+	buffer   []byte
+	redactor *redact.Stream
 }
 
 func (w *logWriter) Write(p []byte) (n int, err error) {
@@ -109,7 +126,7 @@ func (w *logWriter) Write(p []byte) (n int, err error) {
 
 		if line != "" {
 			line = strings.TrimSuffix(line, "\r")
-			entry := models.ParseLogLine(line, w.stream)
+			entry := models.ParseLogLine(w.redactor.Line(line), w.stream)
 			*w.entries = append(*w.entries, entry)
 		}
 	}
@@ -127,7 +144,7 @@ func (w *logWriter) Flush() {
 	}
 	line := strings.TrimSuffix(string(w.buffer), "\r")
 	if line != "" {
-		entry := models.ParseLogLine(line, w.stream)
+		entry := models.ParseLogLine(w.redactor.Line(line), w.stream)
 		*w.entries = append(*w.entries, entry)
 	}
 	w.buffer = nil
@@ -154,6 +171,7 @@ type streamingLogWriter struct {
 	searchRegex *regexp.Regexp
 	wroteEntry  *atomic.Bool // set on each encoded entry; monitor clears it per tick
 	head        *streamHead  // shared by the stdout and stderr writers of one stream
+	redactor    *redact.Stream
 }
 
 func (w *streamingLogWriter) Write(p []byte) (n int, err error) {
@@ -206,7 +224,7 @@ func (w *streamingLogWriter) passes(entry models.LogEntry) bool {
 }
 
 func (w *streamingLogWriter) emit(line string) error {
-	entry := models.ParseLogLine(line, w.stream)
+	entry := models.ParseLogLine(w.redactor.Line(line), w.stream)
 
 	var keep bool
 	if w.head.ok && models.IsContinuationLogEntry(entry, w.head.entry) {
@@ -255,7 +273,7 @@ func (c *MultiHostClient) GetContainerLogsParsed(ctx context.Context, hostName, 
 		return nil, err
 	}
 
-	tty, err := isTTY(ctx, apiClient, id)
+	tty, redactor, err := inspectLogSource(ctx, apiClient, hostName, id, options)
 	if err != nil {
 		return nil, err
 	}
@@ -271,7 +289,7 @@ func (c *MultiHostClient) GetContainerLogsParsed(ctx context.Context, hostName, 
 		searchRegex, _ = regexp.Compile(options.Search) // already validated by handler
 	}
 
-	return parseDockerLogs(logs, tty, options.Level, searchRegex)
+	return parseDockerLogs(logs, tty, options.Level, searchRegex, redactor)
 }
 
 // StreamContainerLogsParsed streams parsed logs. The Docker log stream is tied
@@ -282,7 +300,7 @@ func (c *MultiHostClient) StreamContainerLogsParsed(ctx context.Context, hostNam
 		return nil, err
 	}
 
-	tty, err := isTTY(ctx, apiClient, id)
+	tty, redactor, err := inspectLogSource(ctx, apiClient, hostName, id, options)
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +314,7 @@ func (c *MultiHostClient) StreamContainerLogsParsed(ctx context.Context, hostNam
 		_, err := apiClient.Ping(ctx)
 		return err
 	}
-	return newParsedLogStream(ctx, logs, tty, options, ping, nil), nil
+	return newParsedLogStream(ctx, logs, tty, options, redactor, ping, nil), nil
 }
 
 // newParsedLogStream parses the raw Docker log stream into NDJSON on a pipe.
@@ -304,7 +322,7 @@ func (c *MultiHostClient) StreamContainerLogsParsed(ctx context.Context, hostNam
 // quiet intervals and teardown when the daemon stops answering pings. tick
 // overrides the monitor cadence in tests; nil means a real time.Ticker at
 // monitorInterval.
-func newParsedLogStream(ctx context.Context, logs io.ReadCloser, tty bool, options models.LogOptions, ping func(context.Context) error, tick <-chan time.Time) io.ReadCloser {
+func newParsedLogStream(ctx context.Context, logs io.ReadCloser, tty bool, options models.LogOptions, redactor *redact.Stream, ping func(context.Context) error, tick <-chan time.Time) io.ReadCloser {
 	pipeReader, pipeWriter := io.Pipe()
 
 	var searchRegex *regexp.Regexp
@@ -326,6 +344,7 @@ func newParsedLogStream(ctx context.Context, logs io.ReadCloser, tty bool, optio
 		searchRegex: searchRegex,
 		wroteEntry:  &wroteEntry,
 		head:        head,
+		redactor:    redactor,
 	}
 	stderr := &streamingLogWriter{
 		stream:      "stderr",
@@ -336,6 +355,7 @@ func newParsedLogStream(ctx context.Context, logs io.ReadCloser, tty bool, optio
 		searchRegex: searchRegex,
 		wroteEntry:  &wroteEntry,
 		head:        head,
+		redactor:    redactor,
 	}
 
 	done := make(chan struct{})

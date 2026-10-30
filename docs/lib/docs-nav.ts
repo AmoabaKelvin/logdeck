@@ -48,6 +48,13 @@ export const docsNav = [
           "Alert on container deaths, OOM kills, failing health checks, and log patterns, with thresholds and cooldowns, to webhooks, ntfy, Gotify, or Telegram.",
       },
       {
+        title: "Log redaction",
+        href: "/docs/log-redaction",
+        updated: "2026-10-30",
+        description:
+          "Mask passwords, tokens, and API keys in container logs before LogDeck stores them or serves them to the UI, the API, the CLI, MCP, and alerts.",
+      },
+      {
         title: "CLI reference",
         href: "/docs/cli",
         updated: "2026-09-13",

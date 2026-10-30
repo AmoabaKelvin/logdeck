@@ -47,6 +47,10 @@ type LogOptions struct {
 	ShowStderr bool   `json:"show_stderr"`
 	Level      string `json:"level,omitempty"`
 	Search     string `json:"search,omitempty"`
+	// Unredacted skips log redaction. Only the alert engine sets it: its rules
+	// match the original line, and it redacts the sample it keeps. Clients
+	// cannot set it.
+	Unredacted bool `json:"-"`
 }
 
 func DefaultLogOptions() LogOptions {
