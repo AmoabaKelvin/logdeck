@@ -105,17 +105,28 @@ func newResourcesSetCmd(a *app) *cobra.Command {
 			}
 
 			query := url.Values{"host": {container.Host}}
-			if err := a.client.put(ctx, "/containers/"+container.ID+"/resources", query, req, nil); err != nil {
+			// A platform-managed container's limits are saved in its platform
+			// and apply on its next deployment, not now.
+			var result struct {
+				Message string `json:"message"`
+				Applied bool   `json:"applied"`
+			}
+			if err := a.client.put(ctx, "/containers/"+container.ID+"/resources", query, req, &result); err != nil {
 				return err
 			}
 
 			if a.jsonOutput() {
-				return a.printJSON(map[string]string{
-					"message": "Container resources updated",
+				return a.printJSON(map[string]any{
+					"message": result.Message,
+					"applied": result.Applied,
 					"name":    containerName(container),
 					"id":      container.ID,
 					"host":    container.Host,
 				})
+			}
+			if !result.Applied {
+				fmt.Printf("%s: %s (host %s)\n", containerName(container), result.Message, container.Host)
+				return nil
 			}
 			fmt.Printf("updated resources for %s (host %s)\n", containerName(container), container.Host)
 			return nil
