@@ -103,7 +103,7 @@ export function AuditLogSection() {
 	return (
 		<SettingsSection
 			title="Audit log"
-			description="Every change made through LogDeck, from the UI, the CLI or MCP: who made it, what, where, when, and whether it worked. Reads are not recorded, and neither are request bodies, so env values, passwords and tokens never appear here. The newest 10,000 changes are kept."
+			description="Changes made through LogDeck, from the UI, the CLI or MCP: who made it, what, where, when, and whether it worked. Reads are not recorded, and neither are request bodies, so env values, passwords and tokens never appear here. The newest 10,000 changes are kept."
 		>
 			<div className="space-y-4">
 				<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
