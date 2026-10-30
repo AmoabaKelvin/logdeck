@@ -7,7 +7,14 @@ import type {
 	ContainerInspect,
 	HealthProbe,
 } from "../api/get-container-inspect";
+import { useCollectionHealth } from "../hooks/use-collection-health";
 import type { ContainerInfo } from "../types";
+import {
+	describeLive,
+	describeStored,
+	findContainerHealth,
+} from "./collection-health";
+import { CollectionStatus } from "./collection-status";
 import {
 	formatNanoseconds,
 	formatTimestamp,
@@ -132,6 +139,47 @@ function HealthBand({ inspect }: { inspect: ContainerInspect }) {
 						))}
 					</ul>
 				)}
+			</PanelSection>
+		</Band>
+	);
+}
+
+/**
+ * Whether LogDeck can collect this container's logs. Shown only once the
+ * server has something to say, so a container nobody tails in the background
+ * does not grow an empty section.
+ */
+function CollectionBand({ container }: { container: ContainerInfo }) {
+	const { data } = useCollectionHealth();
+	const health = findContainerHealth(data, container.host, container.id);
+	if (!health) return null;
+	const host = data?.hosts.find((h) => h.host === container.host);
+
+	return (
+		<Band>
+			<PanelSection title="Log collection">
+				{host?.state === "failing" && (
+					<PanelNote>
+						LogDeck can't reach {host.host}, so the states below are from before
+						it was lost: {host.error}
+					</PanelNote>
+				)}
+				<PanelFields>
+					<PanelField term="Live">
+						<CollectionStatus
+							status={describeLive(health.live)}
+							since={health.live?.since}
+						/>
+					</PanelField>
+					{data?.storage && (
+						<PanelField term="Stored">
+							<CollectionStatus
+								status={describeStored(health.stored)}
+								since={health.stored?.since}
+							/>
+						</PanelField>
+					)}
+				</PanelFields>
 			</PanelSection>
 		</Band>
 	);
@@ -303,6 +351,7 @@ export function ContainerOverviewPanel({
 			</Band>
 
 			<HealthBand inspect={inspect} />
+			<CollectionBand container={container} />
 			<LabelsBand container={container} />
 		</div>
 	);

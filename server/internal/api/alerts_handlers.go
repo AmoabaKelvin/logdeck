@@ -27,6 +27,7 @@ const (
 	minAlertWindowSecs     = 5
 	maxAlertWindowSecs     = 3600
 	maxAlertCooldownSecs   = 86400
+	minCollectionDelaySecs = 60
 
 	defaultAlertHistoryLimit = 100
 	maxAlertHistoryLimit     = 500
@@ -155,10 +156,25 @@ func buildAlertRule(req alertRuleRequest) (config.AlertRule, error) {
 				return rule, fmt.Errorf("pattern is not a valid regular expression: %v", err)
 			}
 		}
+	case "collection":
+		// A collection failure belongs to a host or to the log store, never to
+		// one container, so only host targeting means anything.
+		if len(rule.Containers) > 0 || len(rule.Projects) > 0 {
+			return rule, errors.New("a collection rule can only target hosts")
+		}
+		if len(rule.Events) > 0 || rule.MinLevel != "" || rule.Pattern != "" {
+			return rule, errors.New("events, minLevel and pattern must be empty for a collection rule")
+		}
+		// Collection state is checked once a minute, so a shorter delay would
+		// read as a promise the engine cannot keep.
+		if rule.WindowSeconds != 0 && rule.WindowSeconds < minCollectionDelaySecs {
+			return rule, fmt.Errorf("windowSeconds must be at least %d for a collection rule", minCollectionDelaySecs)
+		}
+		rule.Threshold = 1 // one sustained failure fires; there is no rate
 	case "":
 		return rule, errors.New("type is required")
 	default:
-		return rule, fmt.Errorf("type %q is invalid (must be \"event\" or \"log\")", rule.Type)
+		return rule, fmt.Errorf("type %q is invalid (must be \"event\", \"log\", or \"collection\")", rule.Type)
 	}
 
 	if rule.Threshold < 0 {

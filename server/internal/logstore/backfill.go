@@ -30,18 +30,6 @@ type backfillResult struct {
 	excluded bool
 }
 
-// unreadableDriverErr reports whether the engine cannot read this container's
-// logs at all — a logging driver without a read API (awslogs, syslog, none,
-// ...). Such a generation is excluded permanently instead of being retried.
-func unreadableDriverErr(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "does not support reading") || // Docker
-		strings.Contains(msg, "cannot read logs") // Podman
-}
-
 // backfill re-reads one generation's engine logs from its watermark (or from
 // container creation for a generation we have never stored) and pushes the
 // lines onto the writer queue. It runs in its own goroutine, bounded by
@@ -93,7 +81,9 @@ func (s *Store) backfill(ctx context.Context, engine Engine, info models.Contain
 		})
 	})
 
-	excluded := unreadableDriverErr(tailErr)
+	// A logging driver without a read API excludes the generation permanently
+	// instead of being retried.
+	excluded := docker.UnreadableLogs(tailErr)
 	done := ingestMsg{
 		kind:     msgDone,
 		key:      key,
