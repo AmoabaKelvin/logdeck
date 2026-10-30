@@ -1,7 +1,6 @@
-import { authenticatedFetch } from "@/lib/api-client";
-import { API_BASE_URL } from "@/types/api";
+import { authenticatedFetch, readJson } from "@/lib/api-client";
 
-import type { RestartPolicy } from "./get-container-resources";
+import { type RestartPolicy, resourcesUrl } from "./get-container-resources";
 
 export interface UpdateResourcesRequest {
 	memoryBytes?: number;
@@ -9,13 +8,24 @@ export interface UpdateResourcesRequest {
 	restartPolicy?: RestartPolicy;
 }
 
+async function errorMessage(response: Response, fallback: string) {
+	const message = response.headers
+		.get("Content-Type")
+		?.includes("application/json")
+		? (await readJson<{ message: string }>(response)).message
+		: (await response.text()).trim();
+	return message || fallback;
+}
+
+/** Live for standalone and Compose containers; saved only, for a platform. */
 export async function updateContainerResources(
 	id: string,
 	host: string,
 	request: UpdateResourcesRequest,
-): Promise<void> {
+	dokployMapping?: string,
+): Promise<{ applied: boolean }> {
 	const response = await authenticatedFetch(
-		`${API_BASE_URL}/api/v1/containers/${encodeURIComponent(id)}/resources?host=${encodeURIComponent(host)}`,
+		resourcesUrl(id, host, dokployMapping),
 		{
 			method: "PUT",
 			headers: {
@@ -26,7 +36,24 @@ export async function updateContainerResources(
 	);
 
 	if (!response.ok) {
-		const message = await response.text();
-		throw new Error(message.trim() || "Failed to update container resources");
+		throw new Error(
+			await errorMessage(response, "Failed to update container resources"),
+		);
+	}
+	return readJson<{ applied: boolean }>(response);
+}
+
+/** Asks the owning platform to deploy its saved limits. */
+export async function deployContainerResources(
+	id: string,
+	host: string,
+	dokployMapping?: string,
+): Promise<void> {
+	const response = await authenticatedFetch(
+		resourcesUrl(id, host, dokployMapping, "/deploy"),
+		{ method: "POST" },
+	);
+	if (!response.ok) {
+		throw new Error(await errorMessage(response, "Deployment request failed"));
 	}
 }

@@ -122,6 +122,9 @@ Change container resources without recreating or restarting anything.
 
 - Edit memory limits, CPU limits, and restart policies from the container page
 - LogDeck applies changes live through the engine's update API, so there is no downtime
+- Plain Compose containers update live too. Set the limits in the Compose file as well, or the next `docker compose up` drops them
+- Coolify applications and Dokploy applications save memory and CPU limits in the platform instead, and deploy separately. The panel shows the saved limits next to the ones the container runs with until a deployment applies them
+- Limits LogDeck cannot save in their platform, such as Coolify services, Compose deployments on Coolify or Dokploy, and other Swarm services, are shown but locked, with the reason and a link to the platform. The restart policy of platform-managed containers is left to the platform
 - Human-friendly inputs such as `512m` and `1g`, with validation
 - Blocked in read-only mode
 
