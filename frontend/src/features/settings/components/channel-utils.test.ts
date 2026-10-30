@@ -78,6 +78,53 @@ describe("buildChannelPayload", () => {
 	});
 });
 
+describe("buildChannelPayload for the formatted and paging types", () => {
+	it("builds an email payload and leaves optional credentials out", () => {
+		expect(
+			buildChannelPayload({
+				...EMPTY_CHANNEL_DRAFT,
+				type: "email",
+				url: "smtps://smtp.example.com",
+				from: "alerts@example.com",
+				target: "ops@example.com",
+			}),
+		).toEqual({
+			payload: {
+				type: "email",
+				enabled: true,
+				url: "smtps://smtp.example.com",
+				from: "alerts@example.com",
+				target: "ops@example.com",
+			},
+		});
+	});
+
+	it("requires an smtp URL for email", () => {
+		expect(
+			buildChannelPayload({
+				...EMPTY_CHANNEL_DRAFT,
+				type: "email",
+				url: "https://smtp.example.com",
+				from: "alerts@example.com",
+				target: "ops@example.com",
+			}),
+		).toEqual({ error: expect.stringMatching(/smtp/i) });
+	});
+
+	it("needs only a routing key for pagerduty", () => {
+		expect(
+			buildChannelPayload({ ...EMPTY_CHANNEL_DRAFT, type: "pagerduty" }),
+		).toEqual({ error: expect.stringMatching(/routing key/i) });
+		expect(
+			buildChannelPayload({
+				...EMPTY_CHANNEL_DRAFT,
+				type: "pagerduty",
+				token: "key",
+			}),
+		).toEqual({ payload: { type: "pagerduty", enabled: true, token: "key" } });
+	});
+});
+
 describe("channelDestination", () => {
 	it("summarizes a telegram channel as its chat id", () => {
 		const ch: AlertChannel = {

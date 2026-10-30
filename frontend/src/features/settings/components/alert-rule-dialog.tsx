@@ -12,10 +12,12 @@ import {
 	AlertTriangleIcon,
 	ArrowLeftIcon,
 	CheckIcon,
+	GaugeIcon,
 	HeartPulseIcon,
 	type IconComponent,
 	MemoryStickIcon,
 	OctagonXIcon,
+	RefreshCwIcon,
 	RegexIcon,
 	RotateCcwIcon,
 	SlidersHorizontalIcon,
@@ -38,6 +40,7 @@ import { cn } from "@/lib/utils";
 import type { AlertRulePayload } from "../api/create-alert-rule";
 import type {
 	AlertEventKind,
+	AlertResourceMetric,
 	AlertRule,
 	AlertRuleType,
 } from "../api/get-alert-rules";
@@ -58,13 +61,17 @@ const LOG_LEVELS = [
 interface FormState {
 	name: string;
 	type: AlertRuleType;
-	/** Collection rules: how long a failure lasts before it alerts. */
+	/** Collection and resource rules: how long the condition lasts first. */
 	delayMinutes: string;
 	minLevel: string;
 	pattern: string;
 	die: boolean;
 	oom: boolean;
 	unhealthy: boolean;
+	restart: boolean;
+	metric: AlertResourceMetric;
+	aboveValue: string;
+	aboveUnit: "percent" | "MiB" | "GiB";
 	rateEnabled: boolean;
 	threshold: string;
 	windowSeconds: string;
@@ -84,6 +91,10 @@ const EMPTY_FORM: FormState = {
 	die: false,
 	oom: false,
 	unhealthy: false,
+	restart: false,
+	metric: "memory",
+	aboveValue: "90",
+	aboveUnit: "percent",
 	rateEnabled: false,
 	threshold: "1",
 	windowSeconds: "",
@@ -128,6 +139,21 @@ const PRESETS: Preset[] = [
 		focus: null,
 	},
 	{
+		id: "restart-loop",
+		icon: RefreshCwIcon,
+		title: "Restart loop",
+		description: "A container restarts 3 times within 10 minutes.",
+		form: {
+			name: "Restart loop",
+			type: "event",
+			restart: true,
+			rateEnabled: true,
+			threshold: "3",
+			windowSeconds: "600",
+		},
+		focus: null,
+	},
+	{
 		id: "oom",
 		icon: MemoryStickIcon,
 		title: "Out of memory",
@@ -141,6 +167,15 @@ const PRESETS: Preset[] = [
 		title: "Health check failing",
 		description: "A container's health check transitions to unhealthy.",
 		form: { name: "Health check failing", type: "event", unhealthy: true },
+		focus: null,
+	},
+	{
+		id: "high-memory",
+		icon: GaugeIcon,
+		title: "High memory",
+		description:
+			"A container stays above 90% of its memory limit for 5 minutes.",
+		form: { name: "High memory", type: "resource", delayMinutes: "5" },
 		focus: null,
 	},
 	{
@@ -187,20 +222,33 @@ const PRESETS: Preset[] = [
 
 function ruleToForm(rule: AlertRule): FormState {
 	const cooldown = rule.cooldownSeconds ?? 0;
-	const isCollection = rule.type === "collection";
+	const isSustained = rule.type === "collection" || rule.type === "resource";
+	const bytes = rule.aboveBytes ?? 0;
+	const gib = 1024 ** 3;
 	return {
 		name: rule.name,
 		type: rule.type,
-		delayMinutes: isCollection
+		delayMinutes: isSustained
 			? String(Math.max(1, Math.round((rule.windowSeconds ?? 60) / 60)))
 			: EMPTY_FORM.delayMinutes,
+		restart: rule.events?.includes("restart") ?? false,
+		metric: rule.metric ?? EMPTY_FORM.metric,
+		aboveValue:
+			bytes > 0
+				? String(
+						bytes % gib === 0 ? bytes / gib : Math.round(bytes / 1024 ** 2),
+					)
+				: rule.abovePercent
+					? String(rule.abovePercent)
+					: EMPTY_FORM.aboveValue,
+		aboveUnit: bytes > 0 ? (bytes % gib === 0 ? "GiB" : "MiB") : "percent",
 		minLevel: rule.minLevel ?? "any",
 		pattern: rule.pattern ?? "",
 		die: rule.events?.includes("die") ?? false,
 		oom: rule.events?.includes("oom") ?? false,
 		unhealthy: rule.events?.includes("unhealthy") ?? false,
 		rateEnabled:
-			!isCollection && (rule.threshold > 1 || Boolean(rule.windowSeconds)),
+			!isSustained && (rule.threshold > 1 || Boolean(rule.windowSeconds)),
 		threshold: String(rule.threshold),
 		windowSeconds: rule.windowSeconds ? String(rule.windowSeconds) : "",
 		containers: rule.containers ?? [],
@@ -227,12 +275,28 @@ function buildPayload(
 		threshold: 1,
 	};
 
-	if (form.type === "collection") {
+	if (form.type === "collection" || form.type === "resource") {
 		const minutes = Number.parseInt(form.delayMinutes, 10);
 		if (Number.isNaN(minutes) || minutes < 1 || minutes > 60) {
-			return { error: "The delay must be between 1 and 60 minutes" };
+			return { error: "The duration must be between 1 and 60 minutes" };
 		}
 		payload.windowSeconds = minutes * 60;
+	}
+	if (form.type === "resource") {
+		const value = Number.parseFloat(form.aboveValue);
+		if (Number.isNaN(value) || value <= 0) {
+			return { error: "The limit must be greater than 0" };
+		}
+		payload.metric = form.metric;
+		if (form.metric === "memory" && form.aboveUnit !== "percent") {
+			payload.aboveBytes = Math.round(
+				value * 1024 ** (form.aboveUnit === "GiB" ? 3 : 2),
+			);
+		} else if (form.metric === "memory" && value > 100) {
+			return { error: "A memory percentage can't be above 100" };
+		} else {
+			payload.abovePercent = value;
+		}
 	} else if (form.type === "log") {
 		const pattern = form.pattern.trim();
 		if (form.minLevel === "any" && !pattern) {
@@ -240,18 +304,23 @@ function buildPayload(
 		}
 		if (form.minLevel !== "any") payload.minLevel = form.minLevel;
 		if (pattern) payload.pattern = pattern;
-	} else {
+	} else if (form.type === "event") {
 		const events: AlertEventKind[] = [];
 		if (form.die) events.push("die");
 		if (form.oom) events.push("oom");
 		if (form.unhealthy) events.push("unhealthy");
+		if (form.restart) events.push("restart");
 		if (events.length === 0) {
 			return { error: "Event rules need at least one event" };
 		}
 		payload.events = events;
 	}
 
-	if (form.rateEnabled && form.type !== "collection") {
+	if (
+		form.rateEnabled &&
+		form.type !== "collection" &&
+		form.type !== "resource"
+	) {
 		const threshold = Number.parseInt(form.threshold, 10);
 		if (!Number.isNaN(threshold) && threshold > 0) {
 			payload.threshold = threshold;
@@ -293,6 +362,14 @@ function quietPeriod(form: FormState): string {
 	return `${form.cooldownValue} ${unit}`;
 }
 
+function resourceLimit(form: FormState): string {
+	const metric = form.metric === "cpu" ? "CPU" : "memory";
+	if (form.metric === "memory" && form.aboveUnit !== "percent") {
+		return `${metric} above ${form.aboveValue || "?"} ${form.aboveUnit}`;
+	}
+	return `${metric} above ${form.aboveValue || "?"}%`;
+}
+
 function summarize(form: FormState): string {
 	if (form.type === "collection") {
 		const hosts = form.hosts.length > 0 ? formatList(form.hosts) : "any host";
@@ -311,6 +388,13 @@ function summarize(form: FormState): string {
 	}
 	if (form.hosts.length > 0) targets.push(`on ${formatList(form.hosts)}`);
 	const target = targets.length > 0 ? targets.join(", ") : "any container";
+
+	if (form.type === "resource") {
+		const minutes = form.delayMinutes || "?";
+		return `When ${target} stays at ${resourceLimit(form)} for ${minutes} ${
+			minutes === "1" ? "minute" : "minutes"
+		} → alert, and again when it settles. A new alert for the same container within ${quietPeriod(form)} of the last waits until then.`;
+	}
 
 	let condition: string;
 	if (form.type === "log") {
@@ -333,6 +417,7 @@ function summarize(form: FormState): string {
 				form.die ? "dies" : "",
 				form.oom ? "runs out of memory" : "",
 				form.unhealthy ? "becomes unhealthy" : "",
+				form.restart ? "restarts" : "",
 			]
 				.filter(Boolean)
 				.join(" or ") || "…";
@@ -356,7 +441,7 @@ function SectionLabel({ children }: { children: ReactNode }) {
 	);
 }
 
-function ToggleChip({
+export function ToggleChip({
 	label,
 	pressed,
 	onToggle,
@@ -508,6 +593,24 @@ function RuleEditor({
 		setScreen("form");
 	}
 
+	// A crash loop is a die and a restart each round, so restart is picked on
+	// its own: one rule counting both would reach its threshold twice as fast.
+	function toggleEvent(kind: AlertEventKind) {
+		setForm((prev) => {
+			if (prev[kind]) return { ...prev, [kind]: false };
+			if (kind === "restart") {
+				return {
+					...prev,
+					die: false,
+					oom: false,
+					unhealthy: false,
+					restart: true,
+				};
+			}
+			return { ...prev, [kind]: true, restart: false };
+		});
+	}
+
 	function enableRate() {
 		setForm((prev) => ({
 			...prev,
@@ -611,6 +714,14 @@ function RuleEditor({
 					<Button
 						type="button"
 						size="sm"
+						variant={form.type === "resource" ? "default" : "outline"}
+						onClick={() => set("type", "resource")}
+					>
+						Resource
+					</Button>
+					<Button
+						type="button"
+						size="sm"
 						variant={form.type === "collection" ? "default" : "outline"}
 						onClick={() => set("type", "collection")}
 					>
@@ -618,7 +729,78 @@ function RuleEditor({
 					</Button>
 				</div>
 
-				{form.type === "collection" ? (
+				{form.type === "resource" ? (
+					<div className="space-y-2">
+						<div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 text-sm">
+							Alert when
+							<Select
+								value={form.metric}
+								onValueChange={(v) =>
+									setForm((prev) => ({
+										...prev,
+										metric: v === "cpu" ? "cpu" : "memory",
+										aboveUnit: "percent",
+									}))
+								}
+							>
+								<SelectTrigger size="sm" className="w-28" aria-label="Metric">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="cpu">CPU</SelectItem>
+									<SelectItem value="memory">memory</SelectItem>
+								</SelectContent>
+							</Select>
+							stays above
+							<Input
+								id="alert-rule-above"
+								type="number"
+								min={0}
+								value={form.aboveValue}
+								onChange={(e) => set("aboveValue", e.target.value)}
+								aria-label="Limit"
+								className="h-8 w-16 text-center tabular-nums"
+							/>
+							{form.metric === "memory" ? (
+								<Select
+									value={form.aboveUnit}
+									onValueChange={(v) =>
+										set("aboveUnit", v === "MiB" || v === "GiB" ? v : "percent")
+									}
+								>
+									<SelectTrigger size="sm" className="w-20" aria-label="Unit">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="percent">%</SelectItem>
+										<SelectItem value="MiB">MiB</SelectItem>
+										<SelectItem value="GiB">GiB</SelectItem>
+									</SelectContent>
+								</Select>
+							) : (
+								"%"
+							)}
+							for
+							<InlineNumberInput
+								id="alert-rule-duration"
+								value={form.delayMinutes}
+								onChange={(v) => set("delayMinutes", v)}
+								min={1}
+								max={60}
+								placeholder="5"
+								ariaLabel="Duration in minutes"
+							/>
+							minutes
+						</div>
+						<p className="text-xs text-muted-foreground">
+							{form.metric === "cpu"
+								? "CPU as the dashboard shows it: 100% is one full core."
+								: "A percentage is of the container's memory limit, or of the host's memory when it has none."}{" "}
+							Checked once a minute, only for running containers this rule
+							targets.
+						</p>
+					</div>
+				) : form.type === "collection" ? (
 					<div className="space-y-2">
 						<div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 text-sm">
 							Alert when LogDeck can't list a host, can't collect a container's
@@ -686,26 +868,32 @@ function RuleEditor({
 						</div>
 					</div>
 				) : (
-					<div className="flex items-center gap-2">
+					<div className="flex flex-wrap items-center gap-2">
 						<ToggleChip
 							label="Container died"
 							pressed={form.die}
-							onToggle={() => set("die", !form.die)}
+							onToggle={() => toggleEvent("die")}
 						/>
 						<ToggleChip
 							label="Out of memory"
 							pressed={form.oom}
-							onToggle={() => set("oom", !form.oom)}
+							onToggle={() => toggleEvent("oom")}
 						/>
 						<ToggleChip
 							label="Unhealthy"
 							pressed={form.unhealthy}
-							onToggle={() => set("unhealthy", !form.unhealthy)}
+							onToggle={() => toggleEvent("unhealthy")}
+						/>
+						<ToggleChip
+							label="Restarted"
+							pressed={form.restart}
+							onToggle={() => toggleEvent("restart")}
 						/>
 					</div>
 				)}
 
-				{form.type === "collection" ? null : form.rateEnabled ? (
+				{form.type === "collection" ||
+				form.type === "resource" ? null : form.rateEnabled ? (
 					<div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 text-sm">
 						Alert after
 						<InlineNumberInput
@@ -829,7 +1017,11 @@ function RuleEditor({
 				<p className="text-xs text-muted-foreground">
 					{form.type === "collection"
 						? "A recovery notice is sent as soon as collection works again."
-						: "Repeat occurrences during the quiet period are counted and reported on the next alert."}
+						: form.type === "resource"
+							? "A recovery notice is sent when use drops back under the limit or the container stops."
+							: form.restart
+								? "A recovery notice is sent once the container goes a full window without restarting."
+								: "Repeat occurrences during the quiet period are counted and reported on the next alert."}
 				</p>
 			</div>
 

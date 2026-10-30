@@ -103,6 +103,8 @@ func (ar *APIRouter) GetContainers(w http.ResponseWriter, r *http.Request) {
 	for _, containers := range containersMap {
 		allContainers = append(allContainers, containers...)
 	}
+	// Cached results only; any checks due run in the background.
+	ar.registry.Docker().AnnotateImageUpdates(allContainers)
 
 	WriteJsonResponse(w, http.StatusOK, map[string]any{
 		"containers":        allContainers,

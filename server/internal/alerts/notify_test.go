@@ -40,6 +40,7 @@ type capturedRequest struct {
 	priority    string
 	tags        string
 	gotifyKey   string
+	auth        string
 	body        []byte
 }
 
@@ -54,6 +55,7 @@ func newCapturingServer(t *testing.T, captured *capturedRequest) *httptest.Serve
 		captured.priority = r.Header.Get("Priority")
 		captured.tags = r.Header.Get("Tags")
 		captured.gotifyKey = r.Header.Get("X-Gotify-Key")
+		captured.auth = r.Header.Get("Authorization")
 		captured.body, _ = io.ReadAll(r.Body)
 	}))
 }

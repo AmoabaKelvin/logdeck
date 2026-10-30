@@ -17,6 +17,27 @@ type ContainerInfo struct {
 	// Platform names the deployment platform that owns the container when its
 	// labels alone cannot say so. Only "dokploy" is set today.
 	Platform string `json:"platform,omitempty"`
+	// ImageUpdate is the last check of the container's image against its
+	// registry, or nil before the first check finishes.
+	ImageUpdate *ImageUpdate `json:"image_update,omitempty"`
+}
+
+// Image update statuses.
+const (
+	ImageUpdateAvailable = "available"
+	ImageUpdateCurrent   = "current"
+	// ImageUpdateUnknown means LogDeck cannot tell; Reason says why.
+	ImageUpdateUnknown = "unknown"
+	// ImageUpdateUnsupported means the engine cannot look up registry digests.
+	ImageUpdateUnsupported = "unsupported"
+)
+
+// ImageUpdate says whether the registry has a newer image for the tag a
+// container was created from.
+type ImageUpdate struct {
+	Status    string `json:"status"`
+	Reason    string `json:"reason,omitempty"`
+	CheckedAt int64  `json:"checked_at"`
 }
 
 // ContainerPort is a port published to the host. Exposed-but-unpublished ports
