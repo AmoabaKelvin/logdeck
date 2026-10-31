@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 )
 
@@ -40,11 +41,15 @@ type APIToken struct {
 
 // FileAuthConfig represents auth settings in the config file.
 type FileAuthConfig struct {
-	Enabled           bool   `json:"enabled"`
-	JWTSecret         string `json:"jwtSecret,omitempty"`
-	AdminUsername     string `json:"adminUsername,omitempty"`
-	AdminPasswordHash string `json:"adminPasswordHash,omitempty"`
-	AdminPasswordSalt string `json:"adminPasswordSalt,omitempty"`
+	Enabled   bool   `json:"enabled"`
+	JWTSecret string `json:"jwtSecret,omitempty"`
+	// The single admin older versions read. Migrated into Users once, then
+	// kept as a copy of the first admin user so a rollback still needs login.
+	AdminUsername     string      `json:"adminUsername,omitempty"`
+	AdminPasswordHash string      `json:"adminPasswordHash,omitempty"`
+	AdminPasswordSalt string      `json:"adminPasswordSalt,omitempty"`
+	Users             []User      `json:"users,omitempty"`
+	OIDC              *OIDCConfig `json:"oidc,omitempty"`
 }
 
 // Source indicates where a config value came from.
@@ -72,6 +77,7 @@ type Manager struct {
 	filePath    string
 	envSnapshot EnvSnapshot
 	envConfig   *Config // config derived purely from env vars
+	envOIDC     *OIDCConfig
 	fileConfig  FileConfig
 	merged      *Config
 	sources     ConfigSources
@@ -86,6 +92,7 @@ type ConfigSources struct {
 	CoolifyHosts Source `json:"coolifyHosts"`
 	ReadOnly     Source `json:"readOnly"`
 	Auth         Source `json:"auth"`
+	OIDC         Source `json:"oidc"`
 }
 
 // FilePath returns the config file path: CONFIG_PATH, or /data/config.json.
@@ -115,8 +122,16 @@ func NewManager() *Manager {
 		filePath:    filePath,
 		envSnapshot: envSnapshot,
 		envConfig:   NewConfig(),
+		envOIDC:     oidcFromEnv(),
 	}
 	m.fileConfig = m.loadFile()
+	// Under env auth the file's old admin was ignored, and stays so: moving
+	// it into the users would let a replaced login sign in again.
+	if !envSnapshot.AuthSet && m.fileConfig.Auth != nil && migrateLegacyAdmin(m.fileConfig.Auth) {
+		if err := m.persist(); err != nil {
+			log.Printf("config: failed to persist admin user migration (will retry next start): %v", err)
+		}
+	}
 	// Fold a legacy single WebhookURL into a webhook channel once, transparently,
 	// so existing configs keep working with zero user action.
 	if m.fileConfig.Alerts != nil && migrateAlertChannels(m.fileConfig.Alerts) {
@@ -347,18 +362,29 @@ func (m *Manager) UpdateAuth(mutate func(current *FileAuthConfig) (*FileAuthConf
 		m.mu.Unlock()
 		return fmt.Errorf("auth is configured via environment variables and cannot be changed from the UI")
 	}
+	return m.updateAuthLocked(mutate)
+}
 
+// updateAuthLocked is UpdateAuth without the env check. Callers must hold the
+// write lock, which it releases.
+func (m *Manager) updateAuthLocked(mutate func(current *FileAuthConfig) (*FileAuthConfig, error)) error {
 	oldAuth := m.fileConfig.Auth
 	// Clone to prevent mutate from modifying the live config in-place.
 	current := &FileAuthConfig{}
 	if oldAuth != nil {
 		*current = *oldAuth
+		current.Users = slices.Clone(oldAuth.Users)
 	}
 
 	updated, err := mutate(current)
 	if err != nil {
 		m.mu.Unlock()
 		return err
+	}
+	// Under env auth the file's admin fields are ignored by every version,
+	// so they are left as they are.
+	if updated != nil && !m.envSnapshot.AuthSet {
+		mirrorLegacyAdmin(updated)
 	}
 
 	m.fileConfig.Auth = updated
@@ -489,6 +515,13 @@ func (m *Manager) merge() (*Config, ConfigSources) {
 		sources.Auth = SourceFile
 	} else {
 		sources.Auth = SourceDefault
+	}
+	if m.envOIDC != nil {
+		sources.OIDC = SourceEnv
+	} else if m.fileConfig.Auth != nil && m.fileConfig.Auth.OIDC != nil {
+		sources.OIDC = SourceFile
+	} else {
+		sources.OIDC = SourceDefault
 	}
 
 	return cfg, sources

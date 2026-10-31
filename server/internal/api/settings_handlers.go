@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -82,8 +83,8 @@ func (ar *APIRouter) GetSettings(w http.ResponseWriter, r *http.Request) {
 		authResp["enabled"] = svc != nil
 	} else if fc.Auth != nil {
 		authResp["enabled"] = fc.Auth.Enabled
-		authResp["adminUsername"] = fc.Auth.AdminUsername
 	}
+	authResp["oidc"] = oidcSettings(ar.manager.OIDC(), sources.OIDC)
 
 	// Log storage: each cap is overridden independently, so each carries its
 	// own source rather than one for the section.
@@ -353,7 +354,10 @@ func validateLogStoreCaps(cfg config.ResolvedLogStoreConfig) error {
 	return nil
 }
 
-// UpdateAuth handles PUT /api/v1/settings/auth.
+// UpdateAuth handles PUT /api/v1/settings/auth, which turns auth on or off.
+// With adminUsername and newPassword, turning it on also makes that user an
+// admin with that password, creating it if needed: that is how the first
+// admin is set up. Other users are managed under /settings/users.
 func (ar *APIRouter) UpdateAuth(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Enabled       bool   `json:"enabled"`
@@ -365,49 +369,66 @@ func (ar *APIRouter) UpdateAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Enabled && req.AdminUsername == "" {
-		http.Error(w, "adminUsername is required when enabling auth", http.StatusBadRequest)
-		return
+	var hash string
+	if req.Enabled && req.NewPassword != "" {
+		if !usernameRegex.MatchString(req.AdminUsername) {
+			http.Error(w, "adminUsername must be 1-64 letters, digits, or . _ @ -, starting with a letter or digit", http.StatusBadRequest)
+			return
+		}
+		if err := validatePassword(req.NewPassword); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		// New passwords are stored as bcrypt hashes. Existing SHA256 hashes
+		// keep working (ValidateCredentials detects the format by prefix)
+		// until the password is next changed.
+		var err error
+		if hash, err = auth.HashPassword(req.NewPassword); err != nil {
+			http.Error(w, "failed to hash password", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	err := ar.manager.UpdateAuth(func(authCfg *config.FileAuthConfig) (*config.FileAuthConfig, error) {
 		authCfg.Enabled = req.Enabled
+		if !req.Enabled {
+			return authCfg, nil
+		}
 
-		if req.Enabled {
-			authCfg.AdminUsername = req.AdminUsername
-
-			// A new secret also signs out every session issued under the old
-			// password.
-			if authCfg.JWTSecret == "" || req.NewPassword != "" {
-				secret, err := auth.GenerateRandomHex(32)
-				if err != nil {
-					return nil, fmt.Errorf("failed to generate JWT secret")
-				}
-				authCfg.JWTSecret = secret
+		if authCfg.JWTSecret == "" {
+			secret, err := auth.GenerateRandomHex(32)
+			if err != nil {
+				return nil, fmt.Errorf("failed to generate JWT secret")
 			}
+			authCfg.JWTSecret = secret
+		}
 
-			if req.NewPassword != "" {
-				// New passwords are stored as bcrypt hashes. Existing SHA256
-				// hashes keep working (ValidateCredentials detects the format
-				// by prefix) until the password is next changed.
-				hash, err := auth.HashPassword(req.NewPassword)
-				if err != nil {
-					return nil, fmt.Errorf("failed to hash password")
-				}
-				authCfg.AdminPasswordHash = hash
-				authCfg.AdminPasswordSalt = ""
-			}
+		// Older clients sent a new adminUsername alone to rename the admin.
+		// Renaming is gone, so refuse rather than appear to have done it.
+		if hash == "" && req.AdminUsername != "" &&
+			!slices.ContainsFunc(authCfg.Users, func(u config.User) bool { return u.Username == req.AdminUsername }) {
+			return nil, errAdminPasswordRequired
+		}
 
-			if authCfg.AdminPasswordHash == "" {
-				return nil, fmt.Errorf("newPassword is required when first enabling auth")
+		if hash != "" {
+			admin := config.User{Username: req.AdminUsername, PasswordHash: hash, Role: auth.RoleAdmin}
+			if i := slices.IndexFunc(authCfg.Users, func(u config.User) bool { return u.Username == req.AdminUsername }); i >= 0 {
+				admin.CreatedAt = authCfg.Users[i].CreatedAt
+				authCfg.Users[i] = admin
+			} else {
+				admin.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+				authCfg.Users = append(authCfg.Users, admin)
 			}
 		}
 
+		if !slices.ContainsFunc(authCfg.Users, func(u config.User) bool { return u.Role == auth.RoleAdmin }) {
+			return nil, errFirstAdminRequired
+		}
 		return authCfg, nil
 	})
 
 	if err != nil {
-		http.Error(w, err.Error(), settingsErrorStatus(err))
+		http.Error(w, err.Error(), userErrorStatus(err))
 		return
 	}
 

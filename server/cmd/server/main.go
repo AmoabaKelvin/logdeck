@@ -52,21 +52,21 @@ func main() {
 	}
 
 	// Auth: env-based first, then file-based fallback.
-	authService, err := auth.NewService()
+	authService, err := auth.NewService(manager.FileConfigSnapshot().Auth, manager.OIDC())
 	if err != nil {
 		log.Fatalf("Failed to initialize auth service: %v\nPlease ensure ALL auth environment variables are set: JWT_SECRET, ADMIN_USERNAME, and ADMIN_PASSWORD.", err)
-	}
-	if authService == nil {
-		fc := manager.FileConfigSnapshot()
-		if fc.Auth != nil && fc.Auth.Enabled {
-			authService = auth.NewServiceFromFileConfig(fc.Auth)
-		}
 	}
 
 	if authService == nil {
 		log.Println("Authentication is DISABLED")
+		if manager.OIDC() != nil {
+			log.Println("OIDC sign-in is configured but has no effect while authentication is disabled")
+		}
 	} else {
 		log.Println("Authentication is ENABLED")
+		if authService.OIDCEnabled() {
+			log.Println("OIDC sign-in is ENABLED")
+		}
 	}
 
 	// Losing the data directory loses the config, the stored logs, and the alert
@@ -132,10 +132,13 @@ func main() {
 		registry.SwapCoolify(coolify.NewMultiClient(newCfg.CoolifyHosts))
 		registry.SwapDokploy(dokploy.NewMultiClient(newCfg.DokployHosts))
 
-		// Recreate auth service from file config (env-based auth is immutable).
-		fc := manager.FileConfigSnapshot()
-		if manager.Sources().Auth == config.SourceFile && fc.Auth != nil {
-			registry.SwapAuth(auth.NewServiceFromFileConfig(fc.Auth))
+		// Recreate the auth service: users and OIDC settings come from the
+		// file even when env vars configure auth. The env was valid at
+		// startup and cannot change, so building it again cannot fail.
+		if svc, err := auth.NewService(manager.FileConfigSnapshot().Auth, manager.OIDC()); err != nil {
+			log.Printf("Warning: failed to rebuild auth after config change: %v", err)
+		} else {
+			registry.SwapAuth(svc)
 		}
 
 		log.Println("Configuration reloaded successfully")

@@ -107,9 +107,10 @@ func (ar *APIRouter) GetContainers(w http.ResponseWriter, r *http.Request) {
 	ar.registry.Docker().AnnotateImageUpdates(allContainers)
 
 	WriteJsonResponse(w, http.StatusOK, map[string]any{
-		"containers":        allContainers,
-		"hosts":             ar.registry.Docker().GetHosts(),
-		"readOnly":          ar.registry.Config().ReadOnly,
+		"containers": allContainers,
+		"hosts":      ar.registry.Docker().GetHosts(),
+		// Also true for a read-only caller, so the UI disables what it would be refused.
+		"readOnly":          ar.registry.Config().ReadOnly || auth.IsReadScoped(r),
 		"hostErrors":        hostErrorMessages(hostErrors),
 		"coolifyConfigured": ar.registry.Coolify() != nil,
 	})

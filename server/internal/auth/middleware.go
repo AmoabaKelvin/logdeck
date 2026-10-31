@@ -11,7 +11,17 @@ import (
 
 type contextKey string
 
+// UserContextKey holds the request's authenticated identity, a models.User.
+// Read it with UserFromContext.
 const UserContextKey contextKey = "user"
+
+// UserFromContext returns who made a request: a user's name and role, or
+// "token:<name>" and the scope for an API token. ok is false when auth is
+// disabled and nobody signed in.
+func UserFromContext(ctx context.Context) (models.User, bool) {
+	user, ok := ctx.Value(UserContextKey).(models.User)
+	return user, ok
+}
 
 // APITokenLookup resolves a presented API token to its name and scope.
 // Implementations must compare against stored hashes in constant time.
@@ -60,14 +70,7 @@ func validateAndServe(svc *Service, lookupAPIToken APITokenLookup, next http.Han
 	if strings.HasPrefix(tokenString, APITokenPrefix) {
 		if lookupAPIToken != nil {
 			if name, scope, ok := lookupAPIToken(tokenString); ok {
-				scope = NormalizeAPITokenScope(scope)
-				if scope == APITokenScopeRead && isMutatingRequest(r) {
-					http.Error(w, "This API token is read-only and cannot perform this operation", http.StatusForbidden)
-					return
-				}
-				user := models.User{Username: "token:" + name, Role: scope}
-				ctx := context.WithValue(r.Context(), UserContextKey, user)
-				next.ServeHTTP(w, r.WithContext(ctx))
+				serveAs(models.User{Username: "token:" + name, Role: NormalizeAPITokenScope(scope)}, next, w, r)
 				return
 			}
 		}
@@ -85,9 +88,30 @@ func validateAndServe(svc *Service, lookupAPIToken APITokenLookup, next http.Han
 		return
 	}
 
-	user := GetUserFromClaims(claims)
+	user, ok := svc.SessionUser(claims)
+	if !ok {
+		http.Error(w, "Invalid token", http.StatusUnauthorized)
+		return
+	}
+	serveAs(user, next, w, r)
+}
+
+// serveAs serves the request as user, refusing a mutating request from a
+// read-only user or token.
+func serveAs(user models.User, next http.Handler, w http.ResponseWriter, r *http.Request) {
+	if user.Role == RoleRead && isMutatingRequest(r) {
+		http.Error(w, readOnlyMessage(user), http.StatusForbidden)
+		return
+	}
 	ctx := context.WithValue(r.Context(), UserContextKey, user)
 	next.ServeHTTP(w, r.WithContext(ctx))
+}
+
+func readOnlyMessage(user models.User) string {
+	if strings.HasPrefix(user.Username, "token:") {
+		return "This API token is read-only and cannot perform this operation"
+	}
+	return "This account is read-only and cannot perform this operation"
 }
 
 // isMutatingRequest reports whether a request mutates state: anything other
@@ -101,23 +125,22 @@ func isMutatingRequest(r *http.Request) bool {
 	return true
 }
 
-// DenyReadScope is a route middleware that rejects requests authenticated by
-// a read-scoped API token. Attach it to routes that are read-shaped but
-// sensitive or mutating (exec, container env, settings). JWT session users
-// always carry the admin role, so they pass through unaffected.
+// DenyReadScope is a route middleware that rejects requests from a read-only
+// user or a read-scoped API token. Attach it to routes that are read-shaped
+// but sensitive or mutating (exec, container env, settings).
 func DenyReadScope(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if IsReadScoped(r) {
-			http.Error(w, "This API token is read-only and cannot perform this operation", http.StatusForbidden)
+		if user, ok := UserFromContext(r.Context()); ok && user.Role == RoleRead {
+			http.Error(w, readOnlyMessage(user), http.StatusForbidden)
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
 }
 
-// IsReadScoped reports whether the request was authenticated by a read-scoped
-// API token.
+// IsReadScoped reports whether the request was authenticated by a read-only
+// user or a read-scoped API token.
 func IsReadScoped(r *http.Request) bool {
-	user, ok := r.Context().Value(UserContextKey).(models.User)
-	return ok && user.Role == APITokenScopeRead
+	user, ok := UserFromContext(r.Context())
+	return ok && user.Role == RoleRead
 }

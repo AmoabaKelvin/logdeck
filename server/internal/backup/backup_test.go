@@ -56,7 +56,11 @@ func populate(t *testing.T, m *config.Manager) {
 		t.Fatal(err)
 	}
 	err = m.UpdateAuth(func(*config.FileAuthConfig) (*config.FileAuthConfig, error) {
-		return &config.FileAuthConfig{Enabled: true, JWTSecret: "jwt", AdminUsername: "admin", AdminPasswordHash: "hash", AdminPasswordSalt: "salt"}, nil
+		return &config.FileAuthConfig{
+			Enabled: true, JWTSecret: "jwt",
+			Users: []config.User{{Username: "admin", PasswordHash: "user-password-hash", Role: "admin"}},
+			OIDC:  &config.OIDCConfig{Enabled: true, Issuer: "https://id.example", ClientID: "logdeck", ClientSecret: "oidc-client-secret"},
+		}, nil
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -323,7 +327,7 @@ func TestBackupWithoutCredentialsKeepsTheTargetsAccess(t *testing.T) {
 	src := NewService(source, nil, nil, nil, "1.2.0")
 	archive := takeBackup(t, src, Options{})
 	data, _ := os.ReadFile(archive)
-	for _, secret := range []string{"coolify-secret", "hooks.example/secret", "jwt", `"hash"`} {
+	for _, secret := range []string{"coolify-secret", "hooks.example/secret", "jwt", `"hash"`, "user-password-hash", "oidc-client-secret"} {
 		if bytes.Contains(data, []byte(secret)) {
 			t.Errorf("backup without credentials contains %s", secret)
 		}
@@ -331,7 +335,7 @@ func TestBackupWithoutCredentialsKeepsTheTargetsAccess(t *testing.T) {
 
 	target, targetConfig := newInstance(t)
 	err := target.UpdateAuth(func(*config.FileAuthConfig) (*config.FileAuthConfig, error) {
-		return &config.FileAuthConfig{Enabled: true, JWTSecret: "target-jwt", AdminUsername: "root", AdminPasswordHash: "h", AdminPasswordSalt: "s"}, nil
+		return &config.FileAuthConfig{Enabled: true, JWTSecret: "target-jwt", Users: []config.User{{Username: "root", PasswordHash: "h", Role: "admin"}}}, nil
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -359,7 +363,7 @@ func TestBackupWithoutCredentialsKeepsTheTargetsAccess(t *testing.T) {
 	}
 	// A password changed while the restore waits for a restart must hold.
 	err = target.UpdateAuth(func(*config.FileAuthConfig) (*config.FileAuthConfig, error) {
-		return &config.FileAuthConfig{Enabled: true, JWTSecret: "rotated-jwt", AdminUsername: "root", AdminPasswordHash: "h2", AdminPasswordSalt: "s2"}, nil
+		return &config.FileAuthConfig{Enabled: true, JWTSecret: "rotated-jwt", Users: []config.User{{Username: "root", PasswordHash: "h2", Role: "admin"}}}, nil
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -368,7 +372,7 @@ func TestBackupWithoutCredentialsKeepsTheTargetsAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	fc := config.NewManager().FileConfigSnapshot()
-	if fc.Auth == nil || fc.Auth.AdminUsername != "root" || fc.Auth.JWTSecret != "rotated-jwt" || len(fc.APITokens) != 0 {
+	if fc.Auth == nil || len(fc.Auth.Users) != 1 || fc.Auth.Users[0].PasswordHash != "h2" || fc.Auth.OIDC != nil || fc.Auth.JWTSecret != "rotated-jwt" || len(fc.APITokens) != 0 {
 		t.Fatalf("sign-in changed: auth=%+v tokens=%+v", fc.Auth, fc.APITokens)
 	}
 	if ch := fc.Alerts.Channels[0]; ch.URL != "https://hooks.example/target" || !ch.Enabled {

@@ -18,10 +18,14 @@ interface AuthContextType {
 	isLoading: boolean;
 	isAuthEnabled: boolean;
 	login: (username: string, password: string) => Promise<void>;
+	/** Signs in with a session token issued by the OIDC callback. */
+	loginWithToken: (token: string) => Promise<void>;
 	logout: () => void;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthContext = createContext<AuthContextType | undefined>(
+	undefined,
+);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
 	const queryClient = useQueryClient();
@@ -49,6 +53,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 						Authorization: `Bearer ${tokenToVerify}`,
 					},
 				});
+
+				// A sign-in while this check ran (the SSO callback, say) stored a
+				// new token; this answer is about the old one and must not undo it.
+				if (getAuthToken() !== tokenToVerify) {
+					return;
+				}
 
 				if (response.ok) {
 					const data = await response.json();
@@ -109,6 +119,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 		}
 	};
 
+	const loginWithToken = async (newToken: string) => {
+		const response = await fetch(`${API_BASE_URL}/api/v1/auth/me`, {
+			headers: { Authorization: `Bearer ${newToken}` },
+		});
+		if (!response.ok) {
+			throw new Error("Sign-in failed. Please try again.");
+		}
+		const data = await response.json();
+		setAuthToken(newToken);
+		setToken(newToken);
+		setUser(data.user);
+	};
+
 	const logout = () => {
 		removeAuthToken();
 		setToken(null);
@@ -124,6 +147,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 		isLoading,
 		isAuthEnabled,
 		login,
+		loginWithToken,
 		logout,
 	};
 

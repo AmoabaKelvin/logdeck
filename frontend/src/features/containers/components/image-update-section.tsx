@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { useAuth } from "@/contexts/auth-context";
 import { deployCoolifyEnv } from "../api/coolify-env";
 import { checkImageUpdate, updateContainerImage } from "../api/image-update";
 import type { ContainerInfo, ImageUpdate } from "../types";
@@ -72,6 +73,7 @@ export function ImageUpdateSection({
 	onContainerRecreated,
 }: ImageUpdateSectionProps) {
 	const queryClient = useQueryClient();
+	const { user } = useAuth();
 	const [confirm, setConfirm] = useState(false);
 	const coolify = getDeploymentOwner(container)?.name === "Coolify";
 	const elsewhere = updateElsewhere(container);
@@ -127,16 +129,18 @@ export function ImageUpdateSection({
 				)
 			}
 			action={
-				<Button
-					variant="ghost"
-					size="sm"
-					onClick={() => checkMutation.mutate()}
-					disabled={checkMutation.isPending}
-					className="-mr-2 h-8 text-muted-foreground hover:text-foreground"
-				>
-					{checkMutation.isPending && <Spinner className="size-4" />}
-					Check now
-				</Button>
+				user?.role !== "read" && (
+					<Button
+						variant="ghost"
+						size="sm"
+						onClick={() => checkMutation.mutate()}
+						disabled={checkMutation.isPending}
+						className="-mr-2 h-8 text-muted-foreground hover:text-foreground"
+					>
+						{checkMutation.isPending && <Spinner className="size-4" />}
+						Check now
+					</Button>
+				)
 			}
 		>
 			<PanelNote>

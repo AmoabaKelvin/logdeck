@@ -541,10 +541,10 @@ func registerSettingsTools(s *mcp.Server, a *app, register func(*mcp.Tool)) {
 
 	type authInput struct {
 		Enabled       bool   `json:"enabled" jsonschema:"false disables login for the whole server"`
-		AdminUsername string `json:"adminUsername" jsonschema:"admin username"`
-		NewPassword   string `json:"newPassword,omitempty" jsonschema:"set a new admin password; omit to keep the current one"`
+		AdminUsername string `json:"adminUsername,omitempty" jsonschema:"with newPassword, a user to make an admin with that password, created if needed"`
+		NewPassword   string `json:"newPassword,omitempty" jsonschema:"the admin's password, at least 8 characters; omit to keep the current users as they are"`
 	}
-	tool = &mcp.Tool{Name: "set_auth", Description: "Change LogDeck's authentication: enable or disable login, set the admin username, or set a new password. Disabling it leaves the server open to anyone who can reach it.", Annotations: destructiveAnnot()}
+	tool = &mcp.Tool{Name: "set_auth", Description: "Enable or disable LogDeck's login. Enabling it the first time needs adminUsername and newPassword for the first admin. Disabling it leaves the server open to anyone who can reach it.", Annotations: destructiveAnnot()}
 	mcp.AddTool(s, tool, func(ctx context.Context, _ *mcp.CallToolRequest, in authInput) (*mcp.CallToolResult, any, error) {
 		body := map[string]any{"enabled": in.Enabled, "adminUsername": in.AdminUsername}
 		if in.NewPassword != "" {

@@ -1,14 +1,17 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/AmoabaKelvin/logdeck/internal/auth"
 	"github.com/AmoabaKelvin/logdeck/internal/config"
 	"github.com/AmoabaKelvin/logdeck/internal/docker"
+	"github.com/AmoabaKelvin/logdeck/internal/models"
 	"github.com/AmoabaKelvin/logdeck/internal/services"
 	"github.com/go-chi/chi/v5"
 )
@@ -57,5 +60,39 @@ func TestUpdateContainerImageExplainsCompose(t *testing.T) {
 	}
 	if body := w.Body.String(); !strings.Contains(body, "docker compose pull") {
 		t.Errorf("body = %q, want the Compose commands", body)
+	}
+}
+
+func TestGetContainersReportsReadOnlyToReadUsers(t *testing.T) {
+	engine := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/_ping" {
+			w.Header().Set("API-Version", "1.47")
+			return
+		}
+		_, _ = w.Write([]byte("[]"))
+	}))
+	t.Cleanup(engine.Close)
+	t.Setenv("DOCKER_API_VERSION", "1.47")
+	dc, err := docker.NewMultiHostClient([]config.DockerHost{{Name: "local", Host: "tcp://" + strings.TrimPrefix(engine.URL, "http://")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(dc.Close)
+	ar := &APIRouter{registry: services.NewRegistry(dc, nil, nil, &config.Config{})}
+
+	for role, want := range map[string]bool{auth.RoleAdmin: false, auth.RoleRead: true} {
+		r := httptest.NewRequest(http.MethodGet, "/api/v1/containers", nil)
+		r = r.WithContext(context.WithValue(r.Context(), auth.UserContextKey, models.User{Username: "someone", Role: role}))
+		w := httptest.NewRecorder()
+		ar.GetContainers(w, r)
+		var body struct {
+			ReadOnly bool `json:"readOnly"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatalf("%s: %d %s", role, w.Code, w.Body.String())
+		}
+		if body.ReadOnly != want {
+			t.Errorf("%s: readOnly = %v, want %v", role, body.ReadOnly, want)
+		}
 	}
 }

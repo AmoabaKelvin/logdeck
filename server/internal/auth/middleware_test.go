@@ -12,17 +12,42 @@ import (
 
 func testService(t *testing.T) *Service {
 	t.Helper()
-	svc := NewServiceFromFileConfig(&config.FileAuthConfig{
-		Enabled:           true,
-		JWTSecret:         "test-secret",
-		AdminUsername:     "admin",
-		AdminPasswordHash: HashPasswordSHA256("password", "salt"),
-		AdminPasswordSalt: "salt",
-	})
-	if svc == nil {
-		t.Fatal("failed to create auth service")
+	return newFileService(t,
+		config.User{Username: "admin", PasswordHash: HashPasswordSHA256("password", "salt"), PasswordSalt: "salt", Role: RoleAdmin},
+		config.User{Username: "viewer", PasswordHash: HashPasswordSHA256("password", "salt"), PasswordSalt: "salt", Role: RoleRead},
+	)
+}
+
+// A read-only user gets exactly the read-scoped token's access.
+func TestDynamicMiddlewareReadOnlyUser(t *testing.T) {
+	svc := testService(t)
+	token, err := svc.GenerateToken("viewer")
+	if err != nil {
+		t.Fatalf("GenerateToken failed: %v", err)
 	}
-	return svc
+
+	for _, tc := range []struct {
+		method   string
+		wantCode int
+	}{
+		{"GET", http.StatusOK},
+		{"POST", http.StatusForbidden},
+		{"DELETE", http.StatusForbidden},
+	} {
+		var gotUser models.User
+		handler := DynamicMiddleware(func() *Service { return svc }, nil)(echoUserHandler(&gotUser))
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(tc.method, "/api/v1/containers/abc/restart", nil)
+		r.Header.Set("Authorization", "Bearer "+token)
+		handler.ServeHTTP(w, r)
+
+		if w.Code != tc.wantCode {
+			t.Errorf("%s: expected %d, got %d: %s", tc.method, tc.wantCode, w.Code, w.Body.String())
+		}
+		if tc.wantCode == http.StatusOK && (gotUser.Username != "viewer" || gotUser.Role != RoleRead) {
+			t.Errorf("context user = %+v, want viewer/read", gotUser)
+		}
+	}
 }
 
 // echoUserHandler records the user set on the request context.
@@ -152,6 +177,7 @@ func TestDenyReadScope(t *testing.T) {
 		{"read token denied", &models.User{Username: "token:agent", Role: APITokenScopeRead}, http.StatusForbidden},
 		{"admin token allowed", &models.User{Username: "token:ci", Role: APITokenScopeAdmin}, http.StatusOK},
 		{"jwt session user allowed", &models.User{Username: "admin", Role: "admin"}, http.StatusOK},
+		{"read-only user denied", &models.User{Username: "viewer", Role: RoleRead}, http.StatusForbidden},
 		{"no user (auth disabled) allowed", nil, http.StatusOK},
 	}
 	for _, tc := range cases {

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -8,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/config"
@@ -24,74 +26,162 @@ var (
 	ErrInvalidPasswordHash = errors.New("ADMIN_PASSWORD must be a valid bcrypt hash. Generate one with: htpasswd -bnBC 10 '' yourPassword | tr -d ':'")
 )
 
+// User roles. They mean the same as API token scopes, so the same checks gate
+// a read-only user and a read-scoped token.
+const (
+	RoleAdmin = APITokenScopeAdmin
+	RoleRead  = APITokenScopeRead
+)
+
 type Service struct {
-	jwtSecret         []byte
-	adminUsername     string
-	adminPasswordHash string
-	sha256Salt        string
-	tokenExpiration   time.Duration
+	jwtSecret []byte
+	// accounts maps a username to its local account. It is built once per
+	// config change and never modified, so requests read it without locking.
+	accounts map[string]account
+	// envAdmin is the username of the admin set by ADMIN_USERNAME, if any.
+	envAdmin        string
+	oidc            *oidcClient // nil when OIDC sign-in is off
+	tokenExpiration time.Duration
+}
+
+type account struct {
+	passwordHash string
+	salt         string
+	role         string
+	// stamp ties a session to the password it was issued under, so resetting
+	// the password ends the sessions signed in with the old one.
+	stamp string
 }
 
 type Claims struct {
 	Username string `json:"username"`
 	Role     string `json:"role"`
+	// Stamp must match the account's current stamp for the session to count.
+	Stamp string `json:"stamp,omitempty"`
+	// OIDC marks a session signed in through the OIDC provider rather than
+	// with a local account.
+	OIDC bool `json:"oidc,omitempty"`
 	jwt.RegisteredClaims
 }
 
-// NewService creates a new auth service
-// Returns nil (no error) if auth environment variables are not set, indicating auth is disabled
-func NewService() (*Service, error) {
+// NewService builds the auth service. JWT_SECRET, ADMIN_USERNAME and
+// ADMIN_PASSWORD configure auth with a fixed admin; without them the config
+// file's auth section does. The file's users and the given OIDC settings
+// apply either way. Returns nil (no error) when auth is disabled.
+func NewService(fileAuth *config.FileAuthConfig, oidcCfg *config.OIDCConfig) (*Service, error) {
 	jwtSecret := os.Getenv("JWT_SECRET")
 	adminUsername := os.Getenv("ADMIN_USERNAME")
 	adminPasswordHash := os.Getenv("ADMIN_PASSWORD")
 	sha256Salt := os.Getenv("ADMIN_PASSWORD_SALT")
 
-	// If none of the auth variables are set, return nil to indicate auth is disabled
-	if jwtSecret == "" && adminUsername == "" && (adminPasswordHash == "" && sha256Salt == "") {
-		return nil, nil
-	}
+	var s *Service
+	switch {
+	case jwtSecret == "" && adminUsername == "" && (adminPasswordHash == "" && sha256Salt == ""):
+		if fileAuth == nil || !fileAuth.Enabled || fileAuth.JWTSecret == "" {
+			return nil, nil
+		}
+		s = newService(fileAuth.JWTSecret)
 
 	// If some but not all are set, return an error
-	if jwtSecret == "" || adminUsername == "" || (adminPasswordHash == "" && sha256Salt == "") {
+	case jwtSecret == "" || adminUsername == "" || (adminPasswordHash == "" && sha256Salt == ""):
 		return nil, ErrMissingEnvVars
+
+	default:
+		// Without a salt, the password must be a bcrypt hash; validate it up
+		// front so a malformed hash fails at startup instead of on every login.
+		if sha256Salt == "" {
+			if _, err := bcrypt.Cost([]byte(adminPasswordHash)); err != nil {
+				return nil, ErrInvalidPasswordHash
+			}
+		}
+		s = newService(jwtSecret)
+		s.envAdmin = adminUsername
+		s.addAccount(adminUsername, adminPasswordHash, sha256Salt, RoleAdmin)
 	}
 
-	// Without a salt, the password must be a bcrypt hash; validate it up
-	// front so a malformed hash fails at startup instead of on every login.
-	if sha256Salt == "" {
-		if _, err := bcrypt.Cost([]byte(adminPasswordHash)); err != nil {
-			return nil, ErrInvalidPasswordHash
+	if fileAuth != nil {
+		for _, u := range fileAuth.Users {
+			// The env admin wins a name clash, as env settings do elsewhere.
+			if _, taken := s.accounts[u.Username]; !taken {
+				s.addAccount(u.Username, u.PasswordHash, u.PasswordSalt, u.Role)
+			}
+		}
+	}
+	if oidcCfg != nil && oidcCfg.Enabled {
+		s.oidc = newOIDCClient(*oidcCfg, s)
+	}
+	return s, nil
+}
+
+func newService(jwtSecret string) *Service {
+	return &Service{
+		jwtSecret:       []byte(jwtSecret),
+		accounts:        make(map[string]account),
+		tokenExpiration: 7 * 24 * time.Hour, // 7 days
+	}
+}
+
+func (s *Service) addAccount(username, passwordHash, salt, role string) {
+	s.accounts[username] = account{
+		passwordHash: passwordHash,
+		salt:         salt,
+		role:         normalizeRole(role),
+		stamp:        s.stamp(passwordHash, salt),
+	}
+}
+
+// stamp derives a short, secret-keyed fingerprint of its parts.
+func (s *Service) stamp(parts ...string) string {
+	mac := hmac.New(sha256.New, s.jwtSecret)
+	mac.Write([]byte(strings.Join(parts, "\x00")))
+	return hex.EncodeToString(mac.Sum(nil)[:8])
+}
+
+// normalizeRole fails closed: anything but "admin" (a typo in a hand-edited
+// config, say) is read-only.
+func normalizeRole(role string) string {
+	if role == RoleAdmin {
+		return RoleAdmin
+	}
+	return RoleRead
+}
+
+// EnvAdmin returns the username of the admin configured by ADMIN_USERNAME, or
+// "" when auth comes from the config file.
+func (s *Service) EnvAdmin() string {
+	return s.envAdmin
+}
+
+// dummyHash is checked when there is no bcrypt hash to check, so every login
+// attempt costs the same and the response time never reveals whether a
+// username exists.
+var dummyHash = sync.OnceValue(func() []byte {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("logdeck"), bcrypt.DefaultCost)
+	return hash
+})
+
+// ValidateCredentials checks a username and password against the local
+// accounts and returns the user they sign in. Bcrypt hashes and the legacy
+// SHA256+salt hashes are both supported. An unknown username and a wrong
+// password fail alike.
+func (s *Service) ValidateCredentials(username, password string) (models.User, error) {
+	acct, ok := s.accounts[username]
+
+	var passwordMatch bool
+	if ok && isBcryptHash(acct.passwordHash) {
+		passwordMatch = bcrypt.CompareHashAndPassword([]byte(acct.passwordHash), []byte(password)) == nil
+	} else {
+		_ = bcrypt.CompareHashAndPassword(dummyHash(), []byte(password))
+		if ok {
+			hash := HashPasswordSHA256(password, acct.salt)
+			passwordMatch = subtle.ConstantTimeCompare([]byte(hash), []byte(acct.passwordHash)) == 1
 		}
 	}
 
-	return &Service{
-		jwtSecret:         []byte(jwtSecret),
-		adminUsername:     adminUsername,
-		adminPasswordHash: adminPasswordHash,
-		sha256Salt:        sha256Salt,
-		tokenExpiration:   7 * 24 * time.Hour, // 7 days
-	}, nil
-}
-
-// ValidateCredentials checks if the provided credentials are valid.
-// Bcrypt hashes (env-configured) and SHA256+salt hashes (file-configured)
-// are both supported.
-func (s *Service) ValidateCredentials(username, password string) error {
-	usernameMatch := subtle.ConstantTimeCompare([]byte(username), []byte(s.adminUsername)) == 1
-
-	var passwordMatch bool
-	if isBcryptHash(s.adminPasswordHash) {
-		passwordMatch = bcrypt.CompareHashAndPassword([]byte(s.adminPasswordHash), []byte(password)) == nil
-	} else {
-		hash := HashPasswordSHA256(password, s.sha256Salt)
-		passwordMatch = subtle.ConstantTimeCompare([]byte(hash), []byte(s.adminPasswordHash)) == 1
+	if !passwordMatch {
+		return models.User{}, ErrInvalidCredentials
 	}
-
-	if !usernameMatch || !passwordMatch {
-		return ErrInvalidCredentials
-	}
-
-	return nil
+	return models.User{Username: username, Role: acct.role}, nil
 }
 
 func isBcryptHash(hash string) bool {
@@ -100,24 +190,26 @@ func isBcryptHash(hash string) bool {
 		strings.HasPrefix(hash, "$2y$")
 }
 
-// GenerateToken creates a new JWT token for the user
+// GenerateToken creates a session token for a local account.
 func (s *Service) GenerateToken(username string) (string, error) {
-	now := time.Now()
-	expirationTime := now.Add(s.tokenExpiration)
+	acct, ok := s.accounts[username]
+	if !ok {
+		return "", ErrInvalidCredentials
+	}
+	return s.signSession(Claims{Username: username, Role: acct.role, Stamp: acct.stamp})
+}
 
-	claims := &Claims{
-		Username: username,
-		Role:     "admin", // For now, all users are admins
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(expirationTime),
-			IssuedAt:  jwt.NewNumericDate(now),
-			NotBefore: jwt.NewNumericDate(now),
-			Issuer:    "logdeck",
-			Subject:   username,
-		},
+func (s *Service) signSession(claims Claims) (string, error) {
+	now := time.Now()
+	claims.RegisteredClaims = jwt.RegisteredClaims{
+		ExpiresAt: jwt.NewNumericDate(now.Add(s.tokenExpiration)),
+		IssuedAt:  jwt.NewNumericDate(now),
+		NotBefore: jwt.NewNumericDate(now),
+		Issuer:    "logdeck",
+		Subject:   claims.Username,
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, &claims)
 	return token.SignedString(s.jwtSecret)
 }
 
@@ -146,12 +238,29 @@ func (s *Service) VerifyToken(tokenString string) (*Claims, error) {
 	return claims, nil
 }
 
-// GetUserFromClaims extracts user information from claims
-func GetUserFromClaims(claims *Claims) models.User {
-	return models.User{
-		Username: claims.Username,
-		Role:     claims.Role,
+// SessionUser resolves verified claims to the user they belong to now. A
+// local session takes its role from the current account, not the token, so
+// deleting a user, changing their role or resetting their password applies
+// on their next request. An OIDC session ends when OIDC is turned off or its
+// settings change. It is a map lookup, cheap enough for every request.
+func (s *Service) SessionUser(claims *Claims) (models.User, bool) {
+	var stamp, role string
+	if claims.OIDC {
+		if s.oidc == nil {
+			return models.User{}, false
+		}
+		stamp, role = s.oidc.stamp, normalizeRole(claims.Role)
+	} else {
+		acct, ok := s.accounts[claims.Username]
+		if !ok {
+			return models.User{}, false
+		}
+		stamp, role = acct.stamp, acct.role
 	}
+	if subtle.ConstantTimeCompare([]byte(claims.Stamp), []byte(stamp)) != 1 {
+		return models.User{}, false
+	}
+	return models.User{Username: claims.Username, Role: role}, true
 }
 
 // HashPassword generates a bcrypt hash from a plain password
@@ -161,24 +270,6 @@ func HashPassword(password string) (string, error) {
 		return "", err
 	}
 	return string(hash), nil
-}
-
-// NewServiceFromFileConfig creates an auth service from file-based config.
-// Returns nil if auth is not enabled.
-func NewServiceFromFileConfig(cfg *config.FileAuthConfig) *Service {
-	if cfg == nil || !cfg.Enabled {
-		return nil
-	}
-	if cfg.JWTSecret == "" || cfg.AdminUsername == "" || cfg.AdminPasswordHash == "" {
-		return nil
-	}
-	return &Service{
-		jwtSecret:         []byte(cfg.JWTSecret),
-		adminUsername:     cfg.AdminUsername,
-		adminPasswordHash: cfg.AdminPasswordHash,
-		sha256Salt:        cfg.AdminPasswordSalt,
-		tokenExpiration:   7 * 24 * time.Hour,
-	}
 }
 
 // HashPasswordSHA256 computes SHA256(password + salt) and returns the hex-encoded hash.

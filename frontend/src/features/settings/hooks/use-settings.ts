@@ -1,8 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { createApiToken } from "../api/create-api-token";
+import { type CreateUserPayload, createUser } from "../api/create-user";
 import { deleteApiToken } from "../api/delete-api-token";
+import { deleteUser } from "../api/delete-user";
 import { getApiTokens } from "../api/get-api-tokens";
+import { getUsers } from "../api/get-users";
 import { getRedaction, type RedactionConfig } from "../api/get-redaction";
 import { getSettings } from "../api/get-settings";
 import { previewRedaction } from "../api/preview-redaction";
@@ -20,12 +23,15 @@ import {
 	type UpdateLogStoragePayload,
 	updateLogStorage,
 } from "../api/update-log-storage";
+import { type UpdateOIDCPayload, updateOIDC } from "../api/update-oidc";
 import { updateReadOnly } from "../api/update-read-only";
 import { updateRedaction } from "../api/update-redaction";
+import { type UpdateUserPayload, updateUser } from "../api/update-user";
 import type { APITokenScope } from "../types";
 
 const SETTINGS_KEY = ["settings"] as const;
 const API_TOKENS_KEY = ["settings", "api-tokens"] as const;
+const USERS_KEY = ["settings", "users"] as const;
 const REDACTION_KEY = ["settings", "redaction"] as const;
 const HISTORY_STATUS_KEY = ["history", "status"] as const;
 // The container list carries the host set and the read-only flag.
@@ -118,6 +124,59 @@ export function useUpdateAuth() {
 		mutationFn: (payload: UpdateAuthPayload) => updateAuth(payload),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: SETTINGS_KEY });
+			queryClient.invalidateQueries({ queryKey: USERS_KEY });
+		},
+	});
+}
+
+export function useUpdateOIDC() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (payload: UpdateOIDCPayload) => updateOIDC(payload),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: SETTINGS_KEY });
+		},
+	});
+}
+
+export function useUsers() {
+	return useQuery({
+		queryKey: USERS_KEY,
+		queryFn: getUsers,
+		staleTime: 30_000,
+	});
+}
+
+export function useCreateUser() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (payload: CreateUserPayload) => createUser(payload),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: USERS_KEY });
+		},
+	});
+}
+
+export function useUpdateUser() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: ({
+			username,
+			...payload
+		}: UpdateUserPayload & { username: string }) =>
+			updateUser(username, payload),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: USERS_KEY });
+		},
+	});
+}
+
+export function useDeleteUser() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (username: string) => deleteUser(username),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: USERS_KEY });
 		},
 	});
 }

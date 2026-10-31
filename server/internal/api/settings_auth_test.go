@@ -15,10 +15,8 @@ import (
 // auth service (nil means auth disabled).
 func newTestRouter(t *testing.T, authSvc *auth.Service) http.Handler {
 	t.Helper()
-	for _, key := range []string{
-		"JWT_SECRET", "ADMIN_USERNAME", "ADMIN_PASSWORD", "ADMIN_PASSWORD_SALT",
-		"DOCKER_HOSTS", "COOLIFY_CONFIGS", "READONLY_MODE", "CORS_ALLOWED_ORIGINS",
-	} {
+	clearEnvForAuthTest(t)
+	for _, key := range []string{"DOCKER_HOSTS", "COOLIFY_CONFIGS", "READONLY_MODE", "CORS_ALLOWED_ORIGINS"} {
 		t.Setenv(key, "")
 	}
 	t.Setenv("CONFIG_PATH", filepath.Join(t.TempDir(), "config.json"))
@@ -28,17 +26,30 @@ func newTestRouter(t *testing.T, authSvc *auth.Service) http.Handler {
 	return NewRouter(registry, manager, nil, nil, nil, nil, nil, "test")
 }
 
+// clearEnvForAuthTest unsets the env vars that configure auth, so only what a
+// test sets up applies.
+func clearEnvForAuthTest(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{"JWT_SECRET", "ADMIN_USERNAME", "ADMIN_PASSWORD", "ADMIN_PASSWORD_SALT", "OIDC_ISSUER"} {
+		t.Setenv(key, "")
+	}
+}
+
 func newTestAuthService(t *testing.T) *auth.Service {
 	t.Helper()
-	svc := auth.NewServiceFromFileConfig(&config.FileAuthConfig{
-		Enabled:           true,
-		JWTSecret:         "test-secret",
-		AdminUsername:     "admin",
-		AdminPasswordHash: auth.HashPasswordSHA256("password", "salt"),
-		AdminPasswordSalt: "salt",
-	})
-	if svc == nil {
-		t.Fatal("failed to create auth service from file config")
+	clearEnvForAuthTest(t)
+	svc, err := auth.NewService(&config.FileAuthConfig{
+		Enabled:   true,
+		JWTSecret: "test-secret",
+		Users: []config.User{{
+			Username:     "admin",
+			PasswordHash: auth.HashPasswordSHA256("password", "salt"),
+			PasswordSalt: "salt",
+			Role:         auth.RoleAdmin,
+		}},
+	}, nil)
+	if err != nil || svc == nil {
+		t.Fatalf("failed to create auth service: %v", err)
 	}
 	return svc
 }
