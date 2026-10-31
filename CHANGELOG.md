@@ -2,6 +2,45 @@
 
 All notable changes to LogDeck are documented here.
 
+## [0.11.0](https://github.com/AmoabaKelvin/logdeck/compare/v0.10.0...v0.11.0) (2026-10-31)
+
+
+### Features
+
+* **alerts:** add Slack, Discord, email, PagerDuty and Opsgenie channels ([974634a](https://github.com/AmoabaKelvin/logdeck/commit/974634aad84261303e72b3d0faaa5f9d59f87f4b))
+* **alerts:** add Slack, Discord, email, PagerDuty and Opsgenie channels ([8b25c41](https://github.com/AmoabaKelvin/logdeck/commit/8b25c4174ee3045e5260b5bda3db55b9e93d5ce8))
+* **alerts:** alert on sustained CPU/memory use and restart loops ([0be9558](https://github.com/AmoabaKelvin/logdeck/commit/0be955899caadd67fdefa6529415679b5ca9075e))
+* **alerts:** alert on sustained CPU/memory use and restart loops ([020d884](https://github.com/AmoabaKelvin/logdeck/commit/020d88408c65a0a1f8f9ac0b09ee425525b3c78a))
+* **alerts:** silence alerts and schedule maintenance windows ([134c5f1](https://github.com/AmoabaKelvin/logdeck/commit/134c5f1a0ceb25daeebd17fca27525873d8bae75))
+* **alerts:** silence alerts and schedule maintenance windows ([aecac1f](https://github.com/AmoabaKelvin/logdeck/commit/aecac1fce293707136442a6c5bc6025bafa747c5))
+* **audit:** name the silence and image update actions ([14b4b55](https://github.com/AmoabaKelvin/logdeck/commit/14b4b55c8281e548e02d8f3c1977f580f2760787))
+* **audit:** record container and settings changes in an audit log ([24a07d2](https://github.com/AmoabaKelvin/logdeck/commit/24a07d222c6cc2096d2fbb925656cb2af065c6ea))
+* **audit:** record container and settings changes in an audit log ([96827d4](https://github.com/AmoabaKelvin/logdeck/commit/96827d4b1a150fc3535f8ab1df54440b4dfef909))
+* **auth:** add multiple users with roles and OIDC sign-in ([e65ff98](https://github.com/AmoabaKelvin/logdeck/commit/e65ff9864c5a425a94be9f06f82253ae28a165af))
+* **auth:** add multiple users with roles and OIDC sign-in ([c65a39c](https://github.com/AmoabaKelvin/logdeck/commit/c65a39c86be7c568bcb90e0980dd95a6452974c0))
+* **cli:** page through the audit log with --offset ([b85d5fd](https://github.com/AmoabaKelvin/logdeck/commit/b85d5fd4285ecf95d2cf15d588dd8c99437f3f2c))
+* **images:** show image updates and update containers from LogDeck ([6938a29](https://github.com/AmoabaKelvin/logdeck/commit/6938a295fb1e2f7848b014d1b22c502314c10748))
+* **images:** show image updates and update containers from LogDeck ([7033361](https://github.com/AmoabaKelvin/logdeck/commit/7033361c9331c1e9bd1cc54fc0280c70aa0d3c68))
+* **logs:** filter structured log lines by field ([91de0b8](https://github.com/AmoabaKelvin/logdeck/commit/91de0b83bd475819270bb3d08fda68ff863f7ea4))
+* **logs:** search logs by structured fields ([f793cc9](https://github.com/AmoabaKelvin/logdeck/commit/f793cc937e00c272a7293574da5c0bc7d89f5c99))
+
+
+### Bug Fixes
+
+* **alerts:** widen the maintenance window start time input ([15143b3](https://github.com/AmoabaKelvin/logdeck/commit/15143b39b6c25ba29c210f723d9bd03997db6b4a))
+* **alerts:** widen the resource rule metric select ([c6a7fff](https://github.com/AmoabaKelvin/logdeck/commit/c6a7fff7cbb6a70e738e2ce82a8fd13798a5315c))
+* **alerts:** wrap long rule targets and triggers instead of scrolling ([d9eda42](https://github.com/AmoabaKelvin/logdeck/commit/d9eda42f78a10231eb555ede5c5ccd77d66ba9b9))
+* **audit:** clamp the page only on fresh results ([498993c](https://github.com/AmoabaKelvin/logdeck/commit/498993cd26055f9a0c787466e6be2dc531a9b384))
+* **audit:** drop the every-change claim from the settings copy ([d9e24e5](https://github.com/AmoabaKelvin/logdeck/commit/d9e24e50aad569d76e239a12fb43242bb9206ba8))
+* **audit:** keep entries across oversized and unterminated lines ([57d0861](https://github.com/AmoabaKelvin/logdeck/commit/57d0861f7d1553af52377714de2bb5c143d31ec8))
+* **audit:** return to a valid page when the results shrink ([bf5cf73](https://github.com/AmoabaKelvin/logdeck/commit/bf5cf73c065ade61fbaad5bf58ee954cc992b9cd))
+* **audit:** shorten filter placeholders so they fit ([33ca8d3](https://github.com/AmoabaKelvin/logdeck/commit/33ca8d39e1cf312f5d4dfe090a54c685a688fe69))
+* **audit:** start a new line after a failed write ([439512c](https://github.com/AmoabaKelvin/logdeck/commit/439512c4c2dd0fbd18fbe8834587a99e8206cbdd))
+* **auth:** keep a legacy admin in the config so a rollback still requires login ([be3565d](https://github.com/AmoabaKelvin/logdeck/commit/be3565d64394f600aaa29dcc202ff26f6c078f98))
+* **auth:** keep env auth closed to the file's old admin and bind SSO tokens to the tab ([2f1ea31](https://github.com/AmoabaKelvin/logdeck/commit/2f1ea31cc89f81bcc680bdf02f6d21ab7378c85b))
+* **auth:** name user changes in the audit log and disable actions for read-only users ([1414899](https://github.com/AmoabaKelvin/logdeck/commit/14148992709f340a6da11bbe683877ab51cfef38))
+* **oidc:** tidy the SSO settings form and login spacing ([16d589e](https://github.com/AmoabaKelvin/logdeck/commit/16d589e735b856cefd84c09c27edd3e711eac940))
+
 ## [0.10.0](https://github.com/AmoabaKelvin/logdeck/compare/v0.9.1...v0.10.0) (2026-10-30)
 
 
