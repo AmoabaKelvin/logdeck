@@ -5,6 +5,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useSettings } from "../hooks/use-settings";
 import { AlertsSection } from "./alerts-section";
 import { ApiTokensSection } from "./api-tokens-section";
+import { AuditLogSection } from "./audit-log-section";
 import { AuthSection } from "./auth-section";
 import { BackupsSection } from "./backups-section";
 import { CollectionHealthSection } from "./collection-health-section";
@@ -25,6 +26,7 @@ const SETTINGS_TABS = [
 	"redaction",
 	"storage",
 	"backups",
+	"audit",
 	"health",
 ] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number];
@@ -36,6 +38,7 @@ const TAB_LABELS = {
 	redaction: "Redaction",
 	storage: "Log storage",
 	backups: "Backups",
+	audit: "Audit log",
 	health: "Collection health",
 } satisfies Record<SettingsTab, string>;
 
@@ -56,9 +59,9 @@ export function SettingsPage() {
 			<div>
 				<h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
 				<p className="mt-1 max-w-prose text-pretty text-base/6 text-muted-foreground sm:text-sm/6">
-					Hosts, access, alerts, redaction, storage and backups. Anything set
-					via environment variable is shown here but changes only with a
-					restart.
+					Hosts, access, alerts, redaction, storage, backups and the audit log.
+					Anything set via environment variable is shown here but changes only
+					with a restart.
 				</p>
 			</div>
 
@@ -151,6 +154,7 @@ export function SettingsPage() {
 							{tab === "backups" && (
 								<BackupsSection readOnly={data.readOnly.value} />
 							)}
+							{tab === "audit" && <AuditLogSection />}
 							{tab === "health" && <CollectionHealthSection />}
 						</div>
 					)}

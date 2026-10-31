@@ -13,6 +13,7 @@ import (
 
 	"github.com/AmoabaKelvin/logdeck/internal/alerts"
 	"github.com/AmoabaKelvin/logdeck/internal/api"
+	"github.com/AmoabaKelvin/logdeck/internal/audit"
 	"github.com/AmoabaKelvin/logdeck/internal/auth"
 	"github.com/AmoabaKelvin/logdeck/internal/backup"
 	"github.com/AmoabaKelvin/logdeck/internal/config"
@@ -143,8 +144,9 @@ func main() {
 		log.Println("Configuration reloaded successfully")
 	})
 
-	backups := backup.NewService(manager, alertEngine.AllHistory, logStore, version)
-	apiRouter := api.NewRouter(registry, manager, alertEngine, logStore, collection, backups, version)
+	auditLog := audit.Open(audit.Path(manager.ConfigFilePath()))
+	backups := backup.NewService(manager, alertEngine.AllHistory, auditLog.Entries, logStore, version)
+	apiRouter := api.NewRouter(registry, manager, alertEngine, logStore, collection, backups, auditLog, version)
 
 	// No WriteTimeout/IdleTimeout: log streaming and terminal WebSockets are
 	// long-lived connections and would be killed by them. ReadTimeout only
@@ -203,11 +205,12 @@ func main() {
 		log.Printf("Graceful shutdown failed: %v", err)
 	}
 
-	// Drain the alerting engine and the shared log tails after the server has
-	// stopped accepting requests. The log store drains last: it feeds off the
+	// Drain the alerting engine, the shared log tails and the audit log after
+	// the server has stopped accepting requests. The log store drains last: it feeds off the
 	// hub, so its final batch can only be complete once the hub has stopped.
 	alertEngine.Wait()
 	logHub.Wait()
+	auditLog.Close()
 	if logStore != nil {
 		logStore.Wait()
 		if err := logStore.Close(); err != nil {

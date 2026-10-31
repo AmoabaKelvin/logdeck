@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/AmoabaKelvin/logdeck/internal/audit"
 	"github.com/AmoabaKelvin/logdeck/internal/config"
 	"github.com/AmoabaKelvin/logdeck/internal/logstore"
 	"github.com/AmoabaKelvin/logdeck/internal/models"
@@ -44,6 +45,7 @@ type Service struct {
 	passphrase string
 	manager    *config.Manager
 	history    func() []models.Alert
+	auditLog   func() []audit.Entry
 	// logs is nil when log persistence is disabled.
 	logs *logstore.Store
 
@@ -83,8 +85,9 @@ func Dir(configPath string) string {
 }
 
 // NewService prepares backups for the instance manager configures. history
-// may be nil (no alert engine), and logs is nil when persistence is off.
-func NewService(manager *config.Manager, history func() []models.Alert, logs *logstore.Store, version string) *Service {
+// and auditLog may be nil (no alert engine or audit log), and logs is nil
+// when persistence is off.
+func NewService(manager *config.Manager, history func() []models.Alert, auditLog func() []audit.Entry, logs *logstore.Store, version string) *Service {
 	s := &Service{
 		dir:        Dir(manager.ConfigFilePath()),
 		paths:      pathsFor(manager.ConfigFilePath()),
@@ -92,6 +95,7 @@ func NewService(manager *config.Manager, history func() []models.Alert, logs *lo
 		passphrase: os.Getenv("BACKUP_PASSPHRASE"),
 		manager:    manager,
 		history:    history,
+		auditLog:   auditLog,
 		logs:       logs,
 		ctx:        context.Background(),
 	}
@@ -220,6 +224,9 @@ func (s *Service) create(ctx context.Context, opts Options) (string, int64, erro
 	st := state{createdAt: now, version: s.version, config: s.manager.FileConfigSnapshot()}
 	if s.history != nil {
 		st.history = s.history()
+	}
+	if s.auditLog != nil {
+		st.audit = s.auditLog()
 	}
 	if opts.IncludeLogs && s.logs != nil {
 		// The snapshot goes next to the live database rather than into the
@@ -471,9 +478,12 @@ func (s *Service) stage(r io.Reader, passphrase, dir string) (*Preview, error) {
 	}
 
 	current := s.manager.FileConfigSnapshot()
-	var historyCount int
+	var historyCount, auditCount int
 	if s.history != nil {
 		historyCount = len(s.history())
+	}
+	if s.auditLog != nil {
+		auditCount = len(s.auditLog())
 	}
 	var logsBytes int64
 	if s.logs != nil {
@@ -482,7 +492,7 @@ func (s *Service) stage(r io.Reader, passphrase, dir string) (*Preview, error) {
 	p := &Preview{
 		Manifest:  m,
 		Encrypted: encrypted,
-		Current:   countContents(current, historyCount, logsBytes),
+		Current:   countContents(current, historyCount, auditCount, logsBytes),
 		Warnings:  []string{},
 	}
 

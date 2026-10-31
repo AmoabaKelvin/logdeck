@@ -10,8 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/alerts"
+	"github.com/AmoabaKelvin/logdeck/internal/audit"
 	"github.com/AmoabaKelvin/logdeck/internal/config"
 	"github.com/AmoabaKelvin/logdeck/internal/logstore"
 	"github.com/AmoabaKelvin/logdeck/internal/models"
@@ -122,11 +124,11 @@ func TestBackupRestoresIntoAFreshInstance(t *testing.T) {
 	}
 	db.Close()
 	history := []models.Alert{{ID: "a1", RuleName: "Crashes", ContainerName: "web"}, {ID: "a2", RuleName: "Crashes"}}
-	src := NewService(source, func() []models.Alert { return history }, store, "1.2.0")
+	src := NewService(source, func() []models.Alert { return history }, nil, store, "1.2.0")
 	archive := takeBackup(t, src, Options{IncludeLogs: true, IncludeSecrets: true, Passphrase: "correct horse battery"})
 
 	target, targetConfig := newInstance(t)
-	dst := NewService(target, nil, nil, "1.2.0")
+	dst := NewService(target, nil, nil, nil, "1.2.0")
 	f, err := os.Open(archive)
 	if err != nil {
 		t.Fatal(err)
@@ -175,7 +177,7 @@ func TestBackupRestoresIntoAFreshInstance(t *testing.T) {
 
 func TestApplyPendingMovesTheOldDatabaseAndItsWALAside(t *testing.T) {
 	source, sourceConfig := newInstance(t)
-	src := NewService(source, nil, openStore(t, sourceConfig, source), "1.2.0")
+	src := NewService(source, nil, nil, openStore(t, sourceConfig, source), "1.2.0")
 	archive := takeBackup(t, src, Options{IncludeLogs: true})
 
 	target, targetConfig := newInstance(t)
@@ -185,7 +187,7 @@ func TestApplyPendingMovesTheOldDatabaseAndItsWALAside(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	dst := NewService(target, nil, nil, "1.2.0")
+	dst := NewService(target, nil, nil, nil, "1.2.0")
 	f, _ := os.Open(archive)
 	_, err := dst.StageRestore(f, "")
 	f.Close()
@@ -215,7 +217,7 @@ func TestApplyPendingMovesTheOldDatabaseAndItsWALAside(t *testing.T) {
 func TestFailedApplyRollsBackSwapsMadeBeforeACrash(t *testing.T) {
 	source, sourceConfig := newInstance(t)
 	populate(t, source)
-	src := NewService(source, nil, openStore(t, sourceConfig, source), "1.2.0")
+	src := NewService(source, nil, nil, openStore(t, sourceConfig, source), "1.2.0")
 	archive := takeBackup(t, src, Options{IncludeLogs: true, IncludeSecrets: true})
 
 	target, targetConfig := newInstance(t)
@@ -227,7 +229,7 @@ func TestFailedApplyRollsBackSwapsMadeBeforeACrash(t *testing.T) {
 	if err := os.WriteFile(logs, []byte("old logs"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	dst := NewService(target, nil, nil, "1.2.0")
+	dst := NewService(target, nil, nil, nil, "1.2.0")
 	f, _ := os.Open(archive)
 	_, err := dst.StageRestore(f, "")
 	f.Close()
@@ -273,7 +275,7 @@ func TestFailedApplyRollsBackSwapsMadeBeforeACrash(t *testing.T) {
 func TestRestoreRejectsDamagedAndUnsupportedBackups(t *testing.T) {
 	source, _ := newInstance(t)
 	populate(t, source)
-	src := NewService(source, nil, nil, "1.2.0")
+	src := NewService(source, nil, nil, nil, "1.2.0")
 	plain, err := os.ReadFile(takeBackup(t, src, Options{IncludeSecrets: true}))
 	if err != nil {
 		t.Fatal(err)
@@ -304,7 +306,7 @@ func TestRestoreRejectsDamagedAndUnsupportedBackups(t *testing.T) {
 	}
 	for name, tc := range cases {
 		target, targetConfig := newInstance(t)
-		dst := NewService(target, nil, nil, "1.2.0")
+		dst := NewService(target, nil, nil, nil, "1.2.0")
 		_, err := dst.StageRestore(bytes.NewReader(tc.data), tc.passphrase)
 		var invalid *InvalidError
 		if !errors.As(err, &invalid) || !strings.Contains(err.Error(), tc.want) {
@@ -322,7 +324,7 @@ func TestRestoreRejectsDamagedAndUnsupportedBackups(t *testing.T) {
 func TestBackupWithoutCredentialsKeepsTheTargetsAccess(t *testing.T) {
 	source, _ := newInstance(t)
 	populate(t, source)
-	src := NewService(source, nil, nil, "1.2.0")
+	src := NewService(source, nil, nil, nil, "1.2.0")
 	archive := takeBackup(t, src, Options{})
 	data, _ := os.ReadFile(archive)
 	for _, secret := range []string{"coolify-secret", "hooks.example/secret", "jwt", `"hash"`, "user-password-hash", "oidc-client-secret"} {
@@ -344,7 +346,7 @@ func TestBackupWithoutCredentialsKeepsTheTargetsAccess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dst := NewService(target, nil, nil, "1.2.0")
+	dst := NewService(target, nil, nil, nil, "1.2.0")
 	f, _ := os.Open(archive)
 	preview, err := dst.StageRestore(f, "")
 	f.Close()
@@ -383,7 +385,7 @@ func TestBackupWithoutCredentialsKeepsTheTargetsAccess(t *testing.T) {
 
 func TestScheduledRetentionLeavesManualBackups(t *testing.T) {
 	m, _ := newInstance(t)
-	s := NewService(m, nil, nil, "1.2.0")
+	s := NewService(m, nil, nil, nil, "1.2.0")
 	if err := os.MkdirAll(s.dir, 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -410,5 +412,52 @@ func TestScheduledRetentionLeavesManualBackups(t *testing.T) {
 	want := []string{names[2], names[1], names[3]}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("after pruning: %v, want %v", got, want)
+	}
+}
+
+func TestRestoreKeepsTheLiveAuditLog(t *testing.T) {
+	at := func(m int) time.Time { return time.Date(2026, 1, 1, 0, m, 0, 0, time.UTC) }
+	backedUp := []audit.Entry{{Time: at(0), Action: "container.stop"}, {Time: at(1), Action: "container.start"}}
+	live := []audit.Entry{{Time: at(2), Action: "backup.restore.confirm"}}
+
+	restore := func(src *Service) []audit.Entry {
+		t.Helper()
+		archive := takeBackup(t, src, Options{})
+		target, targetConfig := newInstance(t)
+		if err := os.WriteFile(audit.Path(targetConfig), audit.Encode(live), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		dst := NewService(target, nil, nil, nil, "1.2.0")
+		f, _ := os.Open(archive)
+		_, err := dst.StageRestore(f, "")
+		f.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := dst.ConfirmRestore(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ApplyPending(targetConfig); err != nil {
+			t.Fatal(err)
+		}
+		data, err := os.ReadFile(audit.Path(targetConfig))
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, _ := audit.Decode(data)
+		return got
+	}
+
+	source, _ := newInstance(t)
+	got := restore(NewService(source, nil, func() []audit.Entry { return backedUp }, nil, "1.2.0"))
+	if len(got) != 3 || got[0].Action != "container.stop" || got[2].Action != "backup.restore.confirm" {
+		t.Fatalf("restored audit log = %+v", got)
+	}
+	// A backup without an audit log, as made before it existed, leaves the
+	// live one as it is.
+	source, _ = newInstance(t)
+	got = restore(NewService(source, nil, nil, nil, "1.2.0"))
+	if len(got) != 1 || got[0].Action != "backup.restore.confirm" {
+		t.Fatalf("audit log after restoring an older backup = %+v", got)
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/alerts"
+	"github.com/AmoabaKelvin/logdeck/internal/audit"
 	"github.com/AmoabaKelvin/logdeck/internal/config"
 	"github.com/AmoabaKelvin/logdeck/internal/logstore"
 )
@@ -20,7 +21,7 @@ const stampLayout = "20060102T150405Z"
 
 // paths locates the restorable state, which all lives next to the config file.
 type paths struct {
-	dataDir, config, history, logs string
+	dataDir, config, history, audit, logs string
 }
 
 func pathsFor(configPath string) paths {
@@ -28,6 +29,7 @@ func pathsFor(configPath string) paths {
 		dataDir: filepath.Dir(configPath),
 		config:  configPath,
 		history: alerts.HistoryPath(configPath),
+		audit:   audit.Path(configPath),
 		logs:    logstore.DBPath(configPath),
 	}
 }
@@ -46,6 +48,8 @@ func (p paths) targets(name string) []string {
 		return []string{p.config}
 	case historyName:
 		return []string{p.history}
+	case auditName:
+		return []string{p.audit}
 	case logsName:
 		return []string{p.logs + "-wal", p.logs + "-shm", p.logs}
 	}
@@ -85,7 +89,10 @@ func ApplyPending(configPath string) (string, error) {
 	}
 
 	err = keepLiveCredentials(p)
-	for _, name := range []string{configName, historyName, logsName} {
+	if err == nil {
+		err = keepLiveAudit(p)
+	}
+	for _, name := range restoredNames {
 		if err != nil {
 			break
 		}
@@ -106,6 +113,10 @@ func ApplyPending(configPath string) (string, error) {
 	}
 	return prev, nil
 }
+
+// restoredNames are the archive files a restore can replace, in the order it
+// replaces them.
+var restoredNames = []string{configName, historyName, auditName, logsName}
 
 var previousNameRegexp = regexp.MustCompile(`^pre-restore-\d{8}T\d{6}Z$`)
 
@@ -160,6 +171,18 @@ func keepLiveCredentials(p paths) error {
 	return os.Rename(tmp, staged)
 }
 
+// keepLiveAudit adds the live audit log to the restored one, so changes made
+// since the backup was taken, the restore among them, stay on record. Like
+// keepLiveCredentials it runs at apply time, and running it again after a
+// crash gives the same file.
+func keepLiveAudit(p paths) error {
+	staged := filepath.Join(p.pending(), auditName)
+	if _, err := os.Stat(staged); err != nil {
+		return nil // not in this backup, or swapped before a crash
+	}
+	return audit.MergeInto(staged, p.audit)
+}
+
 func swap(p paths, staged, name, prev string) error {
 	targets := p.targets(name)
 	for _, t := range targets {
@@ -175,7 +198,7 @@ func swap(p paths, staged, name, prev string) error {
 // its live file was moved aside, which also catches swaps made before a
 // crash. It is best effort: it only runs after a step has already failed.
 func rollback(p paths, pending, prev string) {
-	for _, name := range []string{configName, historyName, logsName} {
+	for _, name := range restoredNames {
 		targets := p.targets(name)
 		live := targets[len(targets)-1]
 		staged := filepath.Join(pending, name)

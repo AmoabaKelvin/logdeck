@@ -40,7 +40,7 @@ LogDeck tells you when a container dies, gets OOM-killed, fails its health check
 
 LogDeck backs up its own state from Settings while it keeps running.
 
-- One file with the settings, alert rules and channels, alert history, and optionally the stored logs
+- One file with the settings, alert rules and channels, alert history, the audit log, and optionally the stored logs
 - Optional credentials and optional passphrase encryption
 - Scheduled backups with a retention count, written to a folder you can mount off the host
 - Restores are checked in full and previewed before anything changes, then applied on the next start with the old data kept aside
@@ -57,6 +57,17 @@ LogDeck can mask secrets in log lines before it stores them or serves them anywh
 - Applies to live views, stored history, the API, the CLI, MCP, downloads, and alert notifications, while alert rules still match the original line
 
 [Read the guide](/docs/log-redaction)
+
+## Audit log
+
+LogDeck records the changes made through it, from the UI, the CLI, MCP, or the API.
+
+- Who made it (a user or an API token), the action, the host and target, when, and the result, including refused attempts
+- Container actions, terminals and commands, env and resource changes, deploys, settings, API tokens, backups, and log deletion
+- Reads and request bodies are never recorded, so env values, passwords, and tokens stay out of it
+- Filter by who, action, target, result, and time in Settings, or with `logdeck audit`
+
+[Read the guide](/docs/audit-log)
 
 ## Filtering and search
 
@@ -197,6 +208,7 @@ The `logdeck` CLI talks to the server's HTTP API and is built for scripts and AI
 - `logdeck grep` searches the recent logs of every running container across all hosts
 - Lifecycle actions, resource limits, and Compose stack controls
 - `logdeck alerts` manages alert rules, notification channels, and alert history
+- `logdeck audit` lists who changed what
 - `logdeck login` saves named contexts, kubectl-style
 - Table output for people, and JSON or NDJSON output (`-o json`) for machines
 
@@ -273,7 +285,7 @@ Health badges are Docker-only. LogDeck reads a container's health from the engin
 ## Technical details
 
 - The web frontend is embedded in the Go server binary, so there is one binary to deploy.
-- There is no external database. The config file, the SQLite log store, and the alert history all live in one directory, `/data` by default. Mount it as a volume and there is nothing else to manage.
+- There is no external database. The config file, the SQLite log store, the alert history, and the audit log all live in one directory, `/data` by default. Mount it as a volume and there is nothing else to manage.
 - LogDeck is open source under the GPL-3.0 license.
 
 Have a feature request? [Open an issue on GitHub](https://github.com/AmoabaKelvin/logdeck/issues/new).

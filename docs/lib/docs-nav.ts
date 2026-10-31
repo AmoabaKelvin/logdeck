@@ -62,6 +62,13 @@ export const docsNav = [
           "Mask passwords, tokens, and API keys in container logs before LogDeck stores them or serves them to the UI, the API, the CLI, MCP, and alerts.",
       },
       {
+        title: "Audit log",
+        href: "/docs/audit-log",
+        updated: "2026-10-30",
+        description:
+          "See who stopped, removed, or exec'd into a container, changed env vars or settings, or used an API token, with the result, in LogDeck's audit log.",
+      },
+      {
         title: "CLI reference",
         href: "/docs/cli",
         updated: "2026-09-13",

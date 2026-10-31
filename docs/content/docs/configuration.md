@@ -13,6 +13,7 @@ Everything LogDeck persists lives in one directory, the directory of its config 
 - `config.json`: hosts, Coolify and Dokploy connections, read-only mode, auth, API tokens, alert rules, and log-store settings
 - `logs.db`: the SQLite [log store](/docs/log-history)
 - `alerts-history.json`: recently fired [alerts](/docs/alerting)
+- `audit.jsonl`: the [audit log](/docs/audit-log) of changes made through LogDeck
 - `backups/`: [backups](/docs/backups), unless `BACKUP_DIR` points elsewhere
 
 > **Mount it as a volume.** Without one, all of the above is written inside the container and destroyed the next time you recreate it. You would lose your API tokens, your alert rules, and all stored log history.

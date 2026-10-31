@@ -8,6 +8,7 @@ import (
 
 	"github.com/AmoabaKelvin/logdeck/internal/alerts"
 	"github.com/AmoabaKelvin/logdeck/internal/api/middleware"
+	"github.com/AmoabaKelvin/logdeck/internal/audit"
 	"github.com/AmoabaKelvin/logdeck/internal/auth"
 	"github.com/AmoabaKelvin/logdeck/internal/backup"
 	"github.com/AmoabaKelvin/logdeck/internal/config"
@@ -30,6 +31,8 @@ type APIRouter struct {
 	health   *health.Tracker
 	// backups is nil when the router is built without backup support (tests).
 	backups *backup.Service
+	// audit is nil when the router is built without an audit log (tests).
+	audit   *audit.Store
 	version string
 
 	// machineHostname caches the engine-reported hostname; see GetSystemStats.
@@ -41,7 +44,7 @@ type APIRouter struct {
 	redactionMu sync.Mutex
 }
 
-func NewRouter(registry *services.Registry, manager *config.Manager, engine *alerts.Engine, logStore *logstore.Store, tracker *health.Tracker, backups *backup.Service, version string) *chi.Mux {
+func NewRouter(registry *services.Registry, manager *config.Manager, engine *alerts.Engine, logStore *logstore.Store, tracker *health.Tracker, backups *backup.Service, auditLog *audit.Store, version string) *chi.Mux {
 	r := &APIRouter{
 		router:   chi.NewRouter(),
 		registry: registry,
@@ -50,6 +53,7 @@ func NewRouter(registry *services.Registry, manager *config.Manager, engine *ale
 		logStore: logStore,
 		health:   tracker,
 		backups:  backups,
+		audit:    auditLog,
 		version:  version,
 	}
 
@@ -107,6 +111,9 @@ func (ar *APIRouter) Routes() *chi.Mux {
 		// All other routes go through dynamic auth middleware
 		r.Group(func(protected chi.Router) {
 			protected.Use(auth.DynamicMiddleware(ar.registry.Auth, ar.lookupAPIToken))
+			// Changes are recorded after auth, which places the identity on
+			// the request; reads pass the audit log by.
+			protected.Use(ar.auditMutations)
 
 			protected.Get("/auth/me", ar.handleGetMe)
 			protected.Get("/events", ar.GetContainerEvents)
@@ -162,8 +169,9 @@ func (ar *APIRouter) registerContainerRoutes(r chi.Router) {
 			mutating.Post("/resources/deploy", ar.DeployContainerResources)
 			mutating.Post("/image/update", ar.UpdateContainerImage)
 			// Exec is GET (websocket upgrade) but spawns a shell, so
-			// read-scoped tokens are denied explicitly
-			mutating.With(auth.DenyReadScope).Get("/exec", ar.HandleTerminal)
+			// read-scoped tokens are denied explicitly, and it is recorded in
+			// the audit log although it is a GET
+			mutating.With(auth.DenyReadScope, ar.audited).Get("/exec", ar.HandleTerminal)
 			// exec/run is the non-interactive counterpart: run one command and
 			// return its output. Same shell-spawning risk, so same denial.
 			mutating.With(auth.DenyReadScope).Post("/exec/run", ar.RunCommand)
@@ -194,6 +202,7 @@ func (ar *APIRouter) registerSettingsRoutes(r chi.Router) {
 	r.Route("/settings", func(r chi.Router) {
 		// Settings follow the same auth pattern — protected when auth is enabled
 		r.Use(auth.DynamicMiddleware(ar.registry.Auth, ar.lookupAPIToken))
+		r.Use(ar.auditMutations)
 		// Settings expose host topology and token inventory, so read-scoped
 		// tokens are denied for the whole group
 		r.Use(auth.DenyReadScope)
@@ -224,6 +233,7 @@ func (ar *APIRouter) registerSettingsRoutes(r chi.Router) {
 		r.Post("/test/docker-host", ar.TestDockerHost)
 		r.Post("/test/coolify-host", ar.TestCoolifyHost)
 		r.Post("/test/dokploy-host", ar.TestDokployHost)
+		r.Get("/audit", ar.GetAuditLog)
 		ar.registerBackupRoutes(r)
 	})
 }
@@ -232,6 +242,7 @@ func (ar *APIRouter) registerAlertRoutes(r chi.Router) {
 	r.Route("/alerts", func(r chi.Router) {
 		// Alerts follow the same auth pattern — protected when auth is enabled
 		r.Use(auth.DynamicMiddleware(ar.registry.Auth, ar.lookupAPIToken))
+		r.Use(ar.auditMutations)
 		// Channel URLs and tokens are secrets (a Slack or Discord webhook, or a
 		// bot token, lets its holder post to the channel), so alerts are denied
 		// to read-scoped tokens for the whole group, as settings are.

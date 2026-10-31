@@ -315,6 +315,7 @@ func (ar *APIRouter) CreateAlertRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	setAuditTarget(r, rule.ID)
 	ar.reconcileAlerts()
 	WriteJsonResponse(w, http.StatusCreated, rule)
 }
@@ -557,6 +558,7 @@ func (ar *APIRouter) CreateAlertChannel(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	setAuditTarget(r, channel.ID)
 	ar.reconcileAlerts()
 	WriteJsonResponse(w, http.StatusCreated, channel)
 }

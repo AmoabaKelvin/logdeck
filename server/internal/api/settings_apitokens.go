@@ -125,6 +125,7 @@ func (ar *APIRouter) CreateAPIToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	setAuditTarget(r, name+" ("+prefix+")")
 	WriteJsonResponse(w, http.StatusCreated, map[string]any{
 		"token":     token,
 		"name":      name,

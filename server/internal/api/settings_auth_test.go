@@ -23,7 +23,7 @@ func newTestRouter(t *testing.T, authSvc *auth.Service) http.Handler {
 
 	manager := config.NewManager()
 	registry := services.NewRegistry(nil, nil, authSvc, manager.Config())
-	return NewRouter(registry, manager, nil, nil, nil, nil, "test")
+	return NewRouter(registry, manager, nil, nil, nil, nil, nil, "test")
 }
 
 // clearEnvForAuthTest unsets the env vars that configure auth, so only what a
