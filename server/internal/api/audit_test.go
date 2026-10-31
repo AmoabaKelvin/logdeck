@@ -105,6 +105,46 @@ func TestAuditRecordsChangesWithIdentity(t *testing.T) {
 	}
 }
 
+func TestAuditNamesUserChanges(t *testing.T) {
+	for _, key := range []string{
+		"JWT_SECRET", "ADMIN_USERNAME", "ADMIN_PASSWORD", "ADMIN_PASSWORD_SALT",
+		"DOCKER_HOSTS", "COOLIFY_CONFIGS", "CORS_ALLOWED_ORIGINS",
+	} {
+		t.Setenv(key, "")
+	}
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("CONFIG_PATH", cfgPath)
+	svc := newTestAuthService(t)
+	manager := config.NewManager()
+	registry := services.NewRegistry(nil, nil, svc, manager.Config())
+	store := audit.Open(audit.Path(cfgPath))
+	router := NewRouter(registry, manager, nil, nil, nil, nil, store, "test")
+	session, err := svc.GenerateToken("admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	do(t, router, "POST", "/api/v1/settings/users", session, `{"username":"dev@example.com","password":"viewer-password","role":"read"}`)
+	do(t, router, "PUT", "/api/v1/settings/users/dev%40example.com", session, `{"role":"admin"}`)
+	do(t, router, "DELETE", "/api/v1/settings/users/dev%40example.com", session, "")
+	store.Close()
+
+	got := store.Entries()
+	want := []struct{ action, target string }{
+		{"user.create", "dev@example.com"},
+		{"user.update", "dev@example.com"},
+		{"user.delete", "dev@example.com"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("entries = %+v", got)
+	}
+	for i, w := range want {
+		if got[i].Action != w.action || got[i].Target != w.target {
+			t.Errorf("entry %d = %s %q, want %s %q", i, got[i].Action, got[i].Target, w.action, w.target)
+		}
+	}
+}
+
 // A terminal is recorded once its websocket opens, not when it closes.
 func TestAuditRecordsWebsocketOnOpen(t *testing.T) {
 	store := audit.Open(filepath.Join(t.TempDir(), "audit.jsonl"))

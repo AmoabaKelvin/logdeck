@@ -124,6 +124,7 @@ func (ar *APIRouter) CreateUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	setAuditTarget(r, req.Username)
 	if req.Username == ar.envAdmin() {
 		http.Error(w, errUserExists.Error(), http.StatusConflict)
 		return
@@ -158,6 +159,7 @@ func (ar *APIRouter) CreateUser(w http.ResponseWriter, r *http.Request) {
 // request; a reset password also ends their existing sessions.
 func (ar *APIRouter) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	username := usernameParam(r)
+	setAuditTarget(r, username)
 	var req struct {
 		Role     string `json:"role,omitempty"`
 		Password string `json:"password,omitempty"`
@@ -215,6 +217,7 @@ func (ar *APIRouter) UpdateUser(w http.ResponseWriter, r *http.Request) {
 // sessions stop working on their next request.
 func (ar *APIRouter) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	username := usernameParam(r)
+	setAuditTarget(r, username)
 	if username == ar.envAdmin() {
 		http.Error(w, errEnvUser.Error(), http.StatusConflict)
 		return

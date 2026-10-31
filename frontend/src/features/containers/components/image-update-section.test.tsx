@@ -9,6 +9,7 @@ import {
 import { toast } from "sonner";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
+import { AuthContext } from "@/contexts/auth-context";
 import type { ContainerInfo } from "../types";
 import { ImageUpdateSection } from "./image-update-section";
 
@@ -28,18 +29,32 @@ const container: ContainerInfo = {
 function mount(
 	overrides: Partial<ContainerInfo>,
 	onRecreated = vi.fn<(newContainerId: string) => void>(),
+	role = "admin",
 ) {
 	const client = new QueryClient({
 		defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
 	});
 	render(
 		<QueryClientProvider client={client}>
-			<ImageUpdateSection
-				container={{ ...container, ...overrides }}
-				containerId="web"
-				isReadOnly={false}
-				onContainerRecreated={onRecreated}
-			/>
+			<AuthContext.Provider
+				value={{
+					user: { username: "someone", role },
+					token: "token",
+					isAuthenticated: true,
+					isLoading: false,
+					isAuthEnabled: true,
+					login: async () => {},
+					loginWithToken: async () => {},
+					logout: () => {},
+				}}
+			>
+				<ImageUpdateSection
+					container={{ ...container, ...overrides }}
+					containerId="web"
+					isReadOnly={false}
+					onContainerRecreated={onRecreated}
+				/>
+			</AuthContext.Provider>
 		</QueryClientProvider>,
 	);
 	return onRecreated;
@@ -91,4 +106,13 @@ it("explains Compose instead of recreating", () => {
 	expect(
 		screen.queryByRole("button", { name: "Pull and recreate" }),
 	).toBeNull();
+});
+
+it("offers the check to admins but not to read-only users", () => {
+	mount({});
+	expect(screen.getByRole("button", { name: "Check now" })).toBeTruthy();
+	cleanup();
+
+	mount({}, undefined, "read");
+	expect(screen.queryByRole("button", { name: "Check now" })).toBeNull();
 });

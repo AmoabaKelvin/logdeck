@@ -45,6 +45,10 @@ var auditActions = map[string]string{
 	"PUT /api/v1/settings/dokploy-hosts":            "settings.dokploy_hosts",
 	"PUT /api/v1/settings/read-only":                "settings.read_only",
 	"PUT /api/v1/settings/auth":                     "settings.auth",
+	"PUT /api/v1/settings/oidc":                     "settings.oidc",
+	"POST /api/v1/settings/users":                   "user.create",
+	"PUT /api/v1/settings/users/{username}":         "user.update",
+	"DELETE /api/v1/settings/users/{username}":      "user.delete",
 	"PUT /api/v1/settings/log-storage":              "settings.log_storage",
 	"PUT /api/v1/settings/redaction":                "settings.redaction",
 	"POST /api/v1/settings/redaction/preview":       "",
@@ -74,7 +78,7 @@ var auditActions = map[string]string{
 
 // auditTargetParams are the path parameters that name what a route changes,
 // in the order they are looked for.
-var auditTargetParams = []string{"id", "project", "name", "prefix"}
+var auditTargetParams = []string{"id", "project", "name", "prefix", "username"}
 
 // auditMutations records every request that can change something, after it
 // has been handled. Reads pass straight through without touching the audit

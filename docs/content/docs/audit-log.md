@@ -6,8 +6,8 @@ A request that can change something is recorded once it has been handled, whethe
 
 - Container start, stop, restart, and remove, and Compose stack start, stop, and restart
 - Opening a terminal and running a command in a container. A terminal is recorded as soon as it opens.
-- Env var and resource limit changes, and Coolify and Dokploy deploys
-- Settings changes: hosts and connections, read-only mode, sign-in, API tokens, redaction, log storage, backups and restores, and alert rules, channels, and history
+- Env var and resource limit changes, image updates, and Coolify and Dokploy deploys
+- Settings changes: hosts and connections, read-only mode, sign-in and single sign-on, users, API tokens, redaction, log storage, backups and restores, and alert rules, channels, silences, and history
 - Deleting stored logs
 
 Refused and failed attempts are recorded too, for example a container stop blocked by [read-only mode](/docs/configuration#read-only-mode), with the HTTP status that was returned. In rare cases a record is lost; see [Storage](#storage).
@@ -18,7 +18,7 @@ Each entry holds:
 
 - **Who**: the username for a signed-in user, `token:<name>` for an [API token](/docs/configuration#api-tokens), along with its role or scope. With authentication disabled there is no one to name, and the entry says so.
 - **Action**: a short name such as `container.stop`, `settings.read_only`, or `api_token.create`
-- **Target**: the container ID, Compose project, alert rule or channel ID, API token, or backup it applied to, and the host
+- **Target**: the container ID, Compose project, alert rule or channel ID, user, API token, or backup it applied to, and the host
 - **Result**: the HTTP status and how long the request took
 
 Text fields are cut off at 256 bytes, so a very long host or target is not recorded in full.

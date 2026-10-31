@@ -37,7 +37,7 @@ func newUsersTestRouter(t *testing.T) http.Handler {
 		svc, _ := auth.NewService(manager.FileConfigSnapshot().Auth, manager.OIDC())
 		registry.SwapAuth(svc)
 	})
-	return NewRouter(registry, manager, nil, nil, nil, nil, "test")
+	return NewRouter(registry, manager, nil, nil, nil, nil, nil, "test")
 }
 
 func do(t *testing.T, router http.Handler, method, path, token, body string) *httptest.ResponseRecorder {
@@ -162,7 +162,7 @@ func TestEnvAdminIsListedAndFixed(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry := services.NewRegistry(nil, nil, svc, manager.Config())
-	router := NewRouter(registry, manager, nil, nil, nil, nil, "test")
+	router := NewRouter(registry, manager, nil, nil, nil, nil, nil, "test")
 	root := login(t, router, "root", "env-password")
 
 	w := do(t, router, "GET", "/api/v1/settings/users", root, "")
