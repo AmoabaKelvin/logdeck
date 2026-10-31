@@ -1,7 +1,7 @@
 // Package backup writes and restores LogDeck backups. A backup is one tar
-// archive: a manifest first, then the config file, the alert history and,
-// optionally, a snapshot of the stored logs. It can be sealed with a
-// passphrase; see crypt.go.
+// archive: a manifest first, then the config file, the alert history, the
+// audit log and, optionally, a snapshot of the stored logs. It can be sealed
+// with a passphrase; see crypt.go.
 package backup
 
 import (
@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/AmoabaKelvin/logdeck/internal/audit"
 	"github.com/AmoabaKelvin/logdeck/internal/config"
 	"github.com/AmoabaKelvin/logdeck/internal/logstore"
 	"github.com/AmoabaKelvin/logdeck/internal/models"
@@ -29,11 +30,12 @@ const (
 	manifestName = "manifest.json"
 	configName   = "config.json"
 	historyName  = "alerts-history.json"
+	auditName    = "audit.jsonl"
 	logsName     = "logs.db"
 
 	maxManifestSize = 1 << 20
-	// maxSmallFile caps the config file and alert history, which restore
-	// parses in memory.
+	// maxSmallFile caps the config file, alert history and audit log, which
+	// restore parses in memory.
 	maxSmallFile = 64 << 20
 )
 
@@ -68,16 +70,18 @@ type Contents struct {
 	AlertRules    int   `json:"alertRules"`
 	AlertChannels int   `json:"alertChannels"`
 	AlertHistory  int   `json:"alertHistory"`
+	AuditEntries  int   `json:"auditEntries"`
 	APITokens     int   `json:"apiTokens"`
 	LogsBytes     int64 `json:"logsBytes"`
 }
 
-func countContents(fc config.FileConfig, history int, logsBytes int64) Contents {
+func countContents(fc config.FileConfig, history, auditEntries int, logsBytes int64) Contents {
 	c := Contents{
 		DockerHosts:  len(fc.DockerHosts),
 		CoolifyHosts: len(fc.CoolifyHosts),
 		DokployHosts: len(fc.DokployHosts),
 		AlertHistory: history,
+		AuditEntries: auditEntries,
 		APITokens:    len(fc.APITokens),
 		LogsBytes:    logsBytes,
 	}
@@ -94,6 +98,7 @@ type state struct {
 	version   string
 	config    config.FileConfig
 	history   []models.Alert
+	audit     []audit.Entry
 	// logsPath is a finished log store snapshot, or "" for none.
 	logsPath string
 }
@@ -125,6 +130,14 @@ func writeArchive(w io.Writer, st state, includeSecrets bool, passphrase string)
 		IncludesSecrets: includeSecrets,
 		Files:           []File{fileOf(configName, configJSON), fileOf(historyName, historyJSON)},
 	}
+	entries := []archiveEntry{{manifestName, nil}, {configName, configJSON}, {historyName, historyJSON}}
+	// The audit log is optional so that backups made before it existed still
+	// restore; restoring one of them leaves the live audit log as it is.
+	if st.audit != nil {
+		auditData := audit.Encode(st.audit)
+		m.Files = append(m.Files, fileOf(auditName, auditData))
+		entries = append(entries, archiveEntry{auditName, auditData})
+	}
 	var logsSize int64
 	if logsPath != "" {
 		// Hashing first costs one extra sequential read of a file that was
@@ -136,11 +149,12 @@ func writeArchive(w io.Writer, st state, includeSecrets bool, passphrase string)
 		logsSize = f.Size
 		m.Files = append(m.Files, f)
 	}
-	m.Contents = countContents(fc, len(history), logsSize)
+	m.Contents = countContents(fc, len(history), len(st.audit), logsSize)
 	manifestJSON, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return Manifest{}, err
 	}
+	entries[0].data = manifestJSON
 
 	out := w
 	var enc *encryptWriter
@@ -151,10 +165,7 @@ func writeArchive(w io.Writer, st state, includeSecrets bool, passphrase string)
 		out = enc
 	}
 	tw := tar.NewWriter(out)
-	for _, entry := range []struct {
-		name string
-		data []byte
-	}{{manifestName, manifestJSON}, {configName, configJSON}, {historyName, historyJSON}} {
+	for _, entry := range entries {
 		if err := writeEntry(tw, entry.name, int64(len(entry.data)), m.CreatedAt); err != nil {
 			return Manifest{}, err
 		}
@@ -185,6 +196,11 @@ func writeArchive(w io.Writer, st state, includeSecrets bool, passphrase string)
 		}
 	}
 	return m, nil
+}
+
+type archiveEntry struct {
+	name string
+	data []byte
 }
 
 func writeEntry(tw *tar.Writer, name string, size int64, modTime time.Time) error {
@@ -250,7 +266,7 @@ func stage(r io.Reader, passphrase, dir string) (Manifest, bool, error) {
 	expected := make(map[string]File, len(m.Files))
 	for _, f := range m.Files {
 		switch f.Name {
-		case configName, historyName, logsName:
+		case configName, historyName, auditName, logsName:
 		default:
 			return m, encrypted, invalid(fmt.Errorf("backup lists an unknown file %q", f.Name))
 		}
@@ -334,6 +350,10 @@ func checkStaged(dir string, m Manifest) error {
 			var history []models.Alert
 			if err := readJSON(filepath.Join(dir, historyName), &history); err != nil {
 				return fmt.Errorf("the backup's alert history is invalid: %w", err)
+			}
+		case auditName:
+			if err := audit.Check(filepath.Join(dir, auditName)); err != nil {
+				return fmt.Errorf("the backup's audit log is invalid: %w", err)
 			}
 		case logsName:
 			if err := logstore.CheckSnapshot(filepath.Join(dir, logsName)); err != nil {

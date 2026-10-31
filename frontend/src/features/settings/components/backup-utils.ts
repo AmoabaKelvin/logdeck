@@ -14,6 +14,7 @@ export function describeContents(c: BackupContents): string {
 		count(c.alertRules, "alert rule", "alert rules"),
 		count(c.alertChannels, "channel", "channels"),
 		count(c.alertHistory, "past alert", "past alerts"),
+		count(c.auditEntries, "audit entry", "audit entries"),
 		count(c.apiTokens, "API token", "API tokens"),
 		c.logsBytes > 0 ? `${formatBytes(c.logsBytes)} of logs` : null,
 	].filter((part) => part !== null);

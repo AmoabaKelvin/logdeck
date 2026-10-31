@@ -1,5 +1,6 @@
 import dozzle from "@/content/compare/dozzle.md";
 import alerting from "@/content/docs/alerting.md";
+import auditLog from "@/content/docs/audit-log.md";
 import backups from "@/content/docs/backups.md";
 import cli from "@/content/docs/cli.md";
 import configuration from "@/content/docs/configuration.md";
@@ -23,6 +24,7 @@ const bodies = new Map([
   ["/docs/alerting", alerting],
   ["/docs/backups", backups],
   ["/docs/log-redaction", logRedaction],
+  ["/docs/audit-log", auditLog],
   ["/docs/cli", cli],
   ["/docs/mcp", mcp],
   ["/docs/configuration", configuration],
