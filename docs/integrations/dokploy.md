@@ -1,6 +1,6 @@
 # Dokploy environments
 
-LogDeck reads and writes Dokploy's saved configuration rather than recreating a managed container. Saving and deploying are separate actions. A successful save does not mean the running workload has changed; an accepted deployment request does not prove deployment completion.
+LogDeck reads and writes Dokploy's saved configuration rather than recreating a managed container. Saving and deploying are separate actions. A successful save does not mean the running workload has changed, and LogDeck follows each deployment it requests until Swarm has finished with it.
 
 ## Connect an instance
 
@@ -40,6 +40,18 @@ Saving first shows which variables it adds, changes and removes. For an applicat
 | ---------------- | ----------------------------- | ----------------------------------------------------------------------------- | ---------------------------------------- |
 | Application      | `application.saveEnvironment` | `buildArgs`, `buildSecrets`, `createEnvFile`, including nullable build fields | `application.deploy`                     |
 | Compose or Stack | `compose.saveEnvironment`     | `createEnvFile`; no application build fields are sent                         | `compose.deploy`, without `freshVolumes` |
+
+## Following a deployment
+
+After **Deploy saved configuration**, the panel follows the deployment instead of stopping at the request:
+
+- **Queued**: Dokploy runs one deployment at a time, so a request can wait behind others, such as webhook deploys.
+- **Building**: Dokploy's deployment is running. For an application this includes the image build.
+- **Updating**: Dokploy has finished and Swarm is starting the new task. Dokploy marks a deployment done once it has asked Swarm to update the service, before the new task is healthy.
+- **Completed**: Swarm finished the update. The panel moves to the new container, so the comparison with the running container reflects the deployment.
+- **Failed**, **rolled back** or **paused**: Dokploy's error, or Swarm's message when it rolled the update back or paused it. The running container keeps its previous configuration.
+
+Any deployment of the resource that starts after the newest one before the request counts, because each one applies the configuration saved before it. Runs are told apart by Dokploy's own timestamps, and Swarm's status after a finished Dokploy run always belongs to that run or a later one, so clock differences between LogDeck, Dokploy and Swarm do not matter. A Compose stack service follows its Swarm update like an application; one that Swarm had nothing to change for counts as deployed a minute after Dokploy finished. A plain Compose deployment is complete when Dokploy finishes, and LogDeck then moves to the container running the same Compose service. The panel stops following after 30 minutes, or when the deployment's mapping changed.
 
 Compose variables belong to the whole deployment. They enter a service only when the Compose definition references them or uses `env_file`. Saving a variable does not add that reference. Deployment may restart several containers.
 

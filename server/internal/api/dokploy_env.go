@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/AmoabaKelvin/logdeck/internal/coolify"
 	"github.com/AmoabaKelvin/logdeck/internal/deployment"
@@ -109,7 +110,7 @@ func (ar *APIRouter) handleDokployEnvironment(w http.ResponseWriter, r *http.Req
 				suggested = append(suggested, string(res.Type)+"/"+res.ID)
 			}
 		}
-		WriteJsonResponse(w, 200, map[string]any{"source": "dokploy", "env": map[string]string{}, "suggested_resources": suggested, "resources": resources, "mapping_required": true, "plain_compose_allowed": !hinted && !swarm, "instance_url": ar.dokployInstanceURL(host), "workload": inspect.Name, "mapping_key": dokployMappingKey(labels)})
+		WriteJsonResponse(w, 200, map[string]any{"source": "dokploy", "env": map[string]string{}, "suggested_resources": suggested, "resources": resources, "mapping_required": true, "plain_compose_allowed": !hinted && !swarm, "instance_url": ar.dokployInstanceURL(host), "workload": inspect.Name, "mapping_key": dokployMappingKey(labels), "workload_service": workloadService(labels)})
 		return true
 	}
 	var owner *dokploy.Resource
@@ -167,11 +168,18 @@ func (ar *APIRouter) handleDokployEnvironment(w http.ResponseWriter, r *http.Req
 		return true
 	}
 	if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/deploy") {
+		// The deployment this queues starts after the newest one now, by
+		// Dokploy's own clock.
+		after, err := client.LastDeploymentStart(r.Context(), *owner)
+		if err != nil {
+			http.Error(w, dokployMessage(err)+". No deployment was requested", http.StatusBadGateway)
+			return true
+		}
 		if err := store.Deploy(r.Context(), *owner); err != nil {
 			http.Error(w, dokployMessage(err)+". Saved configuration remains in Dokploy; check deployment progress before retrying", http.StatusBadGateway)
 			return true
 		}
-		WriteJsonResponse(w, http.StatusAccepted, map[string]any{"message": "Dokploy deployment requested. Check Dokploy for progress", "applied": false})
+		WriteJsonResponse(w, http.StatusAccepted, map[string]any{"message": "Dokploy deployment requested", "applied": false, "after_deployment": formatDeploymentStart(after)})
 		return true
 	}
 	http.Error(w, "Unsupported Dokploy environment operation", http.StatusMethodNotAllowed)
@@ -207,6 +215,23 @@ func dokployMappingKey(labels map[string]string) string {
 		}
 	}
 	return ""
+}
+
+// formatDeploymentStart is "" when the resource had never been deployed.
+func formatDeploymentStart(start time.Time) string {
+	if start.IsZero() {
+		return ""
+	}
+	return start.Format(time.RFC3339Nano)
+}
+
+// workloadService names the Compose or Swarm service a container runs for,
+// which finds its replacement after a deployment.
+func workloadService(labels map[string]string) string {
+	if service := labels["com.docker.compose.service"]; service != "" {
+		return service
+	}
+	return labels["com.docker.swarm.service.name"]
 }
 
 func (ar *APIRouter) dokployInstanceURL(host string) string {

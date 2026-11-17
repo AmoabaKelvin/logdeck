@@ -122,6 +122,8 @@ func (ar *APIRouter) Routes() *chi.Mux {
 			protected.Get("/networks", ar.GetNetworks)
 			protected.Get("/hosts/stats", ar.GetHostsStats)
 			protected.Get("/health/collection", ar.GetCollectionHealth)
+			// Read users cannot deploy, and the status carries Dokploy's build errors.
+			protected.With(auth.DenyReadScope).Get("/dokploy/rollout", ar.GetDokployRollout)
 			ar.registerContainerRoutes(protected)
 			ar.registerComposeRoutes(protected)
 			ar.registerHistoryRoutes(protected)
