@@ -36,7 +36,7 @@ func TestDokployMappingSaveAndDeploy(t *testing.T) {
 		case "/api/project.all":
 			_, _ = w.Write([]byte(`[{"environments":[{"applications":[{"applicationId":"app"}]}]}]`))
 		case "/api/application.one":
-			_, _ = w.Write([]byte(`{"applicationId":"app","appName":"web","serverId":null,"env":"KEY=saved","buildArgs":null,"buildSecrets":"SECRET=preserve","createEnvFile":true}`))
+			_, _ = w.Write([]byte(`{"applicationId":"app","appName":"web","serverId":null,"env":"KEY=saved","buildArgs":null,"buildSecrets":"SECRET=preserve","createEnvFile":true,"deployments":[{"status":"done","createdAt":"2026-11-17T11:00:00.123Z"}]}`))
 		case "/api/application.saveEnvironment":
 			platformWrites++
 			_, _ = w.Write([]byte(`true`))
@@ -109,8 +109,12 @@ func TestDokployMappingSaveAndDeploy(t *testing.T) {
 		t.Fatalf("save=%d %s writes=%d deploys=%d", saved.Code, saved.Body.String(), platformWrites, deploys)
 	}
 	deployed := request("POST", "/deploy"+query, "")
-	if deployed.Code != 202 || deploys != 1 || dockerWrites != 0 {
-		t.Fatalf("deploy=%d deploys=%d Docker writes=%d", deployed.Code, deploys, dockerWrites)
+	var accepted struct {
+		AfterDeployment string `json:"after_deployment"`
+	}
+	// The rollout endpoint follows runs newer than the one before the request.
+	if err := json.Unmarshal(deployed.Body.Bytes(), &accepted); deployed.Code != 202 || deploys != 1 || dockerWrites != 0 || err != nil || accepted.AfterDeployment != "2026-11-17T11:00:00.123Z" {
+		t.Fatalf("deploy=%d %s deploys=%d Docker writes=%d", deployed.Code, deployed.Body.String(), deploys, dockerWrites)
 	}
 }
 

@@ -15,6 +15,7 @@ import {
 } from "@testing-library/react";
 import { toast } from "sonner";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import type { DokployRollout } from "../api/dokploy-env";
 import { ContainerEnvPanel } from "./container-env-panel";
 
 const resource = {
@@ -28,13 +29,20 @@ const resource = {
 	environment: "Production",
 };
 // The panel links to Settings, so it renders inside a router.
-function mount(containerId = "container") {
+function mount(
+	containerId = "container",
+	onContainerIdChange?: (id: string) => void,
+) {
 	const client = new QueryClient({
 		defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
 	});
 	const rootRoute = createRootRoute({
 		component: () => (
-			<ContainerEnvPanel containerId={containerId} containerHost="local" />
+			<ContainerEnvPanel
+				containerId={containerId}
+				containerHost="local"
+				onContainerIdChange={onContainerIdChange}
+			/>
 		),
 	});
 	const router = createRouter({
@@ -378,4 +386,147 @@ it("offers the runtime editor for plain Compose when Dokploy cannot be read", as
 	).toHaveProperty("value", "runtime");
 	fireEvent.click(screen.getByRole("button", { name: "Map to Dokploy" }));
 	await screen.findByText("Dokploy is unreachable");
+});
+
+// Dokploy reports a deployment done before Swarm has replaced the task, and
+// Swarm may roll it back, so the panel follows the rollout to its end.
+const application = {
+	...resource,
+	type: "application",
+	id: "app",
+	name: "Web",
+};
+function stubRollout(answers: (() => Response)[]) {
+	const rolloutUrls: string[] = [];
+	vi.stubGlobal(
+		"fetch",
+		vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
+			const url = String(input);
+			if (url.includes("/dokploy/rollout")) {
+				rolloutUrls.push(url);
+				return answers[Math.min(rolloutUrls.length, answers.length) - 1]();
+			}
+			if (options?.method === "POST")
+				return Response.json(
+					{ applied: false, after_deployment: "2026-11-17T12:00:00.5Z" },
+					{ status: 202 },
+				);
+			if (url.includes("confirmed=true"))
+				return Response.json({
+					source: "dokploy",
+					env: {},
+					resource: application,
+					configuration: {
+						text: "KEY=saved",
+						revision: "r",
+						createEnvFile: true,
+					},
+					instance_url: "https://dokploy.test",
+				});
+			return Response.json({
+				...inventory,
+				resources: [application],
+				suggested_resources: ["application/app"],
+				workload_service: "web",
+			});
+		}),
+	);
+	return rolloutUrls;
+}
+const phase = (body: DokployRollout) => () => Response.json(body);
+
+async function requestDeployment() {
+	fireEvent.click(
+		await screen.findByRole("button", { name: "Use this deployment" }),
+	);
+	fireEvent.click(
+		await screen.findByRole("button", { name: "Deploy saved configuration" }),
+	);
+	fireEvent.click(await screen.findByRole("button", { name: "Deploy" }));
+}
+
+it("follows a deployment through Swarm, then moves to the container it started", async () => {
+	vi.useFakeTimers({ shouldAdvanceTime: true });
+	try {
+		const rolloutUrls = stubRollout([
+			phase({ phase: "updating" }),
+			phase({ phase: "completed", container_id: "replacement" }),
+		]);
+		const moved = vi.fn<(id: string) => void>();
+		mount("container", moved);
+		await requestDeployment();
+		await screen.findByText(/Swarm is starting the new task/);
+		const query = new URL(rolloutUrls[0], "http://x").searchParams;
+		expect(query.get("after")).toBe("2026-11-17T12:00:00.5Z");
+		expect(query.get("service")).toBe("web");
+		expect(moved).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(3000);
+		await waitFor(() => expect(moved).toHaveBeenCalledWith("replacement"));
+		// Finished: no more polling, one announcement.
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(rolloutUrls).toHaveLength(2);
+		expect(moved).toHaveBeenCalledTimes(1);
+		expect(
+			vi
+				.mocked(toast.success)
+				.mock.calls.filter(([title]) => title === "Deployed"),
+		).toHaveLength(1);
+	} finally {
+		vi.useRealTimers();
+	}
+});
+
+it("reports a Swarm rollback instead of a finished deployment", async () => {
+	vi.useFakeTimers({ shouldAdvanceTime: true });
+	try {
+		const rolloutUrls = stubRollout([
+			phase({ phase: "rolled_back", message: "rollback completed" }),
+		]);
+		const moved = vi.fn<(id: string) => void>();
+		mount("container", moved);
+		await requestDeployment();
+		await screen.findByText(
+			/Swarm rolled the update back: rollback completed\. The running container still has the previous configuration/,
+		);
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(rolloutUrls).toHaveLength(1);
+		expect(toast.success).not.toHaveBeenCalledWith(
+			"Deployed",
+			expect.anything(),
+		);
+		expect(moved).not.toHaveBeenCalled();
+		expect(
+			screen
+				.getByRole("button", { name: "Deploy saved configuration" })
+				.hasAttribute("disabled"),
+		).toBe(false);
+	} finally {
+		vi.useRealTimers();
+	}
+});
+
+it("stops following when the deployment's mapping changed", async () => {
+	vi.useFakeTimers({ shouldAdvanceTime: true });
+	try {
+		const rolloutUrls = stubRollout([
+			() =>
+				new Response("The Dokploy connection or deployment name changed", {
+					status: 409,
+				}),
+		]);
+		mount();
+		await requestDeployment();
+		await screen.findByText(
+			/Stopped following the deployment: The Dokploy connection/,
+		);
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(rolloutUrls).toHaveLength(1);
+		expect(
+			screen
+				.getByRole("button", { name: "Deploy saved configuration" })
+				.hasAttribute("disabled"),
+		).toBe(false);
+	} finally {
+		vi.useRealTimers();
+	}
 });

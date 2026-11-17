@@ -270,6 +270,7 @@ export function ContainerEnvPanel({
 				containerHost={containerHost}
 				configuration={configuration}
 				runningEnv={runningEnv}
+				onContainerIdChange={onContainerIdChange}
 				onPlainCompose={() => {
 					writeDokployMapping(containerHost, containerId, PLAIN_COMPOSE);
 					setPlainCompose(true);

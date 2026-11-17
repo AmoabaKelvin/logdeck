@@ -26,6 +26,11 @@ import { getContainerEnvVariables } from "../api/get-container-env-variables";
 import { PanelError, PanelLoading, PanelNote } from "./container-panel-ui";
 import { readDokployMapping, writeDokployMapping } from "./dokploy-mapping";
 import { type EnvConfirmCopy, EnvConfirmDialog } from "./env-confirm-dialog";
+import {
+	DokployRolloutStatus,
+	type RequestedDeployment,
+	useDokployRollout,
+} from "./dokploy-rollout";
 import { parseEnvFile } from "./env-file";
 import {
 	compareWithRunning,
@@ -41,6 +46,8 @@ interface DokployEnvPanelProps {
 	isReadOnly: boolean;
 	runningEnv?: string[];
 	onPlainCompose?: () => void;
+	/** Moves the panel to the container a deployment replaced this one with. */
+	onContainerIdChange?: (newContainerId: string) => void;
 }
 
 const LINK =
@@ -247,6 +254,7 @@ function DokployEditor({
 	configuration,
 	isReadOnly,
 	runningEnv,
+	onContainerIdChange,
 	owner,
 	onUnmap,
 }: DokployEnvPanelProps & { owner: DokployResource; onUnmap: () => void }) {
@@ -325,12 +333,21 @@ function DokployEditor({
 			toast.error("Dokploy save failed", { description: error.message });
 		},
 	});
+	const [deployment, setDeployment] = useState<RequestedDeployment>();
+	const rollout = useDokployRollout({
+		host: containerHost,
+		resource: owner,
+		service: configuration.workload_service ?? "",
+		deployment,
+		containerId,
+		onContainerIdChange,
+	});
 	const deploy = useMutation({
 		mutationFn: () => deployDokployEnv(containerId, containerHost, owner),
-		onSuccess: () => {
-			toast.success("Dokploy deployment requested", {
-				description:
-					"Check Dokploy for deployment progress. The container ID may change.",
+		onSuccess: (result) => {
+			setDeployment({
+				afterDeployment: result.after_deployment,
+				sentAt: Date.now(),
 			});
 			queryClient.invalidateQueries({ queryKey: ["containers"] });
 		},
@@ -503,14 +520,15 @@ function DokployEditor({
 				{!isReadOnly && (
 					<>
 						<Button
-							disabled={busy || !dirty || Boolean(failure)}
+							// A save during a rollout would make its result misleading.
+							disabled={busy || !dirty || Boolean(failure) || rollout.active}
 							onClick={() => setConfirming("save")}
 						>
 							{save.isPending ? "Saving…" : "Save in Dokploy"}
 						</Button>
 						<Button
 							variant="outline"
-							disabled={busy || dirty || Boolean(failure)}
+							disabled={busy || dirty || Boolean(failure) || rollout.active}
 							onClick={() => setConfirming("deploy")}
 						>
 							{deploy.isPending
@@ -530,6 +548,16 @@ function DokployEditor({
 					<DokployLink href={configuration.instance_url} />
 				</div>
 			</div>
+
+			{deployment && (
+				<DokployRolloutStatus
+					rollout={rollout.rollout}
+					error={rollout.error}
+					permanent={rollout.permanent}
+					stoppedWatching={rollout.stoppedWatching}
+					isApplication={owner.type === "application"}
+				/>
+			)}
 
 			<EnvConfirmDialog
 				copy={confirming ? confirmations[confirming].copy : null}

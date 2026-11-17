@@ -60,6 +60,7 @@ type record struct {
 	PreviewDeployments []struct {
 		AppName string `json:"appName"`
 	} `json:"previewDeployments"`
+	Deployments []deploymentRecord `json:"deployments"`
 }
 
 func (c *Client) readRecord(ctx context.Context, resource Resource) (record, error) {

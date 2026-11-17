@@ -441,7 +441,7 @@ DOKPLOY_CONFIGS=local|https://dokploy.example.com|api-key|,prod|https://dokploy.
 
 LogDeck discovers accessible applications and Compose deployments on that Dokploy server. Choose the owning deployment in the container's Environment panel, reveal its saved environment text, then save. Application saves preserve build arguments, build secrets, and environment-file settings; Compose saves preserve its environment-file option. Compose variables must be referenced by the Compose definition or loaded through `env_file` to enter containers.
 
-Saving leaves the running deployment unchanged. **Deploy saved configuration** requests a separate Dokploy deployment; completion must be checked in Dokploy. Recognized Dokploy and Swarm workloads cannot fall back to direct container recreation. For plain Compose on a connected host, choose **Not managed by Dokploy** to use the runtime editor, and persist edits in the Compose source too.
+Saving leaves the running deployment unchanged. **Deploy saved configuration** requests a separate Dokploy deployment, and the panel follows it through Dokploy's queue and build and Swarm's rolling update, reporting a failure or rollback. Recognized Dokploy and Swarm workloads cannot fall back to direct container recreation. For plain Compose on a connected host, choose **Not managed by Dokploy** to use the runtime editor, and persist edits in the Compose source too.
 
 The Limits panel saves memory and CPU limits for the application chosen in the Environment panel, and deploys them separately. Compose deployment limits live in the Compose file and stay in Dokploy.
 
