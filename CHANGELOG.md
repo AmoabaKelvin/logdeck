@@ -2,6 +2,14 @@
 
 All notable changes to LogDeck are documented here.
 
+## [0.12.0](https://github.com/AmoabaKelvin/logdeck/compare/v0.11.0...v0.12.0) (2026-11-18)
+
+
+### Features
+
+* **dokploy:** follow deployments through Swarm's rollout ([6f58d3c](https://github.com/AmoabaKelvin/logdeck/commit/6f58d3c0bc23019b448535079de66ff89544e678))
+* **dokploy:** follow deployments through Swarm's rollout ([049be0c](https://github.com/AmoabaKelvin/logdeck/commit/049be0c48b5924b266e21913ced73b7900b7b8e1))
+
 ## [0.11.0](https://github.com/AmoabaKelvin/logdeck/compare/v0.10.0...v0.11.0) (2026-10-31)
 
 
